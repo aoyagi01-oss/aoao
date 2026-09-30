@@ -4,6 +4,7 @@ Chromebook で1つのリンクを開くと、**左に「お助け表現集と手
 
 - 生徒用：https://aoyagi01-oss.github.io/aoao/ （いつも同じURL。Classroom には最初に1回貼るだけ）
 - 先生用：https://aoyagi01-oss.github.io/aoao/teacher.html
+- 先生用デモ（練習用・公開されない／使い方ガイド付き）：https://aoyagi01-oss.github.io/aoao/demo.html
 
 ## しくみ
 

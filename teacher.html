@@ -8,15 +8,22 @@
 </head>
 <body>
 <main>
-  <h1>🧑‍🏫 AI英会話 教材メーカー</h1>
+  <div class="toolbar">
+    <h1>🧑‍🏫 AI英会話 教材メーカー</h1>
+    <button class="btn small" id="guideBtn" type="button">❓ 使い方ガイド</button>
+  </div>
   <p class="scene">内容を入れて「生徒に公開する」を押すだけ。生徒はいつものページを開けば、今日の教材が表示されます。</p>
+
+  <div class="notice demo-banner hidden" id="demoBanner">
+    🎓 <b>練習用のデモ画面です。</b>自由にさわってみてください。「公開」を押しても、生徒のページやスプレッドシートは変わりません。
+  </div>
 
   <div class="notice hidden" id="noApi">
     まだスプレッドシートとつながっていないため、「公開」は使えません（README の「スプレッドシートとつなぐ」を参照）。<br>
     それまでは、いちばん下の「この教材だけのURLを作る」で、Classroom に URL を貼る方法が使えます。
   </div>
 
-  <section class="card">
+  <section class="card" id="startBox">
     <h2>① どこから作る？</h2>
     <div class="label-sm">ひな形</div>
     <div class="presets" id="presets"></div>
@@ -29,7 +36,7 @@
   <section class="card">
     <h2>② 教材の内容</h2>
 
-    <div class="grid2">
+    <div class="grid2" id="basicsBox">
       <div>
         <label for="date">公開日 <span class="hint">この日から生徒の画面に出ます</span></label>
         <input type="date" id="date">
@@ -40,10 +47,12 @@
       </div>
     </div>
 
+    <div id="sceneBox">
     <label for="scene">場面 <span class="hint">生徒にも表示されます（日本語でOK）</span></label>
     <input type="text" id="scene" placeholder="例：アメリカのレストランで食事を注文する場面。">
+    </div>
 
-    <div class="grid2">
+    <div class="grid2" id="rolesBox">
       <div>
         <label for="aiRole">🤖 AIの役 <span class="hint">英語がおすすめ</span></label>
         <input type="text" id="aiRole" list="aiRoleList" placeholder="例：a friendly waiter">
@@ -70,15 +79,19 @@
       </div>
     </div>
 
+    <div id="levelBox">
     <label>レベル</label>
     <div class="chips" id="level"></div>
 
     <label for="turns">やりとりの回数（目安）： <span id="turnsVal" class="ok"></span></label>
     <input type="range" id="turns" min="4" max="16" step="1">
+    </div>
 
+    <div id="phraseBox">
     <label>⭐ 今日の目標表現</label>
     <div id="phraseRows"></div>
     <button class="btn small" id="addPhrase" type="button">＋ 表現を追加</button>
+    </div>
 
     <label for="extra">AIへの追加の指示 <span class="hint">任意・日本語でOK（例：過去形を使わせたい）</span></label>
     <textarea id="extra" rows="2"></textarea>
@@ -91,7 +104,7 @@
     </details>
   </section>
 
-  <section class="card target">
+  <section class="card target" id="publishBox">
     <h2>③ 生徒に公開する</h2>
     <div class="grid2">
       <div>
@@ -110,7 +123,7 @@
       <button class="btn primary big" id="publish">📢 生徒に公開する</button>
     </div>
     <div class="notice hidden" id="result"></div>
-    <p class="scene" style="margin-top:10px">
+    <p class="scene" style="margin-top:10px" id="studentBox">
       生徒用ページ（いつも同じURL）： <a id="studentLink" href="index.html" target="_blank" rel="noopener"></a>
       <button class="btn small" id="copyStudent" type="button">コピー</button>
     </p>
@@ -131,8 +144,11 @@
 <script src="config.js"></script>
 <script src="common.js"></script>
 <script src="lessons.js"></script>
+<script src="tour.js"></script>
 <script>
 const $ = id => document.getElementById(id);
+// ?demo を付けて開くと練習用のデモ画面（公開してもどこにも保存しない）
+const DEMO = /[?&]demo\b/.test(location.search);
 const textFields = ['title', 'scene', 'aiRole', 'studentRole', 'extra'];
 let promptEdited = false;
 let history = [];
@@ -215,6 +231,7 @@ function update() {
   const url = pageBase() + 'index.html#d=' + encodeLesson(lesson);
   $('studentUrl').value = url;
   $('preview').href = url;
+  if (DEMO) $('studentLink').href = url;
 }
 
 function pageBase() {
@@ -273,7 +290,9 @@ $('copy').addEventListener('click', () => copyText($('studentUrl').value));
 $('copyStudent').addEventListener('click', () => copyText($('studentLink').href));
 
 // ---- 公開 ----
-try { $('password').value = localStorage.getItem('aiEikaiwaPassword') || ''; } catch (e) {}
+if (!DEMO) {
+  try { $('password').value = localStorage.getItem('aiEikaiwaPassword') || ''; } catch (e) {}
+}
 
 // 全角・半角のちがいや前後の空白で合言葉が合わなくならないようにそろえる
 function passwordValue() {
@@ -300,15 +319,14 @@ $('publish').addEventListener('click', async () => {
   const data = Object.assign({}, f, { level: LEVELS[f.level].label, prompt: promptEdited ? $('prompt').value : '' });
   $('publish').disabled = true;
   showResult('公開しています…');
+  if (DEMO) { demoPublish(f); return; }
   try {
     await callApi({ action: 'save', key: passwordValue(), data: encodeLesson(data) });
     try {
       if ($('remember').checked) localStorage.setItem('aiEikaiwaPassword', passwordValue());
       else localStorage.removeItem('aiEikaiwaPassword');
     } catch (e) {}
-    const when = !f.date || f.date <= todayStr() ? '今から' : f.date.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1月$2日') + 'から';
-    showResult('✅ 公開しました！ 「' + escapeHtml(f.title) + '」が <b>' + when + '</b> 生徒のページに表示されます。 ' +
-      '<a href="index.html" target="_blank" rel="noopener">生徒の画面を確認</a>', true);
+    showResult(publishedMessage(f, 'index.html'), true);
     loadHistory();
   } catch (e) {
     showResult('公開できませんでした：' + escapeHtml(e.message) +
@@ -318,16 +336,38 @@ $('publish').addEventListener('click', async () => {
   }
 });
 
-async function loadHistory() {
-  try {
-    const data = await callApi({ action: 'list' });
-    history = data.lessons || [];
+function publishedMessage(f, previewUrl) {
+  const when = !f.date || f.date <= todayStr() ? '今から' : f.date.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1月$2日') + 'から';
+  return '✅ 公開しました！ 「' + escapeHtml(f.title) + '」が <b>' + when + '</b> 生徒のページに表示されます。 ' +
+    '<a href="' + escapeHtml(previewUrl) + '" target="_blank" rel="noopener">生徒の画面を確認</a>';
+}
+
+// デモ：実際には保存せず、公開したように見せる
+function demoPublish(f) {
+  setTimeout(() => {
+    showResult(publishedMessage(f, $('studentUrl').value) +
+      '<br><span class="hint">（デモなので、実際には公開されていません）</span>', true);
+    history.unshift({ date: f.date, title: f.title, scene: f.scene, aiRole: f.aiRole, studentRole: f.studentRole,
+      level: LEVELS[f.level].label, turns: f.turns, phrases: f.phrases, extra: f.extra });
+    renderHistory();
+    $('publish').disabled = false;
+  }, 600);
+}
+
+function renderHistory() {
     $('history').innerHTML = history.slice(0, 30).map((l, i) =>
       '<li><span class="hdate">' + (l.date ? l.date.replace(/-/g, '/') : '日付なし') + '</span>' +
       '<span class="htitle">' + escapeHtml(l.title) + '</span>' +
       '<button class="btn small" type="button" data-hist="' + i + '">使う</button></li>'
     ).join('');
     $('historyBox').classList.toggle('hidden', !history.length);
+}
+
+async function loadHistory() {
+  try {
+    const data = await callApi({ action: 'list' });
+    history = data.lessons || [];
+    renderHistory();
   } catch (e) { /* 一覧が読めなくても入力はできる */ }
 }
 
@@ -344,7 +384,23 @@ if (loaded && loaded.form) {
 }
 update();
 
-if (API_URL) {
+$('guideBtn').addEventListener('click', () => startTour(TEACHER_TOUR));
+
+if (DEMO) {
+  document.title = 'デモ｜' + document.title;
+  $('demoBanner').classList.remove('hidden');
+  $('password').value = 'demo';
+  $('remember').checked = false;
+  $('remember').closest('label').classList.add('hidden');
+  $('password').closest('div').previousElementSibling.querySelector('.hint').textContent = 'デモでは何でもOK';
+  history = PRESETS.slice(1).map((p, i) => {
+    const d = new Date(); d.setDate(d.getDate() - 7 * (i + 1));
+    return Object.assign({ date: d.toISOString().slice(0, 10), extra: '' }, p, { level: LEVELS[p.level].label });
+  });
+  renderHistory();
+  $('studentLink').href = $('studentUrl').value;
+  startTour(TEACHER_TOUR);
+} else if (API_URL) {
   loadHistory();
 } else {
   $('noApi').classList.remove('hidden');

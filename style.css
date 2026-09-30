@@ -180,3 +180,30 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-weight: 
 .pw { display: flex; gap: 6px; align-items: center; }
 .pw input { flex: 1; }
 .pw .btn { flex: none; }
+
+/* デモ画面・使い方ガイド */
+.demo-banner { background: #eef4ff; border: 1px dashed var(--accent); }
+.tour-layer { position: fixed; inset: 0; z-index: 1002; pointer-events: none; }
+.tour-dim { position: fixed; inset: 0; background: rgba(15, 20, 35, .55); pointer-events: auto; }
+.tour-focus {
+  position: relative;
+  z-index: 1001;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 0 0 8px var(--card), 0 0 0 11px var(--accent), 0 0 0 9999px rgba(15, 20, 35, .55);
+  transition: box-shadow .2s;
+}
+.tour-bubble {
+  position: fixed;
+  z-index: 1002;
+  pointer-events: auto;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px 18px 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+  transition: top .2s, left .2s;
+}
+.tour-count { font-size: .8rem; color: var(--muted); }
+.tour-title { margin: 2px 0 8px; font-size: 1.1rem; }
+.tour-text { font-size: .95rem; }
+.tour-nav { display: flex; gap: 6px; align-items: center; margin-top: 14px; }
