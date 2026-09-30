@@ -96,7 +96,10 @@
     <div class="grid2">
       <div>
         <label for="password">合言葉 <span class="hint">Apps Script で決めたもの</span></label>
-        <input type="password" id="password" autocomplete="current-password">
+        <div class="pw">
+          <input type="password" id="password" autocomplete="off" data-lpignore="true">
+          <button class="btn small" id="showPw" type="button">👁 表示</button>
+        </div>
       </div>
       <div>
         <label>&nbsp;</label>
@@ -272,6 +275,17 @@ $('copyStudent').addEventListener('click', () => copyText($('studentLink').href)
 // ---- 公開 ----
 try { $('password').value = localStorage.getItem('aiEikaiwaPassword') || ''; } catch (e) {}
 
+// 全角・半角のちがいや前後の空白で合言葉が合わなくならないようにそろえる
+function passwordValue() {
+  return $('password').value.normalize('NFKC').trim();
+}
+
+$('showPw').addEventListener('click', () => {
+  const show = $('password').type === 'password';
+  $('password').type = show ? 'text' : 'password';
+  $('showPw').textContent = show ? '🙈 かくす' : '👁 表示';
+});
+
 function showResult(html, ok) {
   $('result').innerHTML = html;
   $('result').classList.remove('hidden');
@@ -282,14 +296,14 @@ $('publish').addEventListener('click', async () => {
   const f = readForm();
   if (!f.title) { showResult('タイトルを入れてください。'); $('title').focus(); return; }
   if (!f.phrases) { if (!confirm('目標表現が空です。このまま公開しますか？')) return; }
-  if (!$('password').value) { showResult('合言葉を入れてください。'); $('password').focus(); return; }
+  if (!passwordValue()) { showResult('合言葉を入れてください。'); $('password').focus(); return; }
   const data = Object.assign({}, f, { level: LEVELS[f.level].label, prompt: promptEdited ? $('prompt').value : '' });
   $('publish').disabled = true;
   showResult('公開しています…');
   try {
-    await callApi({ action: 'save', key: $('password').value, data: encodeLesson(data) });
+    await callApi({ action: 'save', key: passwordValue(), data: encodeLesson(data) });
     try {
-      if ($('remember').checked) localStorage.setItem('aiEikaiwaPassword', $('password').value);
+      if ($('remember').checked) localStorage.setItem('aiEikaiwaPassword', passwordValue());
       else localStorage.removeItem('aiEikaiwaPassword');
     } catch (e) {}
     const when = !f.date || f.date <= todayStr() ? '今から' : f.date.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1月$2日') + 'から';
@@ -297,7 +311,8 @@ $('publish').addEventListener('click', async () => {
       '<a href="index.html" target="_blank" rel="noopener">生徒の画面を確認</a>', true);
     loadHistory();
   } catch (e) {
-    showResult('公開できませんでした：' + escapeHtml(e.message));
+    showResult('公開できませんでした：' + escapeHtml(e.message) +
+      (/合言葉/.test(e.message) ? '<br>👁 表示 で入力内容を確かめてください。' : ''));
   } finally {
     $('publish').disabled = false;
   }

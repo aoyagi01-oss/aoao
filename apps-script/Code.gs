@@ -35,7 +35,8 @@ function doGet(e) {
 
 function checkPassword_(key) {
   if (PASSWORD === 'ここを合言葉に変える') throw new Error('Apps Script の PASSWORD（合言葉）がまだ設定されていません');
-  if (key !== PASSWORD) throw new Error('合言葉がちがいます');
+  const norm = function (v) { return String(v || '').normalize('NFKC').trim(); };
+  if (norm(key) !== norm(PASSWORD)) throw new Error('合言葉がちがいます');
 }
 
 function decode_(data) {
