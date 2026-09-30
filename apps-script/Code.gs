@@ -51,8 +51,9 @@ function sheet_() {
   return sh;
 }
 
+// 「今日」や公開日は日本時間で判断する（スプレッドシートのタイムゾーン設定に左右されないように）
 function tz_() {
-  return SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Tokyo';
+  return 'Asia/Tokyo';
 }
 
 function today_() {
