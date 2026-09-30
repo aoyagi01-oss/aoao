@@ -77,6 +77,7 @@ const HELP_PHRASES = [
     heading: '🏁 終わるとき',
     items: [
       ['Finish.', '終わりにします。（フィードバックをもらえます）'],
+      ['Please give me feedback in Japanese.', '日本語でフィードバックしてください。'],
       ['Thank you for talking with me!', '話してくれてありがとう！']
     ]
   }
@@ -104,7 +105,15 @@ function buildPrompt(f) {
     '- Create natural chances for me to use the target expressions.',
     '- If I get stuck or speak Japanese, help me with an easy English hint (a short Japanese hint is OK).',
     '- Do not correct my mistakes during the conversation.',
-    '- After about ' + (f.turns || 8) + ' exchanges, or when I say "Finish", end the role-play and give me feedback in Japanese: 3 good points, up to 3 corrections (my sentence -> a better sentence), and one expression to try next time.',
+    '- After about ' + (f.turns || 8) + ' exchanges, or when I say "Finish", end the role-play and give me feedback.',
+    '',
+    'Feedback rules (IMPORTANT):',
+    '- Write and speak the feedback in JAPANESE (日本語), even though the conversation was in English. Only the English example sentences stay in English.',
+    '- Use this format:',
+    '【よかったところ】（3つ）',
+    '【もっとよくなるところ】（3つまで）あなたの文 → おすすめの文（理由を日本語で短く）',
+    '【次に使ってみよう】おすすめの英語表現を1つ（日本語の意味つき）',
+    '- Be kind and encouraging, like a teacher talking to a student.',
     '',
     'Now reply with only this sentence: "Ready! Tap the voice button and say Hello." Then wait. When I say hello, start the role-play in your role.'
   );
