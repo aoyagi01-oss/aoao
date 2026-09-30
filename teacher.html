@@ -9,100 +9,197 @@
 <body>
 <main>
   <h1>🧑‍🏫 AI英会話 教材メーカー</h1>
-  <p class="scene">フォームを埋めて「生徒用URLをコピー」→ Google Classroom に貼るだけ。ChatGPT を先に開く必要はありません。</p>
+  <p class="scene">内容を入れて「生徒に公開する」を押すだけ。生徒はいつものページを開けば、今日の教材が表示されます。</p>
+
+  <div class="notice hidden" id="noApi">
+    まだスプレッドシートとつながっていないため、「公開」は使えません（README の「スプレッドシートとつなぐ」を参照）。<br>
+    それまでは、いちばん下の「この教材だけのURLを作る」で、Classroom に URL を貼る方法が使えます。
+  </div>
 
   <section class="card">
-    <h2>① ひな形から始める（任意）</h2>
+    <h2>① どこから作る？</h2>
+    <div class="label-sm">ひな形</div>
     <div class="presets" id="presets"></div>
+    <div id="historyBox" class="hidden">
+      <div class="label-sm" style="margin-top:14px">これまでの教材 <span class="hint">（使う を押すと下に読み込みます）</span></div>
+      <ul class="history" id="history"></ul>
+    </div>
   </section>
 
   <section class="card">
     <h2>② 教材の内容</h2>
-    <label for="title">タイトル <span class="hint">生徒のページの見出し</span></label>
-    <input type="text" id="title">
-
-    <label for="scene">場面 <span class="hint">生徒にも表示されます（日本語でOK）</span></label>
-    <input type="text" id="scene">
 
     <div class="grid2">
       <div>
-        <label for="aiRole">AIの役 <span class="hint">英語推奨</span></label>
-        <input type="text" id="aiRole">
+        <label for="date">公開日 <span class="hint">この日から生徒の画面に出ます</span></label>
+        <input type="date" id="date">
       </div>
       <div>
-        <label for="studentRole">生徒の役 <span class="hint">英語推奨</span></label>
-        <input type="text" id="studentRole">
-      </div>
-      <div>
-        <label for="level">レベル</label>
-        <select id="level"></select>
-      </div>
-      <div>
-        <label for="turns">やりとりの回数（目安）</label>
-        <input type="number" id="turns" min="3" max="30">
+        <label for="title">タイトル</label>
+        <input type="text" id="title" placeholder="例：レストランで注文しよう">
       </div>
     </div>
 
-    <label for="phrases">今日の目標表現 <span class="hint">1行に1つ「英語 | 日本語」</span></label>
-    <textarea id="phrases" rows="5"></textarea>
+    <label for="scene">場面 <span class="hint">生徒にも表示されます（日本語でOK）</span></label>
+    <input type="text" id="scene" placeholder="例：アメリカのレストランで食事を注文する場面。">
 
-    <label for="extra">AIへの追加の指示 <span class="hint">任意（例：過去形を使わせたい）</span></label>
+    <div class="grid2">
+      <div>
+        <label for="aiRole">🤖 AIの役 <span class="hint">英語がおすすめ</span></label>
+        <input type="text" id="aiRole" list="aiRoleList" placeholder="例：a friendly waiter">
+        <datalist id="aiRoleList">
+          <option value="a friendly exchange student from Canada">
+          <option value="a friendly waiter at a restaurant">
+          <option value="a clerk at a clothes shop">
+          <option value="a tourist who is lost">
+          <option value="my classmate and friend">
+          <option value="an ALT (English teacher) at my school">
+          <option value="a host mother of my homestay family">
+        </datalist>
+      </div>
+      <div>
+        <label for="studentRole">🧑‍🎓 生徒の役 <span class="hint">英語がおすすめ</span></label>
+        <input type="text" id="studentRole" list="studentRoleList" placeholder="例：a customer">
+        <datalist id="studentRoleList">
+          <option value="a student at the school">
+          <option value="a customer">
+          <option value="a local person who helps the tourist">
+          <option value="a student talking with a friend">
+          <option value="a homestay student">
+        </datalist>
+      </div>
+    </div>
+
+    <label>レベル</label>
+    <div class="chips" id="level"></div>
+
+    <label for="turns">やりとりの回数（目安）： <span id="turnsVal" class="ok"></span></label>
+    <input type="range" id="turns" min="4" max="16" step="1">
+
+    <label>⭐ 今日の目標表現</label>
+    <div id="phraseRows"></div>
+    <button class="btn small" id="addPhrase" type="button">＋ 表現を追加</button>
+
+    <label for="extra">AIへの追加の指示 <span class="hint">任意・日本語でOK（例：過去形を使わせたい）</span></label>
     <textarea id="extra" rows="2"></textarea>
-  </section>
 
-  <section class="card">
-    <h2>③ AIに送られるプロンプト</h2>
-    <p class="scene">上のフォームから自動で作られます。直接書き換えることもできます。</p>
-    <textarea id="prompt" class="mono" rows="14"></textarea>
-    <div class="row">
-      <button class="btn small" id="regen">↺ フォームから作り直す</button>
-    </div>
-
-    <details style="margin-top:12px">
-      <summary>上級：ChatGPTの共有リンクを使う</summary>
-      <p class="scene">空欄なら上のプロンプトで新しい会話が始まります（おすすめ）。自分で作ったチャットの共有リンク（https://chatgpt.com/share/…）を貼ると、そちらが優先されます。</p>
-      <input type="url" id="share" placeholder="https://chatgpt.com/share/...">
+    <details class="advanced">
+      <summary>AIへの指示文を確認・編集する（上級）</summary>
+      <p class="scene">上の内容から自動で作られます。書き換えると、その文がそのまま使われます。</p>
+      <textarea id="prompt" class="mono" rows="14"></textarea>
+      <div class="row"><button class="btn small" id="regen" type="button">↺ 内容から作り直す</button></div>
     </details>
   </section>
 
   <section class="card target">
-    <h2>④ 生徒に配る</h2>
-    <div class="row">
-      <button class="btn primary" id="copy">📋 生徒用URLをコピー</button>
-      <a class="btn" id="preview" target="_blank" rel="noopener">👀 生徒の画面を確認</a>
-      <span id="copied" class="ok hidden">コピーしました！</span>
+    <h2>③ 生徒に公開する</h2>
+    <div class="grid2">
+      <div>
+        <label for="password">合言葉 <span class="hint">Apps Script で決めたもの</span></label>
+        <input type="password" id="password" autocomplete="current-password">
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <label class="check"><input type="checkbox" id="remember" checked> このブラウザに記憶する</label>
+      </div>
     </div>
-    <p class="scene" style="margin-top:10px">Classroom の「資料」または「課題」→「リンク」に貼り付けてください。<br>このURLを後で teacher.html に開き直すと、同じ内容から編集できます（生徒ページ下の「先生用」リンクからも開けます）。</p>
-    <textarea id="studentUrl" class="mono" rows="3" readonly></textarea>
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary big" id="publish">📢 生徒に公開する</button>
+    </div>
+    <div class="notice hidden" id="result"></div>
+    <p class="scene" style="margin-top:10px">
+      生徒用ページ（いつも同じURL）： <a id="studentLink" href="index.html" target="_blank" rel="noopener"></a>
+      <button class="btn small" id="copyStudent" type="button">コピー</button>
+    </p>
+
+    <details class="advanced">
+      <summary>この教材だけのURLを作る（Classroom に個別に貼る場合）</summary>
+      <p class="scene">公開しなくても使えます。このURLを開くと、スプレッドシートに関係なくこの内容が表示されます。</p>
+      <div class="row">
+        <button class="btn" id="copy" type="button">📋 URLをコピー</button>
+        <a class="btn" id="preview" target="_blank" rel="noopener">👀 生徒の画面を確認</a>
+      </div>
+      <textarea id="studentUrl" class="mono" rows="3" readonly style="margin-top:8px"></textarea>
+    </details>
+    <span id="copied" class="toast hidden">コピーしました！</span>
   </section>
 </main>
 
+<script src="config.js"></script>
 <script src="common.js"></script>
 <script src="lessons.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const fields = ['title', 'scene', 'aiRole', 'studentRole', 'level', 'turns', 'phrases', 'extra'];
+const textFields = ['title', 'scene', 'aiRole', 'studentRole', 'extra'];
 let promptEdited = false;
+let history = [];
 
-$('level').innerHTML = Object.entries(LEVELS)
-  .map(([k, v]) => '<option value="' + k + '">' + v.label + '</option>').join('');
+// ---- 入力部品 ----
+$('level').innerHTML = Object.entries(LEVELS).map(([k, v]) =>
+  '<label class="chip"><input type="radio" name="level" value="' + k + '"><span>' + v.label + '</span></label>'
+).join('');
 
 $('presets').innerHTML = PRESETS
-  .map((p, i) => '<button class="btn small" data-preset="' + i + '">' + p.name + '</button>').join('');
+  .map((p, i) => '<button class="btn small" type="button" data-preset="' + i + '">' + p.name + '</button>').join('');
+
+function addPhraseRow(en, ja) {
+  const row = document.createElement('div');
+  row.className = 'phrase-row';
+  row.innerHTML =
+    '<input type="text" class="pen" placeholder="英語（例：I\'d like ~, please.）">' +
+    '<input type="text" class="pja" placeholder="日本語（例：〜をお願いします。）">' +
+    '<button class="say" type="button" title="発音を聞く">🔊</button>' +
+    '<button class="del" type="button" title="この行を消す">✕</button>';
+  row.querySelector('.pen').value = en || '';
+  row.querySelector('.pja').value = ja || '';
+  $('phraseRows').appendChild(row);
+  return row;
+}
+
+function setPhrases(text) {
+  $('phraseRows').innerHTML = '';
+  const list = parsePhrases(text);
+  (list.length ? list : [['', '']]).forEach(([en, ja]) => addPhraseRow(en, ja));
+}
+
+function phrasesText() {
+  return [...document.querySelectorAll('.phrase-row')]
+    .map(r => [r.querySelector('.pen').value.trim(), r.querySelector('.pja').value.trim()])
+    .filter(([en]) => en)
+    .map(([en, ja]) => ja ? en + ' | ' + ja : en)
+    .join('\n');
+}
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 
 function readForm() {
   const f = {};
-  fields.forEach(k => { f[k] = $(k).value.trim(); });
-  f.turns = parseInt(f.turns, 10) || 8;
+  textFields.forEach(k => { f[k] = $(k).value.trim(); });
+  const lv = document.querySelector('input[name=level]:checked');
+  f.level = lv ? lv.value : 'j3';
+  f.turns = parseInt($('turns').value, 10) || 8;
+  f.phrases = phrasesText();
+  f.date = $('date').value;
   return f;
 }
 
 function fillForm(f) {
-  fields.forEach(k => { $(k).value = f[k] != null ? f[k] : ''; });
+  textFields.forEach(k => { $(k).value = f[k] != null ? f[k] : ''; });
+  const key = levelKey(f.level);
+  document.querySelectorAll('input[name=level]').forEach(r => { r.checked = r.value === key; });
+  $('turns').value = f.turns || 8;
+  setPhrases(f.phrases);
+  promptEdited = !!(f.prompt && f.prompt !== buildPrompt(readForm()));
+  if (promptEdited) $('prompt').value = f.prompt;
 }
 
+// ---- 表示の更新 ----
 function update() {
   const f = readForm();
+  $('turnsVal').textContent = f.turns + ' 回';
   if (!promptEdited) $('prompt').value = buildPrompt(f);
   const lesson = {
     v: 1,
@@ -110,49 +207,134 @@ function update() {
     scene: f.scene,
     phrases: parsePhrases(f.phrases),
     prompt: $('prompt').value,
-    share: $('share').value.trim() || undefined,
-    form: f // 先生ページで開き直して編集できるように保存
+    form: f
   };
-  const base = location.href.replace(/[#?].*$/, '').replace(/teacher\.html$/, '');
-  const url = base + 'index.html#d=' + encodeLesson(lesson);
+  const url = pageBase() + 'index.html#d=' + encodeLesson(lesson);
   $('studentUrl').value = url;
   $('preview').href = url;
 }
 
+function pageBase() {
+  return location.href.replace(/[#?].*$/, '').replace(/teacher\.html$/, '');
+}
+
+function showToast() {
+  $('copied').classList.remove('hidden');
+  setTimeout(() => $('copied').classList.add('hidden'), 2000);
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  showToast();
+}
+
+// ---- イベント ----
 document.addEventListener('input', e => {
   if (e.target.id === 'prompt') promptEdited = true;
-  if (e.target.id !== 'studentUrl') update();
+  if (e.target.id !== 'studentUrl' && e.target.id !== 'password') update();
 });
+document.addEventListener('change', e => { if (e.target.name === 'level') update(); });
+
+$('phraseRows').addEventListener('click', e => {
+  const row = e.target.closest('.phrase-row');
+  if (!row) return;
+  if (e.target.classList.contains('del')) {
+    row.remove();
+    if (!document.querySelector('.phrase-row')) addPhraseRow();
+    update();
+  } else if (e.target.classList.contains('say')) {
+    speak(row.querySelector('.pen').value.replace(/~/g, 'something'));
+  }
+});
+$('addPhrase').addEventListener('click', () => { addPhraseRow().querySelector('.pen').focus(); });
+
+function loadIntoForm(f) {
+  if (promptEdited && !confirm('書き換えた指示文は元に戻ります。よろしいですか？')) return;
+  fillForm(Object.assign({ extra: '' }, f));
+  update();
+  $('title').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 
 $('presets').addEventListener('click', e => {
   const b = e.target.closest('[data-preset]');
-  if (!b) return;
-  if (promptEdited && !confirm('書き換えたプロンプトは元に戻ります。よろしいですか？')) return;
-  fillForm(Object.assign({ extra: '' }, PRESETS[b.dataset.preset]));
-  promptEdited = false;
-  update();
+  if (b) loadIntoForm(PRESETS[b.dataset.preset]);
+});
+$('history').addEventListener('click', e => {
+  const b = e.target.closest('[data-hist]');
+  if (b) loadIntoForm(history[b.dataset.hist]);
 });
 
 $('regen').addEventListener('click', () => { promptEdited = false; update(); });
+$('copy').addEventListener('click', () => copyText($('studentUrl').value));
+$('copyStudent').addEventListener('click', () => copyText($('studentLink').href));
 
-$('copy').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('studentUrl').value); }
-  catch (e) { $('studentUrl').select(); document.execCommand('copy'); }
-  $('copied').classList.remove('hidden');
-  setTimeout(() => $('copied').classList.add('hidden'), 2000);
+// ---- 公開 ----
+try { $('password').value = localStorage.getItem('aiEikaiwaPassword') || ''; } catch (e) {}
+
+function showResult(html, ok) {
+  $('result').innerHTML = html;
+  $('result').classList.remove('hidden');
+  $('result').style.background = ok ? '#e6f6ee' : '';
+}
+
+$('publish').addEventListener('click', async () => {
+  const f = readForm();
+  if (!f.title) { showResult('タイトルを入れてください。'); $('title').focus(); return; }
+  if (!f.phrases) { if (!confirm('目標表現が空です。このまま公開しますか？')) return; }
+  if (!$('password').value) { showResult('合言葉を入れてください。'); $('password').focus(); return; }
+  const data = Object.assign({}, f, { level: LEVELS[f.level].label, prompt: promptEdited ? $('prompt').value : '' });
+  $('publish').disabled = true;
+  showResult('公開しています…');
+  try {
+    await callApi({ action: 'save', key: $('password').value, data: encodeLesson(data) });
+    try {
+      if ($('remember').checked) localStorage.setItem('aiEikaiwaPassword', $('password').value);
+      else localStorage.removeItem('aiEikaiwaPassword');
+    } catch (e) {}
+    const when = !f.date || f.date <= todayStr() ? '今から' : f.date.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1月$2日') + 'から';
+    showResult('✅ 公開しました！ 「' + escapeHtml(f.title) + '」が <b>' + when + '</b> 生徒のページに表示されます。 ' +
+      '<a href="index.html" target="_blank" rel="noopener">生徒の画面を確認</a>', true);
+    loadHistory();
+  } catch (e) {
+    showResult('公開できませんでした：' + escapeHtml(e.message));
+  } finally {
+    $('publish').disabled = false;
+  }
 });
 
-// 生徒用URLの #d=... 付きで開かれたら、その内容を読み込む
+async function loadHistory() {
+  try {
+    const data = await callApi({ action: 'list' });
+    history = data.lessons || [];
+    $('history').innerHTML = history.slice(0, 30).map((l, i) =>
+      '<li><span class="hdate">' + (l.date ? l.date.replace(/-/g, '/') : '日付なし') + '</span>' +
+      '<span class="htitle">' + escapeHtml(l.title) + '</span>' +
+      '<button class="btn small" type="button" data-hist="' + i + '">使う</button></li>'
+    ).join('');
+    $('historyBox').classList.toggle('hidden', !history.length);
+  } catch (e) { /* 一覧が読めなくても入力はできる */ }
+}
+
+// ---- 初期表示 ----
+$('studentLink').href = pageBase() + 'index.html';
+$('studentLink').textContent = pageBase();
+$('date').value = todayStr();
+
 const loaded = lessonFromHash();
 if (loaded && loaded.form) {
-  fillForm(loaded.form);
-  $('share').value = loaded.share || '';
-  if (loaded.prompt !== buildPrompt(readForm())) promptEdited = true;
-  $('prompt').value = loaded.prompt;
+  fillForm(Object.assign({}, loaded.form, { prompt: loaded.prompt }));
 } else {
   fillForm(Object.assign({ extra: '' }, PRESETS[0]));
 }
 update();
+
+if (API_URL) {
+  loadHistory();
+} else {
+  $('noApi').classList.remove('hidden');
+  $('publish').disabled = true;
+}
 </script>
 </body>
 </html>

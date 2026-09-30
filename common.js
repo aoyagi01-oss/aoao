@@ -41,3 +41,28 @@ function speak(text) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// スプレッドシート（Apps Script）を呼び出す。学校アカウントのログイン状態でも動くよう <script> タグで読み込む
+function callApi(params) {
+  return new Promise((resolve, reject) => {
+    if (typeof API_URL === 'undefined' || !API_URL) { reject(new Error('スプレッドシートとまだつながっていません')); return; }
+    const cb = '__aiEikaiwa' + Date.now() + Math.floor(Math.random() * 1000);
+    const s = document.createElement('script');
+    const timer = setTimeout(() => { done(); reject(new Error('スプレッドシートから応答がありません')); }, 20000);
+    function done() { clearTimeout(timer); delete window[cb]; s.remove(); }
+    window[cb] = data => { done(); data && data.ok ? resolve(data) : reject(new Error((data && data.error) || '読み込みに失敗しました')); };
+    s.onerror = () => { done(); reject(new Error('スプレッドシートに接続できませんでした')); };
+    s.src = API_URL + '?' + new URLSearchParams(Object.assign({}, params, { callback: cb, t: Date.now() }));
+    document.head.appendChild(s);
+  });
+}
+
+// スプレッドシートの1行を、生徒ページで使う教材データにする
+function lessonFromRow(row) {
+  return {
+    title: row.title,
+    scene: row.scene,
+    phrases: parsePhrases(row.phrases),
+    prompt: row.prompt || buildPrompt(row)
+  };
+}

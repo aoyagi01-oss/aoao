@@ -84,7 +84,7 @@ const HELP_PHRASES = [
 
 // 先生のフォーム入力から ChatGPT へのプロンプトを作る
 function buildPrompt(f) {
-  const level = LEVELS[f.level] || LEVELS.j3;
+  const level = findLevel(f.level);
   const targets = parsePhrases(f.phrases).map(p => '- ' + p[0]);
   const lines = [
     'You are my English conversation partner for speaking practice in voice mode.',
@@ -109,6 +109,20 @@ function buildPrompt(f) {
     'Now reply with only this sentence: "Ready! Tap the voice button and say Hello." Then wait. When I say hello, start the role-play in your role.'
   );
   return lines.join('\n');
+}
+
+// レベルはキー（j3）でも表示名（中学2〜3年程度）でも、自由記述でも受け付ける
+function findLevel(v) {
+  if (LEVELS[v]) return LEVELS[v];
+  const byLabel = Object.values(LEVELS).find(l => l.label === v);
+  if (byLabel) return byLabel;
+  return v ? { label: v, desc: 'a Japanese student. My English level: ' + v + '. Use English that fits this level.' } : LEVELS.j3;
+}
+
+function levelKey(v) {
+  if (LEVELS[v]) return v;
+  const e = Object.entries(LEVELS).find(([, l]) => l.label === v);
+  return e ? e[0] : 'j3';
 }
 
 // "English | 日本語" の行を [英語, 日本語] の配列にする
