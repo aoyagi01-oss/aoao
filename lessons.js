@@ -1,0 +1,119 @@
+// 先生用ページのひな形（プリセット）と、全教材共通のお助け表現
+
+const LEVELS = {
+  es:  { label: '小学生（英語はじめて〜）', desc: 'a Japanese elementary school student who is a complete beginner (CEFR Pre-A1). Use very short, very easy sentences and common words only.' },
+  j1:  { label: '中学1年程度', desc: 'a Japanese junior high school student, first year (CEFR A1). Use short, easy sentences, present tense mostly.' },
+  j3:  { label: '中学2〜3年程度', desc: 'a Japanese junior high school student (CEFR A1-A2). Use easy sentences and basic grammar.' },
+  h1:  { label: '高校初級', desc: 'a Japanese high school student (CEFR A2). Use clear, natural but simple English.' },
+  h2:  { label: '高校中上級', desc: 'a Japanese high school student (CEFR B1). Use natural English at a moderate pace.' }
+};
+
+const PRESETS = [
+  {
+    name: '自己紹介',
+    title: 'はじめまして！自己紹介しよう',
+    scene: '留学生と初めて会った場面。名前・好きなもの・部活などを紹介し合う。',
+    aiRole: 'a friendly exchange student from Canada who just arrived at my school',
+    studentRole: 'a student at the school',
+    level: 'j1',
+    turns: 8,
+    phrases: 'Nice to meet you. | はじめまして。\nI like ~. | 私は〜が好きです。\nI\'m in the ~ club. | 私は〜部に入っています。\nWhat do you like? | あなたは何が好きですか？'
+  },
+  {
+    name: '道案内',
+    title: '道を教えてあげよう',
+    scene: '駅の近くで、観光客に道を聞かれる場面。',
+    aiRole: 'a tourist who is lost and looking for a place near the station',
+    studentRole: 'a local person who helps the tourist',
+    level: 'j3',
+    turns: 8,
+    phrases: 'Go straight. | まっすぐ行ってください。\nTurn right / left at ~. | 〜で右／左に曲がってください。\nIt\'s next to ~. | 〜の隣にあります。\nYou can\'t miss it. | すぐわかりますよ。'
+  },
+  {
+    name: 'レストラン',
+    title: 'レストランで注文しよう',
+    scene: 'アメリカのレストランで食事を注文する場面。',
+    aiRole: 'a friendly waiter at a restaurant in the U.S.',
+    studentRole: 'a customer',
+    level: 'j3',
+    turns: 8,
+    phrases: 'I\'d like ~, please. | 〜をお願いします。\nCan I have ~? | 〜をもらえますか？\nWhat do you recommend? | おすすめは何ですか？\nCheck, please. | お会計をお願いします。'
+  },
+  {
+    name: '週末の予定',
+    title: '週末の予定を話そう',
+    scene: '友達と、今週末の予定について話す場面。',
+    aiRole: 'my classmate and friend',
+    studentRole: 'a student talking with a friend',
+    level: 'h1',
+    turns: 10,
+    phrases: 'I\'m going to ~. | 〜するつもりです。\nHow about you? | あなたはどう？\nThat sounds fun! | 楽しそう！\nWhy don\'t we ~? | 一緒に〜しない？'
+  }
+];
+
+// どの教材でも表示するお助け表現
+const HELP_PHRASES = [
+  {
+    heading: '🆘 困ったとき',
+    items: [
+      ['Could you say that again, please?', 'もう一度言ってもらえますか？'],
+      ['Could you speak more slowly?', 'もっとゆっくり話してもらえますか？'],
+      ['What does "~" mean?', '「〜」ってどういう意味ですか？'],
+      ['How do you say "~" in English?', '「〜」は英語で何と言いますか？'],
+      ['Could you give me a hint?', 'ヒントをもらえますか？']
+    ]
+  },
+  {
+    heading: '💬 会話をつなぐ',
+    items: [
+      ['Let me think...', 'ええと…（考え中）'],
+      ['That\'s interesting!', 'おもしろいですね！'],
+      ['Really? / I see.', '本当？／なるほど。'],
+      ['What about you?', 'あなたはどうですか？'],
+      ['Me too. / Me neither.', '私も。／私も〜ない。']
+    ]
+  },
+  {
+    heading: '🏁 終わるとき',
+    items: [
+      ['Finish.', '終わりにします。（フィードバックをもらえます）'],
+      ['Thank you for talking with me!', '話してくれてありがとう！']
+    ]
+  }
+];
+
+// 先生のフォーム入力から ChatGPT へのプロンプトを作る
+function buildPrompt(f) {
+  const level = LEVELS[f.level] || LEVELS.j3;
+  const targets = parsePhrases(f.phrases).map(p => '- ' + p[0]);
+  const lines = [
+    'You are my English conversation partner for speaking practice in voice mode.',
+    '',
+    'Situation: ' + f.scene,
+    'Your role: ' + f.aiRole.replace(/\.$/, '') + '.',
+    'My role: ' + f.studentRole.replace(/\.$/, '') + '.',
+    'I am ' + level.desc
+  ];
+  if (targets.length) lines.push('', 'Target expressions I want to practice:', ...targets);
+  if (f.extra) lines.push('', 'Additional instructions from my teacher:', f.extra);
+  lines.push(
+    '',
+    'Rules:',
+    '- Speak slowly and clearly. Use English that fits my level.',
+    '- Keep each of your turns short (1-2 sentences) and ask only one question at a time.',
+    '- Create natural chances for me to use the target expressions.',
+    '- If I get stuck or speak Japanese, help me with an easy English hint (a short Japanese hint is OK).',
+    '- Do not correct my mistakes during the conversation.',
+    '- After about ' + (f.turns || 8) + ' exchanges, or when I say "Finish", end the role-play and give me feedback in Japanese: 3 good points, up to 3 corrections (my sentence -> a better sentence), and one expression to try next time.',
+    '',
+    'Now reply with only this sentence: "Ready! Tap the voice button and say Hello." Then wait. When I say hello, start the role-play in your role.'
+  );
+  return lines.join('\n');
+}
+
+// "English | 日本語" の行を [英語, 日本語] の配列にする
+function parsePhrases(text) {
+  return String(text || '').split('\n')
+    .map(l => l.trim()).filter(Boolean)
+    .map(l => { const i = l.indexOf('|'); return i < 0 ? [l, ''] : [l.slice(0, i).trim(), l.slice(i + 1).trim()]; });
+}

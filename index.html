@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI英会話れんしゅう</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <div class="toolbar">
+    <div>
+      <h1 id="title">AI英会話れんしゅう</h1>
+      <p class="scene" id="scene"></p>
+    </div>
+  </div>
+
+  <section class="card">
+    <button class="btn primary big" id="start">▶ AIと英会話をはじめる</button>
+    <div class="notice hidden" id="blocked">
+      ChatGPTのウィンドウが開きませんでした。アドレスバー右の <b>ポップアップブロック</b> のマークを押して「常に許可」にしてから、もう一度ボタンを押してください。<br>
+      または <a id="fallback" target="_blank" rel="noopener">ここをクリック</a> して開き、キーボードの <b>Alt + ]</b> で右半分に寄せてください。
+    </div>
+    <div class="row">
+      <button class="btn small" id="restart">🔄 最初からやり直す</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>📋 やりかた</h2>
+    <ol class="steps" id="steps"></ol>
+  </section>
+
+  <section class="card target" id="targetCard">
+    <div class="toolbar">
+      <h2>⭐ 今日の目標表現</h2>
+      <button class="btn small" id="toggleJa">日本語をかくす</button>
+    </div>
+    <ul class="phrases" id="targets"></ul>
+  </section>
+
+  <div id="help"></div>
+
+  <p class="footer">
+    🔊 を押すと発音が聞けます。 ／ <a id="editLink" href="teacher.html">先生用：この教材を編集</a>
+  </p>
+</main>
+
+<script src="common.js"></script>
+<script src="lessons.js"></script>
+<script>
+// URL に教材データがなければ、プリセットの1つ目をサンプルとして表示する
+const lesson = lessonFromHash() || (() => {
+  const p = PRESETS[0];
+  return { title: p.title + '（サンプル）', scene: p.scene, phrases: parsePhrases(p.phrases), prompt: buildPrompt(p) };
+})();
+
+document.title = lesson.title + ' | AI英会話';
+document.getElementById('title').textContent = lesson.title;
+document.getElementById('scene').textContent = lesson.scene || '';
+document.getElementById('editLink').href = 'teacher.html' + location.hash;
+
+const url = chatUrl(lesson);
+document.getElementById('fallback').href = url;
+
+// 手順
+const steps = [
+  '上の青いボタンを押す（右半分にChatGPTが開きます）',
+  'ログインしていなければ、ログインする',
+  lesson.share
+    ? '「このチャットを続ける」のボタンを押す'
+    : 'AIが「Ready!」と返事をするまで待つ',
+  '入力欄の右にある <b>🎙 音声モード</b> のボタンを押す（マイクの使用は「許可」）',
+  '<b>"Hello!"</b> と話しかけてスタート！　左の表現を使ってみよう',
+  '終わるときは <b>"Finish."</b> と言うと、日本語でアドバイスがもらえます'
+];
+document.getElementById('steps').innerHTML = steps.map(s => '<li>' + s + '</li>').join('');
+
+function phraseList(items) {
+  return items.map(([en, ja]) =>
+    '<li><button class="say" title="発音を聞く" data-say="' + escapeHtml(en) + '">🔊</button>' +
+    '<div><div class="en">' + escapeHtml(en) + '</div><div class="ja">' + escapeHtml(ja || '') + '</div></div></li>'
+  ).join('');
+}
+
+if (lesson.phrases && lesson.phrases.length) {
+  document.getElementById('targets').innerHTML = phraseList(lesson.phrases);
+} else {
+  document.getElementById('targetCard').classList.add('hidden');
+}
+
+document.getElementById('help').innerHTML = HELP_PHRASES.map((g, i) =>
+  '<details class="card"' + (i === 0 ? ' open' : '') + '><summary>' + g.heading + '</summary>' +
+  '<ul class="phrases">' + phraseList(g.items) + '</ul></details>'
+).join('');
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-say]');
+  if (b) speak(b.dataset.say.replace(/~/g, 'something'));
+});
+
+document.getElementById('toggleJa').addEventListener('click', e => {
+  const hidden = document.body.classList.toggle('hide-ja');
+  e.target.textContent = hidden ? '日本語を見せる' : '日本語をかくす';
+});
+
+// ChatGPT を画面の右半分に開く
+function openChat() {
+  const w = Math.floor(screen.availWidth / 2);
+  const features = [
+    'popup=yes',
+    'left=' + ((screen.availLeft || 0) + w),
+    'top=' + (screen.availTop || 0),
+    'width=' + w,
+    'height=' + screen.availHeight
+  ].join(',');
+  const win = window.open(url, 'ai-eikaiwa', features);
+  document.getElementById('blocked').classList.toggle('hidden', !!win);
+  if (win) {
+    document.body.classList.add('split');
+    document.querySelectorAll('#steps li')[0].classList.add('done');
+  }
+}
+
+document.getElementById('start').addEventListener('click', openChat);
+document.getElementById('restart').addEventListener('click', () => {
+  if (confirm('新しい会話でやり直しますか？')) openChat();
+});
+</script>
+</body>
+</html>

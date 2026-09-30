@@ -1,0 +1,135 @@
+:root {
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --text: #1f2430;
+  --muted: #5f6675;
+  --line: #e2e5ee;
+  --accent: #2f6fed;
+  --accent-dark: #1f55c4;
+  --accent-soft: #e8f0ff;
+  --ok: #1a8f5a;
+  --warn-soft: #fff5e0;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+  line-height: 1.6;
+}
+
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+  transition: max-width .2s;
+}
+
+/* ChatGPT を右半分に開いた後は、画面の左半分に収める */
+body.split main {
+  margin: 0;
+  max-width: 50vw;
+  min-width: 320px;
+}
+
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 0 0 12px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-top: 16px;
+}
+
+.scene { color: var(--muted); margin: 0; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+.btn:hover { filter: brightness(.96); }
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.big { width: 100%; font-size: 1.25rem; padding: 16px 20px; }
+.btn.small { padding: 4px 12px; font-size: .9rem; font-weight: 500; }
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+.steps { margin: 0; padding-left: 1.4em; }
+.steps li { margin: 6px 0; }
+.steps li.done { color: var(--muted); text-decoration: line-through; }
+
+.notice {
+  background: var(--warn-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  font-size: .95rem;
+}
+.hidden { display: none !important; }
+
+.phrases { list-style: none; margin: 0; padding: 0; }
+.phrases li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--line);
+}
+.phrases li:first-child { border-top: 0; }
+.phrases .en { font-weight: 700; font-size: 1.08rem; }
+.phrases .ja { color: var(--muted); font-size: .9rem; }
+body.hide-ja .phrases .ja { visibility: hidden; }
+.say {
+  flex: none;
+  border: 0;
+  background: var(--accent-soft);
+  border-radius: 50%;
+  width: 34px; height: 34px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.target { border: 2px solid var(--accent); }
+
+details.card > summary { cursor: pointer; font-weight: 700; }
+details.card[open] > summary { margin-bottom: 8px; }
+
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.footer { margin-top: 24px; font-size: .85rem; color: var(--muted); }
+.footer a { color: var(--muted); }
+
+/* 先生用ページ */
+label { display: block; font-weight: 700; margin: 12px 0 4px; }
+label .hint { font-weight: 400; color: var(--muted); font-size: .85rem; }
+input[type=text], input[type=url], input[type=number], select, textarea {
+  width: 100%;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+}
+textarea { resize: vertical; }
+textarea.mono { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+@media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+.presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.ok { color: var(--ok); font-weight: 700; }

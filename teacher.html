@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI英会話 教材メーカー</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>🧑‍🏫 AI英会話 教材メーカー</h1>
+  <p class="scene">フォームを埋めて「生徒用URLをコピー」→ Google Classroom に貼るだけ。ChatGPT を先に開く必要はありません。</p>
+
+  <section class="card">
+    <h2>① ひな形から始める（任意）</h2>
+    <div class="presets" id="presets"></div>
+  </section>
+
+  <section class="card">
+    <h2>② 教材の内容</h2>
+    <label for="title">タイトル <span class="hint">生徒のページの見出し</span></label>
+    <input type="text" id="title">
+
+    <label for="scene">場面 <span class="hint">生徒にも表示されます（日本語でOK）</span></label>
+    <input type="text" id="scene">
+
+    <div class="grid2">
+      <div>
+        <label for="aiRole">AIの役 <span class="hint">英語推奨</span></label>
+        <input type="text" id="aiRole">
+      </div>
+      <div>
+        <label for="studentRole">生徒の役 <span class="hint">英語推奨</span></label>
+        <input type="text" id="studentRole">
+      </div>
+      <div>
+        <label for="level">レベル</label>
+        <select id="level"></select>
+      </div>
+      <div>
+        <label for="turns">やりとりの回数（目安）</label>
+        <input type="number" id="turns" min="3" max="30">
+      </div>
+    </div>
+
+    <label for="phrases">今日の目標表現 <span class="hint">1行に1つ「英語 | 日本語」</span></label>
+    <textarea id="phrases" rows="5"></textarea>
+
+    <label for="extra">AIへの追加の指示 <span class="hint">任意（例：過去形を使わせたい）</span></label>
+    <textarea id="extra" rows="2"></textarea>
+  </section>
+
+  <section class="card">
+    <h2>③ AIに送られるプロンプト</h2>
+    <p class="scene">上のフォームから自動で作られます。直接書き換えることもできます。</p>
+    <textarea id="prompt" class="mono" rows="14"></textarea>
+    <div class="row">
+      <button class="btn small" id="regen">↺ フォームから作り直す</button>
+    </div>
+
+    <details style="margin-top:12px">
+      <summary>上級：ChatGPTの共有リンクを使う</summary>
+      <p class="scene">空欄なら上のプロンプトで新しい会話が始まります（おすすめ）。自分で作ったチャットの共有リンク（https://chatgpt.com/share/…）を貼ると、そちらが優先されます。</p>
+      <input type="url" id="share" placeholder="https://chatgpt.com/share/...">
+    </details>
+  </section>
+
+  <section class="card target">
+    <h2>④ 生徒に配る</h2>
+    <div class="row">
+      <button class="btn primary" id="copy">📋 生徒用URLをコピー</button>
+      <a class="btn" id="preview" target="_blank" rel="noopener">👀 生徒の画面を確認</a>
+      <span id="copied" class="ok hidden">コピーしました！</span>
+    </div>
+    <p class="scene" style="margin-top:10px">Classroom の「資料」または「課題」→「リンク」に貼り付けてください。<br>このURLを後で teacher.html に開き直すと、同じ内容から編集できます（生徒ページ下の「先生用」リンクからも開けます）。</p>
+    <textarea id="studentUrl" class="mono" rows="3" readonly></textarea>
+  </section>
+</main>
+
+<script src="common.js"></script>
+<script src="lessons.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const fields = ['title', 'scene', 'aiRole', 'studentRole', 'level', 'turns', 'phrases', 'extra'];
+let promptEdited = false;
+
+$('level').innerHTML = Object.entries(LEVELS)
+  .map(([k, v]) => '<option value="' + k + '">' + v.label + '</option>').join('');
+
+$('presets').innerHTML = PRESETS
+  .map((p, i) => '<button class="btn small" data-preset="' + i + '">' + p.name + '</button>').join('');
+
+function readForm() {
+  const f = {};
+  fields.forEach(k => { f[k] = $(k).value.trim(); });
+  f.turns = parseInt(f.turns, 10) || 8;
+  return f;
+}
+
+function fillForm(f) {
+  fields.forEach(k => { $(k).value = f[k] != null ? f[k] : ''; });
+}
+
+function update() {
+  const f = readForm();
+  if (!promptEdited) $('prompt').value = buildPrompt(f);
+  const lesson = {
+    v: 1,
+    title: f.title || 'AI英会話れんしゅう',
+    scene: f.scene,
+    phrases: parsePhrases(f.phrases),
+    prompt: $('prompt').value,
+    share: $('share').value.trim() || undefined,
+    form: f // 先生ページで開き直して編集できるように保存
+  };
+  const base = location.href.replace(/[#?].*$/, '').replace(/teacher\.html$/, '');
+  const url = base + 'index.html#d=' + encodeLesson(lesson);
+  $('studentUrl').value = url;
+  $('preview').href = url;
+}
+
+document.addEventListener('input', e => {
+  if (e.target.id === 'prompt') promptEdited = true;
+  if (e.target.id !== 'studentUrl') update();
+});
+
+$('presets').addEventListener('click', e => {
+  const b = e.target.closest('[data-preset]');
+  if (!b) return;
+  if (promptEdited && !confirm('書き換えたプロンプトは元に戻ります。よろしいですか？')) return;
+  fillForm(Object.assign({ extra: '' }, PRESETS[b.dataset.preset]));
+  promptEdited = false;
+  update();
+});
+
+$('regen').addEventListener('click', () => { promptEdited = false; update(); });
+
+$('copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('studentUrl').value); }
+  catch (e) { $('studentUrl').select(); document.execCommand('copy'); }
+  $('copied').classList.remove('hidden');
+  setTimeout(() => $('copied').classList.add('hidden'), 2000);
+});
+
+// 生徒用URLの #d=... 付きで開かれたら、その内容を読み込む
+const loaded = lessonFromHash();
+if (loaded && loaded.form) {
+  fillForm(loaded.form);
+  $('share').value = loaded.share || '';
+  if (loaded.prompt !== buildPrompt(readForm())) promptEdited = true;
+  $('prompt').value = loaded.prompt;
+} else {
+  fillForm(Object.assign({ extra: '' }, PRESETS[0]));
+}
+update();
+</script>
+</body>
+</html>
