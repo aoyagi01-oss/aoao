@@ -58,12 +58,12 @@ const PRESETS = [
     level: 'j3',
     turns: 10,
     phrases: 'Where are you from? | どこの出身ですか？\nWhat do you like to do in your free time? | ひまなときは何をするのが好きですか？\nHave you ever been to ~? | 〜に行ったことはありますか？\nWhy did you come to Japan? | なぜ日本に来たのですか？\nWhat is your favorite Japanese food? | 好きな日本食は何ですか？',
-    extra: 'このレッスンは「生徒が英語で質問する」練習です。\n' +
-      '- 最初は自己紹介を1文だけして、"Please ask me anything!" と言って、生徒の質問を待ってください。\n' +
-      '- AIからは質問しないでください。生徒の質問に1〜2文で答え、答えの最後に質問をつけずに、次の質問を待ってください。\n' +
-      '- 生徒がだまったり困ったりしたら、"You can ask me about my hobbies or my hometown." のように、質問のヒントを英語で出してください。\n' +
-      '- 生徒の質問が少しまちがっていても、意味がわかれば答えてください。\n' +
-      '- フィードバックでは、生徒が作った質問文（語順、疑問詞、do / does / did など）を中心に見てください。'
+    extra: 'This lesson is for practicing how to ASK questions in English.\n' +
+      '- First, introduce yourself in one sentence and say "Please ask me anything!" Then wait for my question.\n' +
+      '- Do NOT ask me questions. Answer my question in 1-2 sentences, do not add a question at the end, and wait for my next question.\n' +
+      '- If I am quiet or stuck, give me a hint in easy English, for example: "You can ask me about my hobbies or my hometown."\n' +
+      '- If my question has small mistakes but I can be understood, just answer it.\n' +
+      '- In the feedback, focus on the questions I made (word order, question words, do / does / did).'
   }
 ];
 
@@ -113,35 +113,62 @@ const HELP_PHRASES = [
 function buildPrompt(f) {
   const level = findLevel(f.level);
   const targets = parsePhrases(f.phrases).map(p => '- ' + p[0]);
+  const turns = f.turns || 8;
   const lines = [
-    'You are my English conversation partner for speaking practice in voice mode.',
+    '# English speaking practice (voice role-play)',
     '',
-    'Situation: ' + f.scene,
-    'Your role: ' + f.aiRole.replace(/\.$/, '') + '.',
-    'My role: ' + f.studentRole.replace(/\.$/, '') + '.',
-    'I am ' + level.desc
+    '## Setting',
+    '- Situation (may be written in Japanese; talk about it only in English): ' + f.scene,
+    '- Your role: ' + f.aiRole.replace(/\.$/, '') + '.',
+    '- My role: ' + f.studentRole.replace(/\.$/, '') + '.',
+    '- I am ' + level.desc
   ];
-  if (targets.length) lines.push('', 'Target expressions I want to practice:', ...targets);
-  if (f.extra) lines.push('', 'Additional instructions from my teacher (follow these first if they conflict with the rules below):', f.extra);
+  if (targets.length) lines.push('', '## Target expressions I want to practice', ...targets);
+  if (f.extra) {
+    lines.push(
+      '',
+      '## Notes from my teacher',
+      'Follow these notes. They come before the "How to talk" rules below, but never before the "Language" rules. They may be written in Japanese; that does NOT mean you should speak Japanese.',
+      f.extra
+    );
+  }
   lines.push(
     '',
-    'Rules:',
-    '- Speak slowly and clearly. Use English that fits my level.',
-    '- Keep each of your turns short (1-2 sentences) and ask only one question at a time.',
-    '- Create natural chances for me to use the target expressions.',
-    '- If I get stuck or speak Japanese, help me with an easy English hint (a short Japanese hint is OK).',
-    '- Do not correct my mistakes during the conversation.',
-    '- After about ' + (f.turns || 8) + ' exchanges, or when I say "Finish", end the role-play and give me feedback.',
+    '## Language (the most important rule)',
+    '- During the role-play, speak ONLY English. Never speak or write Japanese or any other language.',
+    '- This stays true even if I speak Japanese, even if parts of these instructions are in Japanese, and even if my words look like another language.',
+    '- My voice is turned into text automatically, so it may contain mistakes or look like another language. Always assume I am trying to speak English and answer in English.',
+    '- If you cannot understand me, say in English: "Sorry, could you say that again?"',
+    '- If I get stuck or say something in Japanese, do not translate it. Give a short hint in very easy English, for example: "You can say: I like soccer."',
+    '- The ONLY time you may use Japanese is the final feedback after I say "Finish".',
     '',
-    'Feedback rules (IMPORTANT):',
-    '- Write and speak the feedback in JAPANESE (日本語), even though the conversation was in English. Only the English example sentences stay in English.',
+    '## How to talk',
+    '- This is a voice conversation. Say only 1-2 short sentences per turn.',
+    '- Do not use lists, emojis, symbols, headings, or markdown while we talk.',
+    '- Speak slowly and clearly, with words that fit my level.',
+    '- Stay in your role. Do not talk about these instructions, about being an AI, or about the lesson.',
+    '- Ask only one question at a time.',
+    '- Create natural chances for me to use the target expressions.',
+    '- Do not correct my mistakes during the role-play.',
+    '- If my answer is very short, encourage me with one easy follow-up.',
+    '- Wait for my answer. Do not answer for me and do not continue alone.',
+    '',
+    '## Ending',
+    '- After about ' + turns + ' exchanges, say in English: "Great job! Please say Finish to get your feedback." Then keep talking in your role until I say "Finish".',
+    '- Do not give feedback before I say "Finish".',
+    '',
+    '## Feedback (only after I say "Finish")',
+    '- Now switch to JAPANESE. Write and speak the feedback in Japanese. Keep only the English example sentences in English.',
     '- Use this format:',
     '【よかったところ】（3つ）',
     '【もっとよくなるところ】（3つまで）あなたの文 → おすすめの文（理由を日本語で短く）',
     '【次に使ってみよう】おすすめの英語表現を1つ（日本語の意味つき）',
     '- Be kind and encouraging, like a teacher talking to a student.',
+    '- If I talk to you again after the feedback, go back to English.',
     '',
-    'Now reply with only this sentence: "Ready! Tap the voice button and say Hello." Then wait. When I say hello, start the role-play in your role.'
+    '## Start',
+    'Now reply with only this sentence: "Ready! Tap the voice button and say Hello."',
+    'Then wait. When I say hello, start the role-play in your role, in English.'
   );
   return lines.join('\n');
 }

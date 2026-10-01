@@ -17,6 +17,18 @@
 
   <div class="notice hidden" id="status"></div>
 
+  <details class="card prep" id="prepCard" open>
+    <summary>🎧 はじめての準備 <span class="hint">（1回やればOK）</span></summary>
+    <ol class="steps">
+      <li><b>マイク付きイヤホン</b>をつける<br>
+        <span class="hint">スピーカーのままだと、AIの声をマイクが拾ってしまい、会話が止まったり勝手に進んだりします。</span></li>
+      <li>ChatGPTの<b>「話す言語」を English</b> にする<br>
+        <span class="hint">ChatGPT の左下の自分の名前 →「設定」→「一般」→「話す言語（Spoken language）」→ <b>English</b>。<br>
+        「自動検出」のままだと、英語が別の言語として聞き取られて、おかしな返事になることがあります。</span></li>
+    </ol>
+    <label class="check"><input type="checkbox" id="prepDone"> 準備できた（次からはたたんでおく）</label>
+  </details>
+
   <section class="card" id="startCard">
     <button class="btn primary big" id="start">▶ AIと英会話をはじめる</button>
     <div class="notice hidden" id="blocked">
@@ -31,6 +43,20 @@
   <section class="card">
     <h2>📋 やりかた</h2>
     <ol class="steps" id="steps"></ol>
+  </section>
+
+  <section class="card">
+    <h2>⚠️ 押すボタンに気をつけよう</h2>
+    <div class="btn-guide">
+      <div class="ng"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><div><b>✕ マイク（音声入力）</b><br><span class="hint">声が文字になるだけで、AIとは話せません。</span></div></div>
+      <div class="ok-box"><svg class="ico voice" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#111"/><path d="M7 10v4M10 8v8M14 7v10M17 10v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg><div><b>○ 音声モード</b>（黒い丸に波の形）<br><span class="hint">これを押すと、AIと声で会話できます。</span></div></div>
+    </div>
+    <h2 style="margin-top:16px">🗣 話すときのルール</h2>
+    <ul class="rules">
+      <li><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4l16 16" stroke="#d33" stroke-width="2.4" stroke-linecap="round"/></svg><span><b>AIが話している間は、マイクをOFF</b>（画面下のマイクボタンを押して斜線にする）</span></li>
+      <li><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span><b>自分が話す番になったら、マイクをON</b>にして話す</span></li>
+      <li>⏳<span>話し終わったら、少し待つ。AIが答えはじめたら、またOFF</span></li>
+    </ul>
   </section>
 
   <section class="card target" id="targetCard">
@@ -106,8 +132,9 @@ function render() {
     lesson.share
       ? '「このチャットを続ける」のボタンを押す'
       : 'AIが「Ready!」と返事をするまで待つ',
-    '入力欄の右にある <b>🎙 音声モード</b> のボタンを押す（マイクの使用は「許可」）',
-    '<b>"Hello!"</b> と話しかけてスタート！　左の表現を使ってみよう',
+    '入力欄の右はしにある <b>音声モード</b>（黒い丸に波の形）を押す<br><span class="hint">🎤マイクのボタンではありません。マイクの使用は「許可」</span>',
+    'マイクをONにして <b>"Hello!"</b> と話しかけてスタート！',
+    'AIが話している間はマイクOFF、自分の番でON。左の表現を使ってみよう',
     '終わるときは <b>"Finish."</b> と言うと、日本語でアドバイスがもらえます'
   ];
   document.getElementById('steps').innerHTML = steps.map(s => '<li>' + s + '</li>').join('');
@@ -154,9 +181,21 @@ function openChat() {
 
 document.getElementById('start').addEventListener('click', openChat);
 
+// 「はじめての準備」は、一度チェックしたら次からたたんでおく
+try {
+  if (localStorage.getItem('aiEikaiwaPrepDone') === '1') {
+    document.getElementById('prepCard').open = false;
+    document.getElementById('prepDone').checked = true;
+  }
+} catch (e) {}
+document.getElementById('prepDone').addEventListener('change', e => {
+  try { localStorage.setItem('aiEikaiwaPrepDone', e.target.checked ? '1' : '0'); } catch (err) {}
+  if (e.target.checked) document.getElementById('prepCard').open = false;
+});
+
 loadLesson().then(l => {
   if (!l) {
-    ['startCard', 'targetCard', 'help'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    ['prepCard', 'startCard', 'targetCard', 'help'].forEach(id => document.getElementById(id).classList.add('hidden'));
     document.querySelector('.steps').closest('.card').classList.add('hidden');
     return;
   }

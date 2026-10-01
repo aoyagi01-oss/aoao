@@ -207,3 +207,16 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-weight: 
 .tour-title { margin: 2px 0 8px; font-size: 1.1rem; }
 .tour-text { font-size: .95rem; }
 .tour-nav { display: flex; gap: 6px; align-items: center; margin-top: 14px; }
+
+/* 生徒用：準備とボタンの説明 */
+details.prep > summary { cursor: pointer; font-weight: 700; font-size: 1.1rem; }
+details.prep[open] > summary { margin-bottom: 8px; }
+.ico { width: 28px; height: 28px; flex: none; color: var(--text); }
+.btn-guide { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .btn-guide { grid-template-columns: 1fr; } }
+.btn-guide > div { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; }
+.btn-guide .ng { background: #fdecec; }
+.btn-guide .ok-box { background: #e6f6ee; }
+.rules { list-style: none; margin: 0; padding: 0; }
+.rules li { display: flex; gap: 10px; align-items: center; padding: 6px 0; }
+.rules .ico { width: 24px; height: 24px; }
