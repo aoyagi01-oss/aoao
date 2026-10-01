@@ -48,6 +48,22 @@ const PRESETS = [
     level: 'h1',
     turns: 10,
     phrases: 'I\'m going to ~. | 〜するつもりです。\nHow about you? | あなたはどう？\nThat sounds fun! | 楽しそう！\nWhy don\'t we ~? | 一緒に〜しない？'
+  },
+  {
+    name: 'インタビュー（生徒が質問）',
+    title: '新しいALTの先生にインタビューしよう',
+    scene: '学校に来たばかりのALTの先生に、英語で質問して、どんな人か聞き出す場面。',
+    aiRole: 'Emma, a new ALT (English teacher) from Australia who just came to our school',
+    studentRole: 'a student who interviews the new teacher',
+    level: 'j3',
+    turns: 10,
+    phrases: 'Where are you from? | どこの出身ですか？\nWhat do you like to do in your free time? | ひまなときは何をするのが好きですか？\nHave you ever been to ~? | 〜に行ったことはありますか？\nWhy did you come to Japan? | なぜ日本に来たのですか？\nWhat is your favorite Japanese food? | 好きな日本食は何ですか？',
+    extra: 'このレッスンは「生徒が英語で質問する」練習です。\n' +
+      '- 最初は自己紹介を1文だけして、"Please ask me anything!" と言って、生徒の質問を待ってください。\n' +
+      '- AIからは質問しないでください。生徒の質問に1〜2文で答え、答えの最後に質問をつけずに、次の質問を待ってください。\n' +
+      '- 生徒がだまったり困ったりしたら、"You can ask me about my hobbies or my hometown." のように、質問のヒントを英語で出してください。\n' +
+      '- 生徒の質問が少しまちがっていても、意味がわかれば答えてください。\n' +
+      '- フィードバックでは、生徒が作った質問文（語順、疑問詞、do / does / did など）を中心に見てください。'
   }
 ];
 
@@ -74,6 +90,16 @@ const HELP_PHRASES = [
     ]
   },
   {
+    heading: '❓ 質問するとき',
+    items: [
+      ['Can I ask you a question?', '質問してもいいですか？'],
+      ['I have another question.', 'もう1つ質問があります。'],
+      ['What about ~?', '〜はどうですか？'],
+      ['Why?', 'どうしてですか？'],
+      ['Can you tell me more?', 'もっと教えてくれますか？']
+    ]
+  },
+  {
     heading: '🏁 終わるとき',
     items: [
       ['Finish.', '終わりにします。（フィードバックをもらえます）'],
@@ -96,7 +122,7 @@ function buildPrompt(f) {
     'I am ' + level.desc
   ];
   if (targets.length) lines.push('', 'Target expressions I want to practice:', ...targets);
-  if (f.extra) lines.push('', 'Additional instructions from my teacher:', f.extra);
+  if (f.extra) lines.push('', 'Additional instructions from my teacher (follow these first if they conflict with the rules below):', f.extra);
   lines.push(
     '',
     'Rules:',
