@@ -6,80 +6,63 @@
 <title>AI英会話れんしゅう</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="student">
 <main>
-  <div class="toolbar">
-    <div>
-      <h1 id="title">AI英会話れんしゅう</h1>
-      <p class="scene" id="scene"></p>
-    </div>
-  </div>
+  <header class="lesson-head">
+    <h1 id="title">AI英会話れんしゅう</h1>
+    <p class="scene" id="scene"></p>
+  </header>
 
   <div class="notice hidden" id="status"></div>
 
   <div class="notice opened hidden" id="opened">
-    ✅ 左に表現集、右にChatGPTのウィンドウを開きました。<br>
-    <span class="hint">このタブは後ろに置いたままでOKです。左のウィンドウを閉じてしまったら、もう一度「AIと英会話をはじめる」を押してください。</span>
+    ✅ 左に表現集、右にChatGPTを開きました。このタブは後ろに置いたままでOK。
   </div>
 
-  <details class="card prep" id="prepCard" open>
-    <summary>🎧 はじめての準備 <span class="hint">（1回やればOK）</span></summary>
-    <ol class="steps">
-      <li><b>マイク付きイヤホン</b>をつける<br>
-        <span class="hint">スピーカーのままだと、AIの声をマイクが拾ってしまい、会話が止まったり勝手に進んだりします。</span></li>
-      <li>ChatGPTの<b>「話す言語」を English</b> にする<br>
-        <span class="hint">ChatGPT の左下の自分の名前 →「設定」→「一般」→「話す言語（Spoken language）」→ <b>English</b>。<br>
-        「自動検出」のままだと、英語が別の言語として聞き取られて、おかしな返事になることがあります。</span></li>
-    </ol>
-    <label class="check"><input type="checkbox" id="prepDone"> 準備できた（次からはたたんでおく）</label>
-  </details>
-
+  <!-- 始める前（最初に開いたタブで使う） -->
   <section class="card" id="startCard">
     <button class="btn primary big" id="start">▶ AIと英会話をはじめる</button>
+
     <div class="notice hidden" id="blocked">
-      ChatGPTのウィンドウが開きませんでした。アドレスバー右の <b>ポップアップブロック</b> のマークを押して「常に許可」にしてから、もう一度ボタンを押してください。<br>
-      または <a id="fallback" target="_blank" rel="noopener">ここをクリック</a> して開き、キーボードの <b>Alt + ]</b> で右半分に寄せてください。
+      ChatGPTが開きませんでした。アドレスバー右の<b>ポップアップブロック</b>から「常に許可」にして、もう一度押してください。
+      （または <a id="fallback" target="_blank" rel="noopener">ここ</a> から開いて <b>Alt + ]</b> で右半分へ）
     </div>
     <div class="notice hidden" id="snapHint">
-      👉 キーボードの <b>Alt + [</b> を押して、この画面を<b>左半分</b>にしてください。<br>
-      <span class="hint">そうすると、左に触れても右のChatGPTが消えなくなります。</span>
+      👉 <b>Alt + [</b> でこの画面を左半分にしてください（左に触れても右のChatGPTが消えなくなります）。
     </div>
-    <div class="row">
-      <button class="btn small" id="restart">🔄 最初からやり直す</button>
-    </div>
+
+    <ol class="flow" id="steps"></ol>
+
+    <details class="prep" id="prepCard" open>
+      <summary>🎧 はじめての準備 <span class="hint">イヤホン／話す言語（1回だけ）</span></summary>
+      <ul>
+        <li><b>マイク付きイヤホン</b>を使う <span class="hint">— スピーカーだとAIの声をマイクが拾い、会話が乱れます</span></li>
+        <li>ChatGPTの<b>「話す言語」を English</b> に <span class="hint">— 左下の名前 → 設定 → 一般 → 話す言語（Spoken language）。「自動検出」だと別の言語と聞き取られることがあります</span></li>
+      </ul>
+      <label class="check"><input type="checkbox" id="prepDone"> 準備OK（次から閉じておく）</label>
+    </details>
   </section>
 
-  <section class="card">
-    <h2>📋 やりかた</h2>
-    <ol class="steps" id="steps"></ol>
-  </section>
+  <!-- 会話中にいつも見えるルール -->
+  <div class="talkbar" id="talkBar">
+    <span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4l16 16" stroke="#d33" stroke-width="2.4" stroke-linecap="round"/></svg>AIが話す間は<b>OFF</b></span>
+    <span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>自分の番は<b>ON</b></span>
+    <span>🏁 終わり → <b>"Finish."</b></span>
+  </div>
 
-  <section class="card">
-    <h2>⚠️ 押すボタンに気をつけよう</h2>
-    <div class="btn-guide">
-      <div class="ng"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><div><b>✕ マイク（音声入力）</b><br><span class="hint">声が文字になるだけで、AIとは話せません。</span></div></div>
-      <div class="ok-box"><svg class="ico voice" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#111"/><path d="M7 10v4M10 8v8M14 7v10M17 10v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg><div><b>○ 音声モード</b>（黒い丸に波の形）<br><span class="hint">これを押すと、AIと声で会話できます。</span></div></div>
+  <!-- 表現集（タブで1グループずつ表示） -->
+  <section class="card phrase-card" id="phraseCard">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <ul class="phrases compact" id="phraseList"></ul>
+    <div class="phrase-foot">
+      <span class="hint">🔊で発音が聞けます</span>
+      <button class="btn small" id="toggleJa" type="button">訳をかくす</button>
     </div>
-    <h2 style="margin-top:16px">🗣 話すときのルール</h2>
-    <ul class="rules">
-      <li><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4l16 16" stroke="#d33" stroke-width="2.4" stroke-linecap="round"/></svg><span><b>AIが話している間は、マイクをOFF</b>（画面下のマイクボタンを押して斜線にする）</span></li>
-      <li><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span><b>自分が話す番になったら、マイクをON</b>にして話す</span></li>
-      <li>⏳<span>話し終わったら、少し待つ。AIが答えはじめたら、またOFF</span></li>
-    </ul>
   </section>
-
-  <section class="card target" id="targetCard">
-    <div class="toolbar">
-      <h2>⭐ 今日の目標表現</h2>
-      <button class="btn small" id="toggleJa">日本語をかくす</button>
-    </div>
-    <ul class="phrases" id="targets"></ul>
-  </section>
-
-  <div id="help"></div>
 
   <p class="footer">
-    🔊 を押すと発音が聞けます。 ／ <a id="editLink" href="teacher.html">先生用：この教材を編集</a>
+    <button class="btn small" id="restart" type="button">🔄 最初からやり直す</button>
+    <a id="editLink" href="teacher.html">先生用：この教材を編集</a>
   </p>
 </main>
 
@@ -88,6 +71,15 @@
 <script src="lessons.js"></script>
 <script>
 let lesson, url;
+let groups = [];
+
+// 左右に重ならないウィンドウを並べる。
+// このページ自体が画面いっぱいのままだと、左側に触れたときに右の ChatGPT が後ろに隠れてしまうため、
+// 表現集も左半分の小さなウィンドウ（panel）で開き直す。
+const PANEL = /[?&]panel\b/.test(location.search);
+
+const ICON_WAVE = '<svg class="ico inline" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#111"/><path d="M7 10v4M10 8v8M14 7v10M17 10v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+const ICON_MIC = '<svg class="ico inline" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
 function sampleLesson() {
   const p = PRESETS[0];
@@ -120,9 +112,14 @@ async function loadLesson() {
 
 function phraseList(items) {
   return items.map(([en, ja]) =>
-    '<li><button class="say" title="発音を聞く" data-say="' + escapeHtml(en) + '">🔊</button>' +
+    '<li><button class="say" type="button" title="発音を聞く" data-say="' + escapeHtml(en) + '">🔊</button>' +
     '<div><div class="en">' + escapeHtml(en) + '</div><div class="ja">' + escapeHtml(ja || '') + '</div></div></li>'
   ).join('');
+}
+
+function showGroup(i) {
+  document.querySelectorAll('#tabs button').forEach((b, j) => b.setAttribute('aria-selected', String(i === j)));
+  document.getElementById('phraseList').innerHTML = phraseList(groups[i].items);
 }
 
 function render() {
@@ -134,46 +131,37 @@ function render() {
   url = chatUrl(lesson);
   document.getElementById('fallback').href = url;
 
-  // 手順
   const steps = [
-    '上の青いボタンを押す（右半分にChatGPTが開きます）',
-    'ログインしていなければ、ログインする',
+    '右にChatGPTが開く（必要ならログイン）',
     lesson.share
-      ? '「このチャットを続ける」のボタンを押す'
-      : 'AIが「Ready!」と返事をするまで待つ',
-    '入力欄の右はしにある <b>音声モード</b>（黒い丸に波の形）を押す<br><span class="hint">🎤マイクのボタンではありません。マイクの使用は「許可」</span>',
-    'マイクをONにして <b>"Hello!"</b> と話しかけてスタート！',
-    'AIが話している間はマイクOFF、自分の番でON。左の表現を使ってみよう',
-    '終わるときは <b>"Finish."</b> と言うと、日本語でアドバイスがもらえます'
+      ? '「このチャットを続ける」を押し、' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>'
+      : '「Ready!」と出たら ' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>',
+    '<b>"Hello!"</b> で会話スタート。左の表現を使ってみよう',
+    '<b>"Finish."</b> と言うと、日本語でアドバイス'
   ];
   document.getElementById('steps').innerHTML = steps.map(s => '<li>' + s + '</li>').join('');
 
-  if (lesson.phrases && lesson.phrases.length) {
-    document.getElementById('targets').innerHTML = phraseList(lesson.phrases);
-  } else {
-    document.getElementById('targetCard').classList.add('hidden');
-  }
-
-  document.getElementById('help').innerHTML = HELP_PHRASES.map((g, i) =>
-    '<details class="card"' + (i === 0 ? ' open' : '') + '><summary>' + g.heading + '</summary>' +
-    '<ul class="phrases">' + phraseList(g.items) + '</ul></details>'
+  // 表現集のタブ：今日の目標表現 → お助け表現
+  groups = [];
+  if (lesson.phrases && lesson.phrases.length) groups.push({ heading: '⭐ 今日の表現', items: lesson.phrases });
+  HELP_PHRASES.forEach(g => groups.push(g));
+  document.getElementById('tabs').innerHTML = groups.map((g, i) =>
+    '<button type="button" role="tab" data-tab="' + i + '">' + g.heading + '</button>'
   ).join('');
+  showGroup(0);
 }
 
 document.addEventListener('click', e => {
-  const b = e.target.closest('[data-say]');
-  if (b) speak(b.dataset.say.replace(/~/g, 'something'));
+  const say = e.target.closest('[data-say]');
+  if (say) speak(say.dataset.say.replace(/~/g, 'something'));
+  const tab = e.target.closest('[data-tab]');
+  if (tab) showGroup(Number(tab.dataset.tab));
 });
 
 document.getElementById('toggleJa').addEventListener('click', e => {
   const hidden = document.body.classList.toggle('hide-ja');
-  e.target.textContent = hidden ? '日本語を見せる' : '日本語をかくす';
+  e.target.textContent = hidden ? '訳を見せる' : '訳をかくす';
 });
-
-// 左右に重ならないウィンドウを並べる。
-// このページ自体が画面いっぱいのままだと、左側に触れたときに右の ChatGPT が後ろに隠れてしまうため、
-// 表現集も左半分の小さなウィンドウ（panel）で開き直す。
-const PANEL = /[?&]panel\b/.test(location.search);
 
 function halfFeatures(side) {
   const w = Math.floor(screen.availWidth / 2);
@@ -189,9 +177,7 @@ function halfFeatures(side) {
 function openChat() {
   const chat = window.open(url, 'ai-eikaiwa', halfFeatures('right'));
   document.getElementById('blocked').classList.toggle('hidden', !!chat);
-  if (!chat) return;
-  document.querySelectorAll('#steps li')[0].classList.add('done');
-  if (PANEL) return;
+  if (!chat || PANEL) return;
 
   const panel = window.open(location.pathname + '?panel=1' + location.hash, 'ai-eikaiwa-left', halfFeatures('left'));
   if (panel) {
@@ -205,18 +191,16 @@ function openChat() {
 }
 
 document.getElementById('start').addEventListener('click', openChat);
+document.getElementById('restart').addEventListener('click', () => {
+  if (confirm('新しい会話でやり直しますか？（今の会話は終わります）')) openChat();
+});
 
-// 左半分のウィンドウでは、準備の説明はたたみ、ボタンは「開き直す」にする
-if (PANEL) {
-  document.body.classList.add('panel');
-  // 大きなボタンを押すと会話が最初からになってしまうので、左のウィンドウでは出さない
-  document.getElementById('start').classList.add('hidden');
-  document.getElementById('restart').textContent = '🔄 最初からやり直す（ChatGPTを開き直す）';
-}
+// 左のウィンドウ（会話中）は、始めるためのボタンや準備を出さず、表現集だけにする
+if (PANEL) document.body.classList.add('panel');
 
-// 「はじめての準備」は、一度チェックしたら次からたたんでおく
+// 「はじめての準備」は、一度チェックしたら次から閉じておく
 try {
-  if (PANEL || localStorage.getItem('aiEikaiwaPrepDone') === '1') {
+  if (localStorage.getItem('aiEikaiwaPrepDone') === '1') {
     document.getElementById('prepCard').open = false;
     document.getElementById('prepDone').checked = true;
   }
@@ -228,15 +212,11 @@ document.getElementById('prepDone').addEventListener('change', e => {
 
 loadLesson().then(l => {
   if (!l) {
-    ['prepCard', 'startCard', 'targetCard', 'help'].forEach(id => document.getElementById(id).classList.add('hidden'));
-    document.querySelector('.steps').closest('.card').classList.add('hidden');
+    ['startCard', 'talkBar', 'phraseCard'].forEach(id => document.getElementById(id).classList.add('hidden'));
     return;
   }
   lesson = l;
   render();
-});
-document.getElementById('restart').addEventListener('click', () => {
-  if (confirm('新しい会話でやり直しますか？')) openChat();
 });
 </script>
 </body>
