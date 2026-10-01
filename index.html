@@ -197,7 +197,11 @@ function openPanel() {
 function openChat() {
   const chat = window.open(url, 'ai-eikaiwa', halfFeatures('right'));
   document.getElementById('blocked').classList.toggle('hidden', !!chat);
-  if (chat) document.body.classList.add('started');
+  if (chat) {
+    document.body.classList.add('started');
+    const first = document.querySelector('#steps li');
+    if (first && PANEL) first.classList.add('done');
+  }
 }
 
 document.getElementById('start').addEventListener('click', () => PANEL ? openChat() : openPanel());
