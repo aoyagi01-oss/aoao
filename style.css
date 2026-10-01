@@ -264,6 +264,6 @@ details.prep .check { padding-top: 4px; }
 body.student .footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; }
 
 /* 左のウィンドウ（会話中）：始めるための部分は出さず、ルールを上に固定 */
-body.panel #startCard, body.panel #opened { display: none; }
+body.panel.started #startCard, body.panel #opened { display: none; }
 body.panel .lesson-head .scene { display: none; }
 body.panel .talkbar { position: sticky; top: 0; z-index: 5; }

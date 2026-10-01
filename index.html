@@ -16,7 +16,8 @@
   <div class="notice hidden" id="status"></div>
 
   <div class="notice opened hidden" id="opened">
-    ✅ 左に表現集、右にChatGPTを開きました。このタブは後ろに置いたままでOK。
+    ✅ 左に新しいウィンドウを開きました。<b>左のウィンドウの青いボタン</b>を押してください。<br>
+    <span class="hint">このタブはもう使いません。閉じてOKです。</span>
   </div>
 
   <!-- 始める前（最初に開いたタブで使う） -->
@@ -132,7 +133,7 @@ function render() {
   document.getElementById('fallback').href = url;
 
   const steps = [
-    '右にChatGPTが開く（必要ならログイン）',
+    PANEL ? '右にChatGPTが開く（必要ならログイン）' : '左に表現集のウィンドウが開く → その<b>青いボタン</b>で右にChatGPT',
     lesson.share
       ? '「このチャットを続ける」を押し、' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>'
       : '「Ready!」と出たら ' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>',
@@ -174,29 +175,41 @@ function halfFeatures(side) {
   ].join(',');
 }
 
+// Chrome は1回のクリックで開ける新しいウィンドウが1つだけなので、2回に分けて開く。
+// ① 最初のタブ：左半分に表現集のウィンドウ（panel）を開く
+// ② 左のウィンドウ：右半分に ChatGPT を開く
+// 2つのウィンドウは重ならないので、左に触れても右の ChatGPT は隠れない。
+function openPanel() {
+  const panel = window.open(location.pathname + '?panel=1' + location.hash, 'ai-eikaiwa-left', halfFeatures('left'));
+  if (!panel) {
+    // 開けなかったときは、このタブから ChatGPT を開き、Alt + [ で左半分に寄せてもらう
+    openChat();
+    document.body.classList.add('split');
+    document.getElementById('snapHint').classList.remove('hidden');
+    return;
+  }
+  document.getElementById('opened').classList.remove('hidden');
+  panel.focus();
+  // このタブは後ろで画面いっぱいに残ると邪魔なので、閉じられるなら閉じる
+  setTimeout(() => window.close(), 800);
+}
+
 function openChat() {
   const chat = window.open(url, 'ai-eikaiwa', halfFeatures('right'));
   document.getElementById('blocked').classList.toggle('hidden', !!chat);
-  if (!chat || PANEL) return;
-
-  const panel = window.open(location.pathname + '?panel=1' + location.hash, 'ai-eikaiwa-left', halfFeatures('left'));
-  if (panel) {
-    document.getElementById('opened').classList.remove('hidden');
-    panel.focus();
-  } else {
-    // 2つ目のウィンドウが開けなかったときは、このウィンドウを左半分に寄せてもらう
-    document.body.classList.add('split');
-    document.getElementById('snapHint').classList.remove('hidden');
-  }
+  if (chat) document.body.classList.add('started');
 }
 
-document.getElementById('start').addEventListener('click', openChat);
+document.getElementById('start').addEventListener('click', () => PANEL ? openChat() : openPanel());
 document.getElementById('restart').addEventListener('click', () => {
   if (confirm('新しい会話でやり直しますか？（今の会話は終わります）')) openChat();
 });
 
-// 左のウィンドウ（会話中）は、始めるためのボタンや準備を出さず、表現集だけにする
-if (PANEL) document.body.classList.add('panel');
+// 左のウィンドウでは、ボタンは ChatGPT を開くためのものになる。開いた後は表現集だけにする
+if (PANEL) {
+  document.body.classList.add('panel');
+  document.getElementById('start').textContent = '▶ 右にChatGPTを開く';
+}
 
 // 「はじめての準備」は、一度チェックしたら次から閉じておく
 try {
