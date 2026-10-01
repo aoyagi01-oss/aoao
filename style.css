@@ -220,3 +220,14 @@ details.prep[open] > summary { margin-bottom: 8px; }
 .rules { list-style: none; margin: 0; padding: 0; }
 .rules li { display: flex; gap: 10px; align-items: center; padding: 6px 0; }
 .rules .ico { width: 24px; height: 24px; }
+.notice.opened { background: #e6f6ee; }
+/* 左半分のウィンドウ（panel）は幅がせまいので余白を詰める */
+body.panel main { padding-top: 12px; }
+body.panel h1 { font-size: 1.25rem; }
+/* 左のウィンドウでは、会話中に見る表現を上に */
+body.panel main { display: flex; flex-direction: column; }
+body.panel main > * { order: 5; }
+body.panel main > .toolbar { order: 0; }
+body.panel #targetCard { order: 1; }
+body.panel #help { order: 2; }
+body.panel #startCard { order: 3; }

@@ -17,6 +17,11 @@
 
   <div class="notice hidden" id="status"></div>
 
+  <div class="notice opened hidden" id="opened">
+    ✅ 左に表現集、右にChatGPTのウィンドウを開きました。<br>
+    <span class="hint">このタブは後ろに置いたままでOKです。左のウィンドウを閉じてしまったら、もう一度「AIと英会話をはじめる」を押してください。</span>
+  </div>
+
   <details class="card prep" id="prepCard" open>
     <summary>🎧 はじめての準備 <span class="hint">（1回やればOK）</span></summary>
     <ol class="steps">
@@ -34,6 +39,10 @@
     <div class="notice hidden" id="blocked">
       ChatGPTのウィンドウが開きませんでした。アドレスバー右の <b>ポップアップブロック</b> のマークを押して「常に許可」にしてから、もう一度ボタンを押してください。<br>
       または <a id="fallback" target="_blank" rel="noopener">ここをクリック</a> して開き、キーボードの <b>Alt + ]</b> で右半分に寄せてください。
+    </div>
+    <div class="notice hidden" id="snapHint">
+      👉 キーボードの <b>Alt + [</b> を押して、この画面を<b>左半分</b>にしてください。<br>
+      <span class="hint">そうすると、左に触れても右のChatGPTが消えなくなります。</span>
     </div>
     <div class="row">
       <button class="btn small" id="restart">🔄 最初からやり直す</button>
@@ -161,29 +170,53 @@ document.getElementById('toggleJa').addEventListener('click', e => {
   e.target.textContent = hidden ? '日本語を見せる' : '日本語をかくす';
 });
 
-// ChatGPT を画面の右半分に開く
-function openChat() {
+// 左右に重ならないウィンドウを並べる。
+// このページ自体が画面いっぱいのままだと、左側に触れたときに右の ChatGPT が後ろに隠れてしまうため、
+// 表現集も左半分の小さなウィンドウ（panel）で開き直す。
+const PANEL = /[?&]panel\b/.test(location.search);
+
+function halfFeatures(side) {
   const w = Math.floor(screen.availWidth / 2);
-  const features = [
+  return [
     'popup=yes',
-    'left=' + ((screen.availLeft || 0) + w),
+    'left=' + ((screen.availLeft || 0) + (side === 'right' ? w : 0)),
     'top=' + (screen.availTop || 0),
     'width=' + w,
     'height=' + screen.availHeight
   ].join(',');
-  const win = window.open(url, 'ai-eikaiwa', features);
-  document.getElementById('blocked').classList.toggle('hidden', !!win);
-  if (win) {
+}
+
+function openChat() {
+  const chat = window.open(url, 'ai-eikaiwa', halfFeatures('right'));
+  document.getElementById('blocked').classList.toggle('hidden', !!chat);
+  if (!chat) return;
+  document.querySelectorAll('#steps li')[0].classList.add('done');
+  if (PANEL) return;
+
+  const panel = window.open(location.pathname + '?panel=1' + location.hash, 'ai-eikaiwa-left', halfFeatures('left'));
+  if (panel) {
+    document.getElementById('opened').classList.remove('hidden');
+    panel.focus();
+  } else {
+    // 2つ目のウィンドウが開けなかったときは、このウィンドウを左半分に寄せてもらう
     document.body.classList.add('split');
-    document.querySelectorAll('#steps li')[0].classList.add('done');
+    document.getElementById('snapHint').classList.remove('hidden');
   }
 }
 
 document.getElementById('start').addEventListener('click', openChat);
 
+// 左半分のウィンドウでは、準備の説明はたたみ、ボタンは「開き直す」にする
+if (PANEL) {
+  document.body.classList.add('panel');
+  // 大きなボタンを押すと会話が最初からになってしまうので、左のウィンドウでは出さない
+  document.getElementById('start').classList.add('hidden');
+  document.getElementById('restart').textContent = '🔄 最初からやり直す（ChatGPTを開き直す）';
+}
+
 // 「はじめての準備」は、一度チェックしたら次からたたんでおく
 try {
-  if (localStorage.getItem('aiEikaiwaPrepDone') === '1') {
+  if (PANEL || localStorage.getItem('aiEikaiwaPrepDone') === '1') {
     document.getElementById('prepCard').open = false;
     document.getElementById('prepDone').checked = true;
   }
