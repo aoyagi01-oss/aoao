@@ -80,6 +80,7 @@ let groups = [];
 const PANEL = /[?&]panel\b/.test(location.search);
 
 const ICON_WAVE = '<svg class="ico inline" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#111"/><path d="M7 10v4M10 8v8M14 7v10M17 10v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+const ICON_SEND = '<svg class="ico inline" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#111"/><path d="M12 17V7M7.5 11.5L12 7l4.5 4.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ICON_MIC = '<svg class="ico inline" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
 function sampleLesson() {
@@ -136,11 +137,12 @@ function render() {
     PANEL ? '右にChatGPTが開く（必要ならログイン）' : '左に表現集のウィンドウが開く → その<b>青いボタン</b>で右にChatGPT',
     lesson.share
       ? '「このチャットを続ける」を押し、' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>'
-      : '「Ready!」と出たら ' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>',
+      : '入力欄に英文が入ったら、そのまま ' + ICON_SEND + '<b>送信</b>（上矢印）を押す <span class="hint">（文は書きかえない）</span>',
+    lesson.share ? null : '「Ready!」と出たら ' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>',
     '<b>"Hello!"</b> で会話スタート。左の表現を使ってみよう',
     '<b>"Finish."</b> と言うと、日本語でアドバイス'
   ];
-  document.getElementById('steps').innerHTML = steps.map(s => '<li>' + s + '</li>').join('');
+  document.getElementById('steps').innerHTML = steps.filter(Boolean).map(s => '<li>' + s + '</li>').join('');
 
   // 表現集のタブ：今日の目標表現 → お助け表現
   groups = [];
