@@ -48,7 +48,8 @@ function callApi(params) {
     if (typeof API_URL === 'undefined' || !API_URL) { reject(new Error('スプレッドシートとまだつながっていません')); return; }
     const cb = '__aiEikaiwa' + Date.now() + Math.floor(Math.random() * 1000);
     const s = document.createElement('script');
-    const timer = setTimeout(() => { done(); reject(new Error('スプレッドシートから応答がありません')); }, 20000);
+    // Apps Script は最初の呼び出しが遅いことがあるので、長めに待つ
+    const timer = setTimeout(() => { done(); reject(new Error('スプレッドシートから応答がありません。少し待ってから、もう一度押してください')); }, 40000);
     function done() { clearTimeout(timer); delete window[cb]; s.remove(); }
     window[cb] = data => { done(); data && data.ok ? resolve(data) : reject(new Error((data && data.error) || '読み込みに失敗しました')); };
     s.onerror = () => { done(); reject(new Error('スプレッドシートに接続できませんでした')); };
