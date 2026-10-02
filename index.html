@@ -138,7 +138,8 @@ function render() {
     lesson.share
       ? '「このチャットを続ける」を押し、' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>'
       : '入力欄に英文が入ったら、そのまま ' + ICON_SEND + '<b>送信</b>（上矢印）を押す <span class="hint">（文は書きかえない）</span>',
-    lesson.share ? null : '「Ready!」と出たら ' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>',
+    lesson.share ? null : '「Ready!」と出たら ' + ICON_WAVE + '<b>音声モード</b>を押す <span class="hint">（' + ICON_MIC + 'マイクではない）</span>' +
+      '<br><span class="hint">' + ICON_SEND + 'のままなら、入力欄の文字を全部消す → ' + ICON_WAVE + 'に変わる</span>',
     '<b>"Hello!"</b> で会話スタート。左の表現を使ってみよう',
     '<b>"Finish."</b> と言うと、日本語でアドバイス'
   ];
