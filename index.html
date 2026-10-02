@@ -22,7 +22,7 @@
 
   <!-- 始める前（最初に開いたタブで使う） -->
   <section class="card" id="startCard">
-    <button class="btn primary big" id="start">▶ AIと英会話をはじめる</button>
+    <button class="btn primary big" id="start" disabled>⏳ 読み込み中…</button>
 
     <div class="notice hidden" id="blocked">
       ChatGPTが開きませんでした。アドレスバー右の<b>ポップアップブロック</b>から「常に許可」にして、もう一度押してください。
@@ -152,6 +152,11 @@ function render() {
     '<button type="button" role="tab" data-tab="' + i + '">' + g.heading + '</button>'
   ).join('');
   showGroup(0);
+
+  // 教材の読み込みが終わってから押せるようにする（早く押すと白い画面が開くため）
+  const start = document.getElementById('start');
+  start.textContent = PANEL ? '▶ 右にChatGPTを開く' : '▶ AIと英会話をはじめる';
+  start.disabled = false;
 }
 
 document.addEventListener('click', e => {
@@ -182,6 +187,7 @@ function halfFeatures(side) {
 // ② 左のウィンドウ：右半分に ChatGPT を開く
 // 2つのウィンドウは重ならないので、左に触れても右の ChatGPT は隠れない。
 function openPanel() {
+  if (!url) return;
   const panel = window.open(location.pathname + '?panel=1' + location.hash, 'ai-eikaiwa-left', halfFeatures('left'));
   if (!panel) {
     // 開けなかったときは、このタブから ChatGPT を開き、Alt + [ で左半分に寄せてもらう
@@ -197,6 +203,7 @@ function openPanel() {
 }
 
 function openChat() {
+  if (!url) return;
   const chat = window.open(url, 'ai-eikaiwa', halfFeatures('right'));
   document.getElementById('blocked').classList.toggle('hidden', !!chat);
   if (chat) {
@@ -214,7 +221,6 @@ document.getElementById('restart').addEventListener('click', () => {
 // 左のウィンドウでは、ボタンは ChatGPT を開くためのものになる。開いた後は表現集だけにする
 if (PANEL) {
   document.body.classList.add('panel');
-  document.getElementById('start').textContent = '▶ 右にChatGPTを開く';
 }
 
 // 「はじめての準備」は、一度チェックしたら次から閉じておく
