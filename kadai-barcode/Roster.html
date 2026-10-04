@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; padding: 12px 16px; font-size: 13px; color: #202124; }
+  .lead { margin: 0 0 8px; }
+  .lead b { color: #1967d2; }
+  textarea { width: 100%; box-sizing: border-box; height: 150px; font-size: 13px; padding: 8px; border: 2px dashed #1a73e8; border-radius: 8px; font-family: inherit; }
+  .ex { color: #5f6368; font-size: 12px; margin: 4px 0 10px; }
+  .bar { display: flex; gap: 10px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  button { font-size: 14px; padding: 8px 16px; border-radius: 8px; border: 1px solid #1a73e8; background: #fff; color: #1a73e8; cursor: pointer; }
+  button.primary { background: #1a73e8; color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .count span { display: inline-block; margin-right: 10px; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+  .new { background: #e6f4ea; color: #137333; }
+  .update { background: #fef7e0; color: #b06000; }
+  .same { background: #f1f3f4; color: #5f6368; }
+  .bad { background: #fce8e6; color: #c5221f; }
+  .tbl { max-height: 270px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 4px 8px; border-bottom: 1px solid #eee; text-align: left; font-size: 12px; }
+  th { position: sticky; top: 0; background: #f8f9fa; }
+  #done { display: none; background: #e6f4ea; color: #137333; padding: 12px; border-radius: 8px; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <p class="lead">Excel・校務システム・名簿のファイルから、生徒の行を<b>まとめてコピーして、下の枠に貼り付け</b>てください。列の順番はそのままでかまいません。</p>
+  <textarea id="paste" placeholder="ここに貼り付け（Ctrl + V）"></textarea>
+  <div class="ex">
+    読み取れる形の例：「1101　青木 さくら」／「1　1　1　青木　さくら」（学年・組・番号が別の列）／「1年1組　1番　青木さくら　あおき さくら」<br>
+    進級したときも、新しい名簿をそのまま貼るだけ。同じ名前の生徒は学籍番号だけが新しくなり、<b>バーコードはそのまま使えます</b>。
+  </div>
+  <div class="bar">
+    <button id="check" class="primary">① 読み取って確認する</button>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="tbl" id="tblWrap" style="display:none">
+    <table><thead><tr><th>学籍番号</th><th>氏名</th><th>ふりがな</th><th>登録のされ方</th></tr></thead><tbody id="rows"></tbody></table>
+  </div>
+  <div class="bar">
+    <button id="save" class="primary" disabled>② この内容で名簿に登録する</button>
+    <button id="close">閉じる</button>
+  </div>
+  <div id="done"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const run = (name, ...args) => new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[name](...args));
+  let parsed = [], bad = [];
+
+  const isKana = (c) => /^[ぁ-んァ-ヶー・\s]+$/.test(c);
+  const hasKanji = (c) => /[一-鿿々]/.test(c);
+
+  // 1行から 学籍番号・氏名・ふりがな を見つける
+  function parseLine(line) {
+    const n = line.normalize('NFKC').replace(/　/g, ' ').trim();
+    if (!n) return null;
+    let cells;
+    if (n.includes('\t')) cells = n.split('\t');
+    else if (n.includes(',')) cells = n.split(',');
+    else cells = n.split(/\s+/);
+    const byTab = n.includes('\t') || n.includes(',');
+    cells = cells.map((c) => c.trim()).filter(Boolean);
+    if (!/\d/.test(n) && /氏名|名前|学籍|番号|ふりがな|フリガナ|クラス/.test(n)) return { header: true };
+
+    let gk = '', grade = '', cls = '', no = '';
+    const small = [], text = [];
+    cells.forEach((c) => {
+      let m;
+      if (!gk && /^\d{4}$/.test(c)) gk = c;
+      else if ((m = c.match(/^(\d)\s*(?:-|年)\s*(\d{1,2})\s*組?$/))) { grade = m[1]; cls = m[2]; }
+      else if ((m = c.match(/^(\d{1,2})\s*番?$/))) small.push(m[1]);
+      else if (/^[\d\-\/]+$/.test(c)) { /* 生徒ID・電話番号などの数字は使わない */ }
+      else text.push(c.replace(/\s+/g, ' '));
+    });
+    if (!gk) {
+      if (grade && cls && small.length) no = small[0];
+      else if (small.length >= 3) { grade = small[0]; cls = small[1]; no = small[2]; }
+      if (grade && cls && no && Number(grade) <= 9 && Number(cls) <= 9) gk = grade + cls + String(no).padStart(2, '0');
+    }
+    // ふりがな：表の形で、かなだけの列（「あおき さくら」のように空白があるか、長いもの）
+    let kana = '';
+    if (byTab && text.length >= 2) {
+      const i = text.findIndex((c, k) => isKana(c) && (c.includes(' ') || c.length >= 5) && text.some((o, j) => j !== k && hasKanji(o)));
+      if (i >= 0) kana = text.splice(i, 1)[0];
+    } else if (!byTab && text.length >= 3 && isKana(text[text.length - 1]) && isKana(text[text.length - 2]) && text.slice(0, -2).some(hasKanji)) {
+      // 空白区切り：「青木 さくら あおき さくら」の最後の2つ
+      kana = text.splice(-2).join(' ');
+    }
+    const name = text.join(' ').trim();
+    if (!name) return { bad: line };
+    return { gakuseki: gk, name, kana, line };
+  }
+
+  function show(plan) {
+    const body = $('rows');
+    body.innerHTML = '';
+    const cnt = { new: 0, update: 0, same: 0 };
+    plan.forEach((p) => {
+      cnt[p.kind]++;
+      const tr = document.createElement('tr');
+      const how = { new: '新しく追加', update: '更新（前：' + p.before + '）', same: '登録ずみ（変更なし）' }[p.kind];
+      [p.gakuseki || '（なし）', p.name, p.kana, how].forEach((v, i) => {
+        const td = document.createElement('td');
+        td.textContent = v;
+        if (i === 3) td.className = p.kind;
+        if (i === 0 && !p.gakuseki) td.className = 'bad';
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    bad.forEach((l) => {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4; td.className = 'bad'; td.textContent = '読み取れない行（登録しません）：' + l;
+      tr.appendChild(td); body.appendChild(tr);
+    });
+    $('tblWrap').style.display = '';
+    $('count').innerHTML = '';
+    [['new', '追加 ' + cnt.new + '人'], ['update', '更新 ' + cnt.update + '人'], ['same', '変更なし ' + cnt.same + '人']].forEach(([k, t]) => {
+      const s = document.createElement('span'); s.className = k; s.textContent = t; $('count').appendChild(s);
+    });
+    const noGk = plan.filter((p) => !p.gakuseki).length;
+    if (noGk) { const s = document.createElement('span'); s.className = 'bad'; s.textContent = '学籍番号なし ' + noGk + '人'; $('count').appendChild(s); }
+    $('save').disabled = !(cnt.new + cnt.update);
+  }
+
+  $('check').onclick = () => {
+    parsed = []; bad = [];
+    $('paste').value.split('\n').forEach((l) => {
+      const r = parseLine(l);
+      if (!r || r.header) return;
+      if (r.bad) bad.push(r.bad); else parsed.push(r);
+    });
+    if (!parsed.length) { alert('生徒の行が見つかりませんでした。名簿の表をコピーして貼り付けてください。'); return; }
+    $('check').disabled = true;
+    run('previewRoster', parsed).then(show).catch((e) => alert('エラー：' + (e && e.message || e))).finally(() => { $('check').disabled = false; });
+  };
+  $('paste').addEventListener('input', () => { $('save').disabled = true; });
+
+  $('save').onclick = () => {
+    $('save').disabled = true;
+    run('importRoster', parsed).then((r) => {
+      $('done').style.display = 'block';
+      $('done').innerHTML = '';
+      const p = document.createElement('div');
+      p.textContent = '✓ 名簿に登録しました（追加 ' + r.added + '人・更新 ' + r.updated + '人）。生徒IDとクラス・番号は自動で入りました。';
+      const next = document.createElement('button');
+      next.className = 'primary'; next.style.marginTop = '8px';
+      next.textContent = '次へ：バーコードを印刷する';
+      next.onclick = () => run('openBarcodePrint');
+      $('done').append(p, next);
+    }).catch((e) => { alert('エラー：' + (e && e.message || e)); $('save').disabled = false; });
+  };
+  $('close').onclick = () => google.script.host.close();
+  $('paste').focus();
+</script>
+</body>
+</html>

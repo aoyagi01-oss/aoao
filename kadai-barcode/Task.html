@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; padding: 10px; font-size: 13px; color: #202124; }
+  a.back { color: #1a73e8; text-decoration: none; font-size: 12px; cursor: pointer; }
+  label.f { display: block; margin: 12px 0 4px; font-weight: bold; }
+  label.f small { font-weight: normal; color: #5f6368; }
+  input[type=text], input[type=date] { width: 100%; box-sizing: border-box; padding: 7px; font-size: 14px; border: 1px solid #dadce0; border-radius: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+  .chip { padding: 4px 10px; border: 1px solid #dadce0; border-radius: 14px; background: #fff; font-size: 12px; cursor: pointer; user-select: none; }
+  .chip.on { background: #e8f0fe; border-color: #1a73e8; color: #1967d2; font-weight: bold; }
+  .go { display: block; width: 100%; padding: 12px; margin-top: 16px; border: none; border-radius: 10px; background: #1a73e8; color: #fff; font-size: 15px; font-weight: bold; cursor: pointer; }
+  .sub { display: block; width: 100%; padding: 8px; margin-top: 6px; border: 1px solid #dadce0; border-radius: 10px; background: #fff; font-size: 13px; cursor: pointer; }
+  button:disabled { opacity: .5; }
+  #msg { margin-top: 10px; padding: 8px; border-radius: 8px; display: none; }
+  #msg.ok { display: block; background: #e6f4ea; color: #137333; }
+  #msg.err { display: block; background: #fce8e6; color: #c5221f; }
+  .hint { color: #5f6368; font-size: 11px; margin-top: 3px; }
+</style>
+</head>
+<body>
+  <a class="back" id="back">← ホームへ</a>
+
+  <label class="f">教科 <small>（空欄でもOK）</small></label>
+  <input type="text" id="subject" list="subjects" placeholder="例：数学">
+  <datalist id="subjects"></datalist>
+  <div class="chips" id="subjectChips"></div>
+
+  <label class="f">課題名 <small>（空欄でもOK）</small></label>
+  <input type="text" id="name" placeholder="例：ワーク p.20〜25">
+
+  <label class="f">提出するクラス</label>
+  <div class="chips" id="classes"></div>
+  <div class="hint">何も選ばなければ全員が対象です</div>
+
+  <label class="f">締切日</label>
+  <input type="date" id="due">
+  <div class="chips" id="dueChips"></div>
+
+  <label class="f">出した日 <small>（ふつうは今日のまま）</small></label>
+  <input type="date" id="given">
+
+  <button class="go" id="goScan">登録して、読み取りへ</button>
+  <button class="sub" id="goSave">登録だけする（続けて別の課題も登録）</button>
+  <div id="msg"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const run = (name, ...args) => new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[name](...args));
+  let today = '';
+
+  function addDays(key, n) {
+    const [y, m, d] = key.split('-').map(Number);
+    const dt = new Date(y, m - 1, d + n);
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+  }
+
+  function chip(text, onClick) {
+    const c = document.createElement('span');
+    c.className = 'chip';
+    c.textContent = text;
+    c.onclick = () => onClick(c);
+    return c;
+  }
+
+  function init(d) {
+    today = d.today;
+    $('given').value = today;
+    d.subjects.forEach((s) => $('subjects').appendChild(new Option(s, s)));
+    $('subject').value = d.lastSubject;
+    d.subjects.slice(0, 8).forEach((s) => $('subjectChips').appendChild(chip(s, () => { $('subject').value = s; })));
+
+    const last = d.lastClasses ? d.lastClasses.split(',') : [];
+    if (!d.classes.length) $('classes').innerHTML = '<span class="hint">名簿にまだクラスがありません（全員が対象になります）</span>';
+    d.classes.forEach((c) => {
+      const el = chip(c, (x) => x.classList.toggle('on'));
+      el.dataset.cls = c;
+      if (last.includes(c)) el.classList.add('on');
+      $('classes').appendChild(el);
+    });
+
+    const due = [['今日', 0], ['明日', 1], ['あさって', 2], ['3日後', 3], ['1週間後', 7], ['2週間後', 14], ['なし', null]];
+    due.forEach(([t, n]) => $('dueChips').appendChild(chip(t, (x) => {
+      $('due').value = n === null ? '' : addDays(today, n);
+      document.querySelectorAll('#dueChips .chip').forEach((c) => c.classList.remove('on'));
+      x.classList.add('on');
+    })));
+    $('subject').focus();
+  }
+
+  function collect() {
+    return {
+      subject: $('subject').value,
+      name: $('name').value,
+      classes: [...document.querySelectorAll('#classes .chip.on')].map((c) => c.dataset.cls),
+      due: $('due').value,
+      given: $('given').value,
+    };
+  }
+
+  function save(thenScan) {
+    const btns = [$('goScan'), $('goSave')];
+    btns.forEach((b) => { b.disabled = true; });
+    run('addTask', collect()).then((r) => {
+      if (thenScan) return run('openScanner');
+      $('msg').className = 'ok';
+      $('msg').textContent = '✓ 登録しました：' + r.label;
+      $('name').value = '';
+      $('name').focus();
+    }).catch((e) => {
+      $('msg').className = 'err';
+      $('msg').textContent = 'エラー：' + (e && e.message || e);
+    }).finally(() => btns.forEach((b) => { b.disabled = false; }));
+  }
+
+  $('goScan').onclick = () => save(true);
+  $('goSave').onclick = () => save(false);
+  $('back').onclick = () => run('openHome');
+  run('getTaskFormData').then(init).catch((e) => { $('msg').className = 'err'; $('msg').textContent = 'エラー：' + (e && e.message || e); });
+</script>
+</body>
+</html>

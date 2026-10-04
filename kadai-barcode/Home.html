@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; padding: 10px; font-size: 13px; color: #202124; background: #fff; }
+  h2 { font-size: 13px; color: #5f6368; margin: 14px 0 6px; font-weight: bold; }
+  .big { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; padding: 12px; margin: 0 0 8px; border: none; border-radius: 10px; background: #1a73e8; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; text-align: left; }
+  .big .ic { font-size: 24px; }
+  .big small { display: block; font-size: 11px; font-weight: normal; opacity: .9; }
+  .big.green { background: #188038; }
+  .task { border: 1px solid #dadce0; border-radius: 8px; padding: 8px; margin-bottom: 6px; }
+  .task .t { font-weight: bold; font-size: 13px; }
+  .task .row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .task .bar { flex: 1; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; }
+  .task .bar span { display: block; height: 100%; background: #34a853; }
+  .task .n { font-size: 11px; color: #5f6368; white-space: nowrap; }
+  .task button { font-size: 12px; padding: 4px 10px; border-radius: 14px; border: 1px solid #1a73e8; background: #1a73e8; color: #fff; cursor: pointer; }
+  .over { color: #c5221f; }
+  .steps { list-style: none; padding: 0; margin: 0; }
+  .steps li { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid #dadce0; border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
+  .steps li:hover { background: #f1f3f4; }
+  .steps .ck { width: 22px; height: 22px; border-radius: 50%; background: #e8eaed; color: #5f6368; display: flex; align-items: center; justify-content: center; font-weight: bold; flex: 0 0 22px; }
+  .steps .done .ck { background: #188038; color: #fff; }
+  .steps .txt { flex: 1; }
+  .steps .txt small { display: block; color: #5f6368; font-size: 11px; }
+  .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tools button { padding: 10px 6px; border: 1px solid #dadce0; border-radius: 8px; background: #fff; cursor: pointer; font-size: 12px; }
+  .tools button:hover { background: #f1f3f4; }
+  .tools .ic { display: block; font-size: 20px; }
+  .stat { display: flex; gap: 6px; }
+  .stat div { flex: 1; background: #f1f3f4; border-radius: 8px; padding: 6px; text-align: center; font-size: 11px; color: #5f6368; }
+  .stat b { display: block; font-size: 18px; color: #202124; }
+  .warn { background: #fef7e0; color: #b06000; border-radius: 8px; padding: 8px; margin: 8px 0; font-size: 12px; white-space: pre-line; }
+  details { margin-top: 12px; border-top: 1px solid #eee; padding-top: 8px; }
+  summary { cursor: pointer; color: #5f6368; font-weight: bold; }
+  label.f { display: block; margin: 8px 0 2px; font-size: 12px; color: #5f6368; }
+  select, input[type=text] { width: 100%; box-sizing: border-box; padding: 5px; font-size: 13px; }
+  .save { margin-top: 8px; padding: 6px 12px; }
+  #loading { color: #5f6368; padding: 20px 0; text-align: center; }
+  .empty { color: #5f6368; font-size: 12px; padding: 6px 0; }
+</style>
+</head>
+<body>
+<div id="loading">読み込み中…</div>
+<div id="main" style="display:none">
+
+  <!-- 毎日使うところ：いちばん上 -->
+  <button class="big" id="bScan"><span class="ic">📷</span><span>読み取る<small>提出物のバーコードを読む</small></span></button>
+  <button class="big green" id="bTask"><span class="ic">➕</span><span>課題を登録する<small>登録したらそのまま読み取りへ</small></span></button>
+
+  <h2>最近の課題</h2>
+  <div id="recent"></div>
+
+  <h2>見る・印刷する</h2>
+  <div class="tools">
+    <button id="bStatus"><span class="ic">📒</span>提出状況<br>（業務手帳）</button>
+    <button id="bList"><span class="ic">📝</span>未提出者・<br>提出のお願い</button>
+    <button id="bPrint"><span class="ic">🏷</span>バーコード<br>印刷</button>
+    <button id="bRoster"><span class="ic">👥</span>名簿の<br>貼り付け</button>
+  </div>
+
+  <div class="stat" style="margin-top:10px">
+    <div>生徒<b id="sStu">-</b></div>
+    <div>課題<b id="sTask">-</b></div>
+    <div>今日の提出<b id="sToday">-</b></div>
+  </div>
+  <div class="warn" id="warn" style="display:none"></div>
+
+  <!-- 最初の準備（終わったら折りたたむ） -->
+  <details id="setupBox">
+    <summary>はじめの準備 <span id="setupState"></span></summary>
+    <ul class="steps" style="margin-top:8px">
+      <li id="st1"><span class="ck">1</span><span class="txt">名簿を貼り付ける<small>Excel・校務システムの表をコピーして貼るだけ</small></span></li>
+      <li id="st2"><span class="ck">2</span><span class="txt">バーコードを印刷する<small>A4で1回切ると1人分の短冊。生徒に配る</small></span></li>
+      <li id="st3"><span class="ck">3</span><span class="txt">課題を登録する<small>教科・課題名は空欄でもOK</small></span></li>
+      <li id="st4"><span class="ck">4</span><span class="txt">読み取る<small>順番ばらばらでOK。ピッで提出</small></span></li>
+    </ul>
+  </details>
+
+  <details>
+    <summary>表示の設定</summary>
+    <label class="f">提出状況に出す教科（空欄＝すべて）</label>
+    <input type="text" id="vSubject" list="subjects" placeholder="例：数学">
+    <datalist id="subjects"></datalist>
+    <label class="f">提出状況に出すクラス（空欄＝すべて）</label>
+    <input type="text" id="vClass" placeholder="例：1-1,1-2">
+    <div class="empty" id="classHint"></div>
+    <label class="f">業務手帳のマスに書くもの</label>
+    <select id="vMark"><option value="日付">提出した日付（10/4）</option><option value="○">○（締切後は「遅」）</option></select>
+    <button class="save" id="bSave">保存して表を作り直す</button>
+  </details>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const run = (name, ...args) => new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[name](...args));
+  const busy = (btn, p) => { if (btn) btn.disabled = true; return p.catch((e) => alert('エラー：' + (e && e.message || e))).finally(() => { if (btn) btn.disabled = false; }); };
+
+  function render(d) {
+    $('loading').style.display = 'none';
+    $('main').style.display = '';
+    $('sStu').textContent = d.students;
+    $('sTask').textContent = d.tasks;
+    $('sToday').textContent = d.todayCount;
+
+    const warns = [];
+    if (!d.students) warns.push('まだ名簿がありません。下の「はじめの準備」の 1 から始めてください。');
+    if (d.noGakuseki) warns.push('学籍番号が空欄の生徒が ' + d.noGakuseki + '人います（バーコードに番号が入りません）。');
+    $('warn').style.display = warns.length ? '' : 'none';
+    $('warn').textContent = warns.join('\n');
+
+    const done = [d.students > 0, d.printed, d.tasks > 0, d.logs > 0];
+    done.forEach((v, i) => { $('st' + (i + 1)).className = v ? 'done' : ''; $('st' + (i + 1)).querySelector('.ck').textContent = v ? '✓' : i + 1; });
+    const n = done.filter(Boolean).length;
+    $('setupState').textContent = n === 4 ? '（完了）' : '（' + n + '/4）';
+    $('setupBox').open = n < 4;
+
+    const box = $('recent');
+    box.innerHTML = '';
+    if (!d.recent.length) box.innerHTML = '<div class="empty">まだ課題がありません。「課題を登録する」から始めましょう。</div>';
+    d.recent.forEach((t) => {
+      const div = document.createElement('div');
+      div.className = 'task';
+      const title = document.createElement('div');
+      title.className = 't';
+      title.textContent = t.label;
+      const row = document.createElement('div');
+      row.className = 'row';
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.innerHTML = '<span style="width:' + (t.target ? Math.round(t.submitted / t.target * 100) : 0) + '%"></span>';
+      const num = document.createElement('span');
+      num.className = 'n' + (t.overdue && t.missing ? ' over' : '');
+      num.textContent = t.submitted + '/' + t.target + '人' + (t.missing ? '（未' + t.missing + '）' : ' ✓');
+      const btn = document.createElement('button');
+      btn.textContent = '📷 読む';
+      btn.onclick = () => busy(btn, run('startScanFor', t.id));
+      row.append(bar, num, btn);
+      div.append(title, row);
+      box.appendChild(div);
+    });
+
+    $('subjects').innerHTML = '';
+    d.subjects.forEach((s) => $('subjects').appendChild(new Option(s, s)));
+    $('vSubject').value = d.view.subject;
+    $('vClass').value = d.view.cls;
+    $('vMark').value = d.view.mark;
+    $('classHint').textContent = d.classes.length ? '名簿のクラス：' + d.classes.join('、') : '';
+  }
+
+  const load = () => run('getHomeData').then(render).catch((e) => { $('loading').textContent = 'エラー：' + (e && e.message || e); });
+
+  $('bScan').onclick = () => busy($('bScan'), run('openScanner'));
+  $('bTask').onclick = () => busy($('bTask'), run('openTaskForm'));
+  $('bStatus').onclick = () => busy($('bStatus'), run('showStatusSheet'));
+  $('bList').onclick = () => busy($('bList'), run('openListDialog'));
+  $('bPrint').onclick = () => busy($('bPrint'), run('openBarcodePrint').then(load));
+  $('bRoster').onclick = () => busy($('bRoster'), run('openRosterDialog'));
+  $('st1').onclick = () => $('bRoster').click();
+  $('st2').onclick = () => $('bPrint').click();
+  $('st3').onclick = () => $('bTask').click();
+  $('st4').onclick = () => $('bScan').click();
+  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value }).then(render));
+
+  // 名簿の貼り付けなど、ダイアログを閉じて戻ってきたときに数字を新しくする
+  window.addEventListener('focus', load);
+  load();
+</script>
+</body>
+</html>

@@ -42,18 +42,238 @@ const COLOR = { header: '#cfe2f3', ok: '#d9ead3', late: '#fff2cc', overdue: '#f4
 // ───────── メニュー ─────────
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('課題バーコード')
-    .addItem('📷 読み取りを始める', 'openScanner')
-    .addItem('🔄 提出状況・集計を更新', 'refreshAll')
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('📋 課題提出')
+    .addItem('🏠 ホーム（はじめはここ）', 'openHome')
     .addSeparator()
-    .addItem('🖨 バーコードを印刷する（生徒・課題）', 'openBarcodePrint')
-    .addItem('🖨 未提出者リスト・提出のお願いを作る', 'openListDialog')
-    .addItem('🖨 バーコードをシートに作る（印刷画面が出ないとき）', 'makeBarcodeSheet')
+    .addItem('📷 読み取る', 'openScanner')
+    .addItem('➕ 課題を登録する', 'openTaskForm')
+    .addItem('📒 提出状況（業務手帳）を見る', 'showStatusSheet')
     .addSeparator()
-    .addItem('生徒IDを付ける（空欄の人だけ）', 'assignStudentIds')
-    .addItem('初期設定（シートを作る）', 'setup')
-    .addItem('お試しデータを入れる', 'insertSampleData')
+    .addSubMenu(ui.createMenu('その他')
+      .addItem('👥 名簿を貼り付ける', 'openRosterDialog')
+      .addItem('🖨 バーコードを印刷する', 'openBarcodePrint')
+      .addItem('🖨 未提出者リスト・提出のお願い', 'openListDialog')
+      .addItem('🔄 提出状況・集計を更新', 'refreshAll')
+      .addSeparator()
+      .addItem('バーコードをシートに作る（印刷画面が出ないとき）', 'makeBarcodeSheet')
+      .addItem('お試しデータを入れる', 'insertSampleData')
+      .addItem('シートを作り直す（消したシートを戻す）', 'setup')
+      .addItem('配布用のひな形にする（データを全部消す）', 'makeTemplate'))
     .addToUi();
+}
+
+// ───────── ホーム（Home.html） ─────────
+
+function openHome() {
+  setup_(false);
+  SpreadsheetApp.getUi().showSidebar(HtmlService.createHtmlOutputFromFile('Home').setTitle('課題提出バーコード'));
+}
+
+function openTaskForm() {
+  setup_(false);
+  SpreadsheetApp.getUi().showSidebar(HtmlService.createHtmlOutputFromFile('Task').setTitle('課題を登録する'));
+}
+
+function openRosterDialog() {
+  setup_(false);
+  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutputFromFile('Roster').setWidth(900).setHeight(660), '名簿を貼り付ける');
+}
+
+function docProps_() {
+  return PropertiesService.getDocumentProperties();
+}
+
+function userKey_(name) {
+  return name + ':' + SpreadsheetApp.getActive().getId();
+}
+
+function getHomeData() {
+  setup_(false);
+  const students = getStudents_().filter(function (s) { return !s.excluded; });
+  const tasks = getTasks_();
+  const logs = readLog_();
+  const today = todayKey_();
+  const settings = getSettings_();
+  const recent = tasks.slice(-6).reverse().map(function (t) {
+    const st = taskStats_(t, students, logs);
+    return { id: t.id, label: taskLabel_(t), submitted: st.submitted, target: st.target, overdue: st.overdue, missing: st.missing.length };
+  });
+  return {
+    students: students.length,
+    noGakuseki: students.filter(function (s) { return !s.gakuseki; }).length,
+    classes: classList_(students),
+    tasks: tasks.length,
+    logs: logs.length,
+    todayCount: logs.filter(function (r) { return r.time instanceof Date && dateKey_(r.time) === today; }).length,
+    printed: docProps_().getProperty('barcodePrinted') === '1',
+    recent: recent,
+    subjects: subjectList_(tasks),
+    view: { subject: String(settings[SETTING.SUBJECT] || ''), cls: String(settings[SETTING.CLASS] || ''), mark: /○|〇|丸/.test(String(settings[SETTING.MARK] || '')) ? '○' : '日付' },
+  };
+}
+
+function subjectList_(tasks) {
+  const seen = {};
+  tasks.forEach(function (t) { if (t.subject) seen[t.subject] = true; });
+  return Object.keys(seen);
+}
+
+// ホームの「表示の設定」を「設定」シートに書きこむ
+function saveViewSettings(v) {
+  const sh = sheet_(SHEET.SETTINGS);
+  const vals = sh.getRange(1, 1, sh.getLastRow(), 1).getValues();
+  function put(key, value) {
+    for (let i = 0; i < vals.length; i++) if (String(vals[i][0]).trim() === key) { sh.getRange(i + 1, 2).setValue(value); return; }
+    sh.appendRow([key, value]);
+  }
+  put(SETTING.SUBJECT, v.subject || '');
+  put(SETTING.CLASS, v.cls || '');
+  put(SETTING.MARK, v.mark === '○' ? '○' : '日付');
+  refreshAll();
+  return getHomeData();
+}
+
+function showStatusSheet() {
+  refreshAll();
+  const ss = SpreadsheetApp.getActive();
+  ss.setActiveSheet(ss.getSheetByName(SHEET.STATUS));
+}
+
+function startScanFor(taskId) {
+  PropertiesService.getUserProperties().setProperty(userKey_('lastTask'), norm_(taskId));
+  openScanner();
+}
+
+// ───────── 課題の登録（Task.html） ─────────
+
+function getTaskFormData() {
+  setup_(false);
+  const students = getStudents_().filter(function (s) { return !s.excluded; });
+  const props = PropertiesService.getUserProperties();
+  return {
+    classes: classList_(students),
+    subjects: subjectList_(getTasks_()),
+    lastSubject: props.getProperty(userKey_('lastSubject')) || '',
+    lastClasses: props.getProperty(userKey_('lastClasses')) || '',
+    today: todayKey_(),
+  };
+}
+
+function toDate_(key) {
+  const m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : '';
+}
+
+// t: { subject, name, classes: [...], given: 'yyyy-MM-dd', due: 'yyyy-MM-dd', memo }
+function addTask(t) {
+  const sh = sheet_(SHEET.TASKS);
+  const classes = (t.classes || []).map(normClass_).filter(String);
+  sh.appendRow(['', String(t.subject || '').trim(), String(t.name || '').trim(), classes.join(','), toDate_(t.given), toDate_(t.due), String(t.memo || '')]);
+  const row = sh.getLastRow();
+  sh.getRange(row, 5, 1, 2).setNumberFormat('yyyy/mm/dd');
+  const tasks = getTasks_();
+  const task = tasks.filter(function (k) { return k.row === row; })[0];
+  const props = PropertiesService.getUserProperties();
+  props.setProperty(userKey_('lastSubject'), String(t.subject || '').trim());
+  props.setProperty(userKey_('lastClasses'), classes.join(','));
+  props.setProperty(userKey_('lastTask'), task.id);
+  return { id: task.id, label: taskLabel_(task) };
+}
+
+// ───────── 名簿の貼り付け（Roster.html） ─────────
+// Excel や校務システムからコピーした表を、そのまま貼れるようにする。
+// rows: [{ gakuseki, name, kana, line }]（ページ側で1行ずつ読み取ったもの）
+
+function rosterPlan_(rows) {
+  const existing = getStudents_();
+  const nameKey = function (v) { return String(v || '').normalize('NFKC').replace(/\s+/g, ''); };
+  const pastedNames = {};
+  rows.forEach(function (r) { pastedNames[nameKey(r.name)] = (pastedNames[nameKey(r.name)] || 0) + 1; });
+  const byName = {};
+  existing.forEach(function (s) { (byName[nameKey(s.name)] = byName[nameKey(s.name)] || []).push(s); });
+  const used = {};
+  return rows.map(function (r) {
+    const gk = norm_(r.gakuseki);
+    const nk = nameKey(r.name);
+    let match = null, kind = 'new';
+    // 1. 同じ名前の生徒が1人だけいれば、その人（進級して学籍番号が変わった場合）
+    if (nk && byName[nk] && byName[nk].length === 1 && pastedNames[nk] === 1 && !used[byName[nk][0].row]) match = byName[nk][0];
+    // 2. 同じ学籍番号の生徒（名前の字を直した場合）。ただしその人の名前が貼り付けた中にあるときは別人
+    if (!match && gk) {
+      const hit = existing.filter(function (s) { return s.gakuseki === gk && !used[s.row] && !pastedNames[nameKey(s.name)]; })[0];
+      if (hit) match = hit;
+    }
+    if (match) {
+      used[match.row] = true;
+      const same = match.gakuseki === gk && nameKey(match.name) === nk && !match.excluded;
+      kind = same ? 'same' : 'update';
+    }
+    return {
+      gakuseki: gk, name: String(r.name || '').trim(), kana: String(r.kana || '').trim(), kind: kind,
+      before: match ? (match.gakuseki || '') + ' ' + match.name : '', row: match ? match.row : 0,
+    };
+  });
+}
+
+function previewRoster(rows) {
+  return rosterPlan_(rows);
+}
+
+function importRoster(rows) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    const plan = rosterPlan_(rows);
+    const sh = sheet_(SHEET.STUDENTS);
+    let added = 0, updated = 0;
+    plan.forEach(function (p) {
+      if (p.kind !== 'update') return;
+      // 学籍番号が変わったら、クラス・番号は空にして学籍番号から入れ直す
+      const cur = sh.getRange(p.row, 2, 1, 6).getValues()[0];
+      const gkChanged = norm_(cur[0]) !== p.gakuseki;
+      sh.getRange(p.row, 2).setNumberFormat('@').setValue(p.gakuseki);
+      if (gkChanged) sh.getRange(p.row, 3, 1, 2).setValues([['', '']]);
+      sh.getRange(p.row, 5).setValue(p.name);
+      if (p.kana) sh.getRange(p.row, 6).setValue(p.kana);
+      sh.getRange(p.row, 7).setValue(false);
+      updated++;
+    });
+    const fresh = plan.filter(function (p) { return p.kind === 'new'; }).map(function (p) { return ['', p.gakuseki, '', '', p.name, p.kana, false]; });
+    if (fresh.length) {
+      const start = sh.getLastRow() + 1;
+      ensureSize_(sh, start + fresh.length, STUDENT_HEADERS.length);
+      sh.getRange(start, 1, fresh.length, 2).setNumberFormat('@');
+      sh.getRange(start, 1, fresh.length, STUDENT_HEADERS.length).setValues(fresh);
+      sh.getRange(start, 7, fresh.length, 1).insertCheckboxes();
+      added = fresh.length;
+    }
+    SpreadsheetApp.flush();
+    getStudents_(); // 生徒ID・クラス・番号をここで付ける
+    return { added: added, updated: updated, same: plan.length - added - updated };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ───────── 配布用のひな形 ─────────
+
+function makeTemplate() {
+  const ui = SpreadsheetApp.getUi();
+  const ok = ui.alert('配布用のひな形にします',
+    '生徒名簿・課題一覧・提出記録の中身をすべて消します（シートと設定は残ります）。\n元に戻せないので、必ずこのスプレッドシートのコピーで行ってください。\n\n続けますか？', ui.ButtonSet.OK_CANCEL);
+  if (ok !== ui.Button.OK) return;
+  const ss = SpreadsheetApp.getActive();
+  [SHEET.STUDENTS, SHEET.TASKS, SHEET.LOG].forEach(function (n) {
+    const sh = ss.getSheetByName(n);
+    if (sh && sh.getMaxRows() > 2) sh.deleteRows(3, sh.getMaxRows() - 2);
+    if (sh) sh.getRange(2, 1, 1, sh.getMaxColumns()).clearContent();
+  });
+  [SHEET.STATUS, SHEET.SUMMARY].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) sh.clear(); });
+  [SHEET.PRINT_MISSING, SHEET.PRINT_NOTICE, SHEET.PRINT_BARCODE].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) ss.deleteSheet(sh); });
+  docProps_().deleteProperty('barcodePrinted');
+  ss.setActiveSheet(ss.getSheetByName(SHEET.HOWTO));
+  ui.alert('ひな形になりました。\n\n共有リンクの「/edit…」を「/copy」に変えて配ると、開いた先生が自分用のコピーを作れます。');
 }
 
 // 課題一覧に課題名を書いたら、すぐに課題IDを付ける
@@ -74,6 +294,7 @@ function openScanner() {
 
 function openBarcodePrint() {
   setup_(false);
+  docProps_().setProperty('barcodePrinted', '1');
   const students = sortStudents_(getStudents_().filter(function (s) { return !s.excluded && s.id; }));
   const tasks = getTasks_().reverse();
   const t = HtmlService.createTemplateFromFile('Print');
@@ -123,7 +344,11 @@ function setup_(showMessage) {
   }
 
   const howto = make(SHEET.HOWTO);
-  if (howto.sh.getLastRow() === 0) writeHowTo_(howto.sh);
+  if (howto.sh.getLastRow() === 0) {
+    writeHowTo_(howto.sh);
+    ss.setActiveSheet(howto.sh);
+    ss.moveActiveSheet(1);
+  }
 
   const settings = make(SHEET.SETTINGS, ['項目', '値'], [420, 460]);
   if (settings.fresh) {
@@ -172,46 +397,37 @@ function setup_(showMessage) {
   });
 
   if (showMessage) {
-    ss.setActiveSheet(ss.getSheetByName(SHEET.STUDENTS));
-    SpreadsheetApp.getUi().alert(created
-      ? '準備ができました。\n\n1. 「生徒名簿」に学籍番号・氏名を貼り付ける（生徒IDは空欄でOK。自動で付きます。クラス・番号も学籍番号から自動で入ります）\n2. 「課題一覧」に課題を書く\n3. メニュー「課題バーコード」→「バーコードを印刷する」'
-      : 'シートはすでにそろっています。');
+    ss.setActiveSheet(ss.getSheetByName(SHEET.HOWTO));
+    SpreadsheetApp.getUi().alert(created ? 'シートを作りました。メニュー「📋 課題提出」→「🏠 ホーム」から始めてください。' : 'シートはすでにそろっています。');
   }
 }
 
 function writeHowTo_(sh) {
   const lines = [
-    ['課題提出バーコード管理　使い方'],
+    ['課題提出バーコード管理'],
+    ['👉 上のメニュー「📋 課題提出」→「🏠 ホーム」を押してください。右側に出る「ホーム」から全部の操作ができます。'],
+    ['　（はじめて押したときは Google の確認画面が出ます。自分のアカウントを選び「許可」を押したあと、もう一度メニューを押してください。「このアプリは確認されていません」と出たら「詳細」→「移動」→「許可」）'],
     [''],
-    ['■ 最初に1回だけ'],
-    ['1. 「生徒名簿」に 学籍番号（例：1101）と氏名 を貼り付ける。クラス・番号は学籍番号から自動で入る。生徒IDも空欄でよい（自動で6けたの番号が付く）。'],
-    ['2. メニュー「課題バーコード」→「バーコードを印刷する」で生徒のバーコードを印刷し、ノートやファイルにはる（先生の手元用の名簿型もある）。A4に1人1本の短冊（左に学籍番号と氏名、右にバーコード3つ）が12本並ぶ。横の点線で裁断機を1回下ろすと1人分の短冊になり、生徒が右から1つずつ切ってはる（シール用紙OK）。'],
-    ['   バーコードの中身は生徒IDだけなので、課題・教材・教科が変わっても、学年が上がって学籍番号が変わっても同じバーコードを使える。'],
-    ['   進級したら、生徒名簿の学籍番号を新しい番号に書きかえ、クラス・番号の列を消す（自動で入り直す）。生徒IDの列は絶対に変えない。'],
+    ['■ はじめの準備（1回だけ）'],
+    ['1. 名簿を貼り付ける：Excel や校務システムの名簿をコピーして、ホームの「名簿の貼り付け」に貼るだけ。学籍番号・氏名を自動で見つけます。'],
+    ['2. バーコードを印刷する：A4 に1人1本の短冊（左に学籍番号と名前、右にバーコード3つ）。横の点線で裁断機を1回下ろすと1人分。生徒は右から1つずつ切って、ノートなどにはる（シール用紙OK）。'],
     [''],
-    ['■ 課題を出すたび'],
-    ['1. 「課題一覧」に 教科・課題名・対象クラス・締切日 を書く（課題IDは自動で付く）。どれも空欄でよい（締切日だけでも1つの課題になる）。対象クラスは「1-1,1-2」のように生徒名簿のクラスと同じ書き方で。空欄なら全員。'],
+    ['■ ふだん'],
+    ['1. 課題を登録する：ホームの「➕ 課題を登録する」。教科・課題名は空欄でもOK。締切は「明日」「1週間後」などのボタンで。'],
+    ['2. 読み取る：「登録して、読み取りへ」を押すか、ホームの課題の「📷 読む」。読み取り欄をクリックしてからピッ・ピッ。提出物の順番はばらばらでOK。'],
+    ['3. 見る・配る：「📒 提出状況（業務手帳）」で一覧。「📝 未提出者・提出のお願い」で印刷。'],
     [''],
-    ['■ 回収するとき'],
-    ['1. メニュー「課題バーコード」→「読み取りを始める」。右に出る画面で課題を選ぶ（課題バーコードを読んでも切りかわる）。'],
-    ['2. 読み取り欄をクリックしてから、バーコードリーダーで次々に読む。ピッ＝提出、ピピッ＝締切後の提出、ブー＝エラー（未登録・2回目など）。'],
-    ['   提出物はクラスや番号の順番がばらばらでもよい。読んだ生徒の提出として記録され、「提出状況」シート（業務手帳の形）にその場で日付が入る。'],
-    ['3. 画面の「未提出」に、まだ出していない生徒が出る。間違えたら「直前の1件を取り消す」か「取り消しモード」。'],
-    ['   ※ 読み取り欄からカーソルが外れると、シートのセルに文字が入ってしまうので注意（画面が赤くなって知らせる）。'],
+    ['■ 進級したら'],
+    ['新しい名簿をそのまま「名簿の貼り付け」に貼るだけ。同じ名前の生徒は学籍番号が新しくなり、バーコードは刷り直さずに使えます。'],
     [''],
-    ['■ 提出を促す・集計'],
-    ['・「未提出者リスト・提出のお願いを作る」：課題とクラスを選ぶと、未提出者の一覧、または生徒ごとに切り取って渡す「提出のお願い」ができ、PDFでまとめて印刷できる。'],
-    ['・「提出状況」シート：業務手帳の形。左に学籍番号・氏名、右に課題（上に教科・課題名・締切日）が並び、提出した日付（設定で○にもできる）が入る。黄色＝締切後の提出、赤＝締切を過ぎて未提出、－＝対象外。'],
-    ['・「提出状況・集計を更新」：課題を追加・変更したときや、提出記録を手で直したときに押す。「提出状況」「集計」（課題別・クラス別・教科別の提出率）、「課題一覧」の提出率が新しくなる。'],
-    ['・「設定」で、表に出す教科・クラスをしぼれる（例：自分の教科・担当クラスだけ）。'],
-    [''],
-    ['■ ほかの先生に配るとき'],
-    ['・このスプレッドシートを「ファイル → コピーを作成」してもらう。プログラムも一緒にコピーされる。'],
-    ['・コピーした人は、生徒名簿・課題一覧・提出記録の中身を消して使う（最初の実行時に Google の許可画面が出たら、自分のアカウントで許可する）。'],
+    ['■ シートについて（ふつうはさわらなくてOK）'],
+    ['生徒名簿・課題一覧・提出記録：データのもと（手で直してもよい）　提出状況：業務手帳の形の一覧（自動）　集計：提出率（自動）　設定：表示の設定'],
+    ['生徒名簿の「生徒ID」はバーコードの中身です。変えないでください。'],
   ];
   sh.getRange(1, 1, lines.length, 1).setValues(lines).setWrap(true).setVerticalAlignment('top');
   sh.setColumnWidth(1, 900);
-  sh.getRange(1, 1).setFontSize(16).setFontWeight('bold');
+  sh.getRange(1, 1).setFontSize(18).setFontWeight('bold');
+  sh.getRange(2, 1).setFontSize(14).setFontWeight('bold').setBackground('#e8f0fe').setFontColor('#1967d2');
   lines.forEach(function (l, i) { if (/^■/.test(l[0])) sh.getRange(i + 1, 1).setFontWeight('bold').setBackground('#eef3fb'); });
 }
 
@@ -241,7 +457,7 @@ function insertSampleData() {
   getStudents_();
   getTasks_();
   ss.setActiveSheet(st);
-  ui.alert('お試しデータを入れました。メニュー「読み取りを始める」で、画面の読み取り欄に生徒ID（例：100001）か学籍番号（例：1101）を打って Enter を押すと試せます。');
+  ui.alert('お試しデータを入れました。ホームの課題の「📷 読む」を押し、読み取り欄に学籍番号（例：1101）を打って Enter を押すと試せます。');
 }
 
 // ───────── データの読み書き ─────────
@@ -454,7 +670,7 @@ function taskStats_(task, students, logs) {
 function getScanInit() {
   setup_(false);
   const tasks = getTasks_().reverse(); // 新しい課題を上に
-  const last = PropertiesService.getUserProperties().getProperty('lastTask:' + SpreadsheetApp.getActive().getId());
+  const last = PropertiesService.getUserProperties().getProperty(userKey_('lastTask'));
   const lastTask = tasks.some(function (t) { return t.id === last; }) ? last : (tasks[0] ? tasks[0].id : '');
   return {
     tasks: tasks.map(function (t) { return { id: t.id, label: t.id + ' ' + taskLabel_(t) }; }),
@@ -466,7 +682,7 @@ function getScanInit() {
 function getTaskStats(taskId) {
   const task = findTask_(getTasks_(), taskId);
   if (!task) return null;
-  PropertiesService.getUserProperties().setProperty('lastTask:' + SpreadsheetApp.getActive().getId(), task.id);
+  PropertiesService.getUserProperties().setProperty(userKey_('lastTask'), task.id);
   return taskStats_(task, getStudents_(), readLog_());
 }
 
