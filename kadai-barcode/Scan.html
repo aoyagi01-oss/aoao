@@ -38,6 +38,7 @@
   #history { list-style: none; padding: 0; margin: 4px 0 0; font-size: 12px; max-height: 180px; overflow: auto; }
   #history li { padding: 2px 4px; border-bottom: 1px solid #eee; }
   .small { color: #666; font-size: 11px; }
+  .warnline { margin-top: 6px; padding: 8px; border-radius: 6px; background: #fce8e6; color: #c5221f; font-size: 12px; }
   #lateBox { display: none; margin-top: 4px; font-size: 11px; }
   #lateBox a { color: #1a73e8; cursor: pointer; text-decoration: underline; }
   .nav { display: flex; justify-content: space-between; margin-bottom: 8px; }
@@ -162,6 +163,7 @@
       beep(r.kind);
       const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       li.textContent = time + ' ' + r.message;
+      if (r.warn) { const w = document.createElement('div'); w.className = 'warnline'; w.textContent = '⚠ ' + r.warn; $('msg').after(w); setTimeout(() => w.remove(), 20000); }
       li.className = r.kind;
       if (r.kind === 'task') {
         // 読み取り画面を開いたあとに登録した課題なら、一覧に足してから選ぶ

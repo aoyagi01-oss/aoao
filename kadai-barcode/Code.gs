@@ -392,8 +392,8 @@ function excuseLate(taskId, studentId) {
   addExcuseRow_(['配慮', st.gakuseki, st.name, st.id, '', '', task.id, '遅れて提出（欠席など）：読み取り画面から', new Date()]);
   EXC_ = null;
   const logs = readLog_();
-  updateStatusRow_(st, tasks, logs);
-  return { kind: 'undone', message: '配慮しました：' + whoOf_(st) + ' → 期限内あつかい', stats: taskStats_(task, getStudents_(), logs) };
+  const warn = updateStatusRow_(st, tasks, logs);
+  return { kind: 'undone', message: '配慮しました：' + whoOf_(st) + ' → 期限内あつかい', warn: warn, stats: taskStats_(task, getStudents_(), logs) };
 }
 
 function addExcuseRow_(r) {
@@ -1091,7 +1091,7 @@ function recordScan(taskId, raw, mode) {
     lock.releaseLock();
   }
   const logsAfter = readLog_();
-  if (result.kind !== 'dup' && result.kind !== 'error') updateStatusRow_(st, tasks, logsAfter);
+  if (result.kind !== 'dup' && result.kind !== 'error') result.warn = updateStatusRow_(st, tasks, logsAfter);
   result.stats = taskStats_(task, students, logsAfter);
   result.taskId = task.id;
   return result;
@@ -1124,7 +1124,7 @@ function undoLast(taskId) {
   const st = students.filter(function (x) { return x.id === undoneId; })[0];
   if (st) {
     result.message = '取り消しました：' + whoOf_(st);
-    updateStatusRow_(st, getTasks_(), logsAfter);
+    result.warn = updateStatusRow_(st, getTasks_(), logsAfter);
   }
   result.stats = taskStats_(task, students, logsAfter);
   return result;
@@ -1294,6 +1294,7 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today) {
 }
 
 // 読み取るたびに、その生徒の行だけを書きかえる（表に課題・生徒が足りないときは全体を作り直す）
+// 失敗しても読み取りは止めず、理由を返す（読み取り画面に出す）
 function updateStatusRow_(st, allTasks, logs) {
   try {
     const ss = SpreadsheetApp.getActive();
@@ -1323,8 +1324,10 @@ function updateStatusRow_(st, allTasks, logs) {
     const r = statusRow_(st, view.tasks, subsByTask, today, view.mark);
     sh.getRange(STATUS_TOP + idx, 1, 1, r.vals.length).setValues([r.vals]).setBackgrounds([r.bgs]);
   } catch (err) {
-    console.warn('提出状況の書きかえに失敗：' + err); // 記録そのものは済んでいるので、読み取りは止めない
+    console.warn('提出状況の書きかえに失敗：' + (err && err.stack || err));
+    return '記録はできましたが、提出状況（業務手帳）の書きかえに失敗しました：' + (err && err.message || err);
   }
+  return '';
 }
 
 function writeSummarySheet_(ss, tasks, students, subsByTask, today) {
