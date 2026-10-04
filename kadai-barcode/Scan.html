@@ -141,6 +141,7 @@
   }
 
   function loadTask(id) {
+    shownSeq = ++seq; // 前の課題の読み取りの返事で上書きされないように
     showMsg('idle', '読み込み中…');
     google.script.run.withSuccessHandler((st) => {
       showStats(st);
@@ -163,11 +164,13 @@
       li.textContent = time + ' ' + r.message;
       li.className = r.kind;
       if (r.kind === 'task') {
+        // 読み取り画面を開いたあとに登録した課題なら、一覧に足してから選ぶ
+        if (![...$('task').options].some((o) => o.value === r.taskId)) $('task').insertBefore(new Option(r.label || r.taskId, r.taskId), $('task').firstChild);
         $('task').value = r.taskId;
       }
       // 遅れて出した生徒：その場で「配慮」にできる
       if (r.kind === 'late') {
-        lateFor = { taskId: $('task').value, studentId: r.studentId };
+        lateFor = { taskId: r.taskId, studentId: r.studentId };
         $('lateBox').style.display = 'block';
       } else if (my >= shownSeq) {
         $('lateBox').style.display = 'none';
@@ -175,7 +178,8 @@
       if (my >= shownSeq) {
         shownSeq = my;
         showMsg(r.kind, r.message);
-        showStats(r.stats);
+        // 返事が来るまでに課題を切りかえていたら、前の課題の数字は出さない
+        if (r.stats && r.stats.taskId === $('task').value) showStats(r.stats);
       }
     }).withFailureHandler((e) => { li.textContent = '✕ ' + code + '（エラー）'; fail(e); })
       .recordScan($('task').value, code, mode);

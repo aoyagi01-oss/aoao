@@ -189,13 +189,16 @@ function getTaskFormData() {
   };
 }
 
+// 'yyyy-MM-dd' を、スプレッドシートのタイムゾーンでその日の 0 時にする（dateKey_ と同じタイムゾーン）
 function toDate_(key) {
-  const m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(key || '')) ? Utilities.parseDate(key, tz_(), 'yyyy-MM-dd') : '';
 }
 
 // t: { subject, name, classes: [...], given: 'yyyy-MM-dd', due: 'yyyy-MM-dd', memo }
 function addTask(t) {
+  if (![t.subject, t.name, t.due, t.given, t.memo].some(function (v) { return String(v || '').trim() !== ''; }) && !(t.classes || []).length) {
+    throw new Error('教科・課題名・締切日などを、どれか1つは入れてください');
+  }
   const sh = sheet_(SHEET.TASKS);
   const classes = (t.classes || []).map(normClass_).filter(String);
   const late = latePolicy_(t.late).label;
@@ -204,6 +207,7 @@ function addTask(t) {
   sh.getRange(row, 5, 1, 2).setNumberFormat('yyyy/mm/dd');
   const tasks = getTasks_();
   const task = tasks.filter(function (k) { return k.row === row; })[0];
+  if (!task) throw new Error('課題を登録できませんでした。もう一度ためしてください');
   const props = PropertiesService.getUserProperties();
   props.setProperty(userKey_('lastSubject'), String(t.subject || '').trim());
   props.setProperty(userKey_('lastClasses'), classes.join(','));
@@ -231,13 +235,16 @@ function rosterPlan_(rows) {
     // 1. 同じ名前の生徒が1人だけいれば、その人（進級して学籍番号が変わった場合）
     if (nk && byName[nk] && byName[nk].length === 1 && pastedNames[nk] === 1 && !used[byName[nk][0].row]) match = byName[nk][0];
     // 2. 同じ学籍番号の生徒（名前の字を直した場合）。ただしその人の名前が貼り付けた中にあるときは別人
+    //    別人（前の学年の生徒が残っているところに新入生を貼った）を取りちがえないよう、名字（はじめの2文字）が同じときだけ
     if (!match && gk) {
-      const hit = existing.filter(function (s) { return s.gakuseki === gk && !used[s.row] && !pastedNames[nameKey(s.name)]; })[0];
+      const hit = existing.filter(function (s) {
+        return s.gakuseki === gk && !used[s.row] && !pastedNames[nameKey(s.name)] && nameKey(s.name).slice(0, 2) === nk.slice(0, 2);
+      })[0];
       if (hit) match = hit;
     }
     if (match) {
       used[match.row] = true;
-      const same = match.gakuseki === gk && nameKey(match.name) === nk && !match.excluded;
+      const same = (!gk || match.gakuseki === gk) && nameKey(match.name) === nk && !match.excluded && (!r.kana || match.kana === String(r.kana).trim());
       kind = same ? 'same' : 'update';
     }
     return {
@@ -262,17 +269,20 @@ function importRoster(rows) {
       if (p.kind !== 'update') return;
       // 学籍番号が変わったら、クラス・番号は空にして学籍番号から入れ直す
       const cur = sh.getRange(p.row, 2, 1, 6).getValues()[0];
-      const gkChanged = norm_(cur[0]) !== p.gakuseki;
-      sh.getRange(p.row, 2).setNumberFormat('@').setValue(p.gakuseki);
-      if (gkChanged) sh.getRange(p.row, 3, 1, 2).setValues([['', '']]);
+      // 学籍番号のない名簿を貼ったときは、今の学籍番号・クラス・番号をそのまま残す
+      const gkChanged = !!p.gakuseki && norm_(cur[0]) !== p.gakuseki;
+      if (gkChanged) {
+        sh.getRange(p.row, 2).setNumberFormat('@').setValue(p.gakuseki);
+        sh.getRange(p.row, 3, 1, 2).setValues([['', '']]);
+      }
       sh.getRange(p.row, 5).setValue(p.name);
       if (p.kana) sh.getRange(p.row, 6).setValue(p.kana);
-      sh.getRange(p.row, 7).setValue(false);
+      sh.getRange(p.row, 7).insertCheckboxes().uncheck();
       updated++;
     });
     const fresh = plan.filter(function (p) { return p.kind === 'new'; }).map(function (p) { return ['', p.gakuseki, '', '', p.name, p.kana, false]; });
     if (fresh.length) {
-      const start = sh.getLastRow() + 1;
+      const start = lastDataRow_(sh, 6) + 1;
       ensureSize_(sh, start + fresh.length, STUDENT_HEADERS.length);
       sh.getRange(start, 1, fresh.length, 2).setNumberFormat('@');
       sh.getRange(start, 1, fresh.length, STUDENT_HEADERS.length).setValues(fresh);
@@ -332,6 +342,7 @@ function addExcuses(o) {
   const type = o.type === '配慮' || o.type === '免除' ? o.type : '欠席';
   if (type !== '欠席' && !o.taskId) throw new Error('課題を選んでください');
   if (type === '欠席' && !o.from) throw new Error('休んだ日を入れてください');
+  if (type === '欠席' && o.to && o.to < o.from) { const tmp = o.from; o.from = o.to; o.to = tmp; }
   const students = getStudents_();
   const byId = {};
   students.forEach(function (s) { byId[s.id] = s; });
@@ -357,7 +368,7 @@ function addExcuses(o) {
     lock.releaseLock();
   }
   EXC_ = null;
-  rebuildStatus_();
+  refreshAll();
   return getExcuseData();
 }
 
@@ -368,7 +379,7 @@ function deleteExcuse(row, sid) {
   }
   sh.deleteRow(row);
   EXC_ = null;
-  rebuildStatus_();
+  refreshAll();
   return getExcuseData();
 }
 
@@ -392,17 +403,6 @@ function addExcuseRow_(r) {
   sh.getRange(sh.getLastRow(), 4).setNumberFormat('@').setValue(r[3]);
 }
 
-// 提出状況（業務手帳）だけを作り直す
-function rebuildStatus_() {
-  const ss = SpreadsheetApp.getActive();
-  const allTasks = getTasks_();
-  const view = statusView_(allTasks, getStudents_());
-  const logs = readLog_();
-  const subsByTask = {};
-  view.tasks.forEach(function (t) { subsByTask[t.id] = submissionsOf_(t, logs); });
-  writeStatusSheet_(ss, view.tasks, view.students, subsByTask, todayKey_());
-}
-
 function showSummarySheet() {
   refreshAll();
   const ss = SpreadsheetApp.getActive();
@@ -419,8 +419,10 @@ function makeTemplate() {
   const ss = SpreadsheetApp.getActive();
   [SHEET.STUDENTS, SHEET.TASKS, SHEET.LOG, SHEET.EXCUSE].forEach(function (n) {
     const sh = ss.getSheetByName(n);
-    if (sh && sh.getMaxRows() > 2) sh.deleteRows(3, sh.getMaxRows() - 2);
-    if (sh) sh.getRange(2, 1, 1, sh.getMaxColumns()).clearContent();
+    if (!sh || sh.getMaxRows() < 2) return;
+    const body = sh.getRange(2, 1, sh.getMaxRows() - 1, sh.getMaxColumns());
+    if (n === SHEET.STUDENTS) sh.getRange(2, 7, sh.getMaxRows() - 1, 1).removeCheckboxes();
+    body.clearContent();
   });
   [SHEET.STATUS, SHEET.SUMMARY].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) sh.clear(); });
   [SHEET.PRINT_MISSING, SHEET.PRINT_NOTICE, SHEET.PRINT_BARCODE].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) ss.deleteSheet(sh); });
@@ -521,7 +523,6 @@ function setup_(showMessage) {
   }
   if (students.fresh) {
     students.sh.getRange('A2:B').setNumberFormat('@'); // 先頭の 0 が消えないように文字として扱う
-    students.sh.getRange('G2:G').insertCheckboxes();
     students.sh.getRange('B1').setNote('4けたの学籍番号（例：1101＝1年1組1番）。クラス・番号が空欄なら、ここから自動で入ります。');
   }
 
@@ -530,8 +531,10 @@ function setup_(showMessage) {
     // 旧版の課題一覧（「締切後の扱い」の列なし）には列を差しこむ
     tasks.sh.insertColumnBefore(7);
     tasks.sh.getRange(1, 1, 1, TASK_HEADERS.length).setValues([TASK_HEADERS]);
+    tasks.sh.getRange('G2:G').clearDataValidations().setNumberFormat('@'); // となりの日付の列の決まりを引きつがない
   }
-  if (tasks.fresh || !tasks.sh.getRange('G2').getDataValidation()) {
+  const gRule = tasks.sh.getRange('G2').getDataValidation();
+  if (tasks.fresh || !gRule || gRule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) {
     tasks.sh.getRange('G2:G').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(LATE_CHOICES, true).setAllowInvalid(true).build());
   }
   if (tasks.fresh) {
@@ -544,6 +547,12 @@ function setup_(showMessage) {
   }
 
   const log = make(SHEET.LOG, LOG_HEADERS, [150, 60, 80, 200, 110, 70, 60, 50, 130, 70]);
+  if (!log.fresh && String(log.sh.getRange(1, 6).getValue()) === 'クラス') {
+    // 旧版の提出記録（学籍番号の列なし）には列を差しこむ
+    log.sh.insertColumnAfter(5);
+    log.sh.getRange(1, 1, 1, LOG_HEADERS.length).setValues([LOG_HEADERS]);
+    log.sh.getRange('F2:F').setNumberFormat('@');
+  }
   if (log.fresh) {
     log.sh.getRange('A2:A').setNumberFormat('yyyy/mm/dd hh:mm');
     log.sh.getRange('E2:F').setNumberFormat('@');
@@ -620,7 +629,11 @@ function insertSampleData() {
     ['', '1202', '', '', '小川 めい', 'おがわ めい', false],
     ['', '1203', '', '', '加藤 れん', 'かとう れん', false],
   ];
-  st.getRange(st.getLastRow() + 1, 1, sample.length, sample[0].length).setValues(sample);
+  const sStart = lastDataRow_(st, 6) + 1;
+  ensureSize_(st, sStart + sample.length, STUDENT_HEADERS.length);
+  st.getRange(sStart, 1, sample.length, 2).setNumberFormat('@');
+  st.getRange(sStart, 1, sample.length, sample[0].length).setValues(sample);
+  st.getRange(sStart, 7, sample.length, 1).insertCheckboxes();
   const now = new Date();
   function day(n) { const d = new Date(now); d.setDate(d.getDate() + n); return d; }
   const tk = ss.getSheetByName(SHEET.TASKS);
@@ -639,7 +652,7 @@ function insertSampleData() {
 
 function sheet_(name) {
   const sh = SpreadsheetApp.getActive().getSheetByName(name);
-  if (!sh) throw new Error('「' + name + '」シートがありません。メニュー「初期設定（シートを作る）」を実行してください。');
+  if (!sh) throw new Error('「' + name + '」シートがありません。メニュー「📋 課題提出」→「その他」→「シートを作り直す」を押してください。');
   return sh;
 }
 
@@ -1008,7 +1021,7 @@ function recordScan(taskId, raw, mode) {
   // 課題バーコードを読んだら、その課題に切りかえる
   const asTask = findTask_(tasks, code);
   if (asTask) {
-    return { kind: 'task', taskId: asTask.id, message: '課題を切りかえました：' + taskLabel_(asTask), stats: getTaskStats(asTask.id) };
+    return { kind: 'task', taskId: asTask.id, label: asTask.id + ' ' + taskLabel_(asTask), message: '課題を切りかえました：' + taskLabel_(asTask), stats: getTaskStats(asTask.id) };
   }
 
   const task = findTask_(tasks, taskId);
@@ -1080,6 +1093,7 @@ function recordScan(taskId, raw, mode) {
   const logsAfter = readLog_();
   if (result.kind !== 'dup' && result.kind !== 'error') updateStatusRow_(st, tasks, logsAfter);
   result.stats = taskStats_(task, students, logsAfter);
+  result.taskId = task.id;
   return result;
 }
 
@@ -1140,7 +1154,7 @@ function refreshAll() {
   const subsByTask = {};
   allTasks.forEach(function (t) { subsByTask[t.id] = submissionsOf_(t, logs); });
 
-  // 課題一覧の H〜L 列（全課題）
+  // 課題一覧の I〜M 列（全課題・全生徒。設定のしぼりこみはかけない）
   const tkSheet = sheet_(SHEET.TASKS);
   allTasks.forEach(function (t) {
     const st = taskStats_(t, active, logs);
@@ -1343,7 +1357,9 @@ function writeSummarySheet_(ss, tasks, students, subsByTask, today) {
   });
 
   ensureSize_(sh, rows.length + Object.keys(bySubject).length + 10, header.length);
-  sh.getRange(1, 1).setValue('課題別の提出状況').setFontWeight('bold').setFontSize(13);
+  const st = getSettings_();
+  const filt = [String(st[SETTING.SUBJECT] || '').trim(), String(st[SETTING.CLASS] || '').trim()].filter(String);
+  sh.getRange(1, 1).setValue('課題別の提出状況' + (filt.length ? '（しぼりこみ中：' + filt.join('／') + '）' : '')).setFontWeight('bold').setFontSize(13);
   sh.getRange(2, 1, 1, header.length).setValues([header]).setFontWeight('bold').setBackground(COLOR.header).setWrap(true);
   if (rows.length) {
     sh.getRange(3, 1, rows.length, header.length).setValues(rows);
@@ -1553,6 +1569,17 @@ function freshSheet_(ss, name) {
     ss.deleteSheet(old);
   }
   return ss.insertSheet(name, ss.getSheets().length);
+}
+
+// 実際に文字が入っている最後の行（チェックボックスの FALSE は数えない）
+function lastDataRow_(sh, ncols) {
+  const last = sh.getLastRow();
+  if (last < 2) return last;
+  const vals = sh.getRange(2, 1, last - 1, ncols).getValues();
+  for (let i = vals.length - 1; i >= 0; i--) {
+    if (vals[i].some(function (v) { return v !== '' && v !== false && v !== null; })) return i + 2;
+  }
+  return 1;
 }
 
 function ensureSize_(sh, rows, cols) {

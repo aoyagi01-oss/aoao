@@ -152,13 +152,18 @@
 
     $('subjects').innerHTML = '';
     d.subjects.forEach((s) => $('subjects').appendChild(new Option(s, s)));
-    $('vSubject').value = d.view.subject;
-    $('vClass').value = d.view.cls;
-    $('vMark').value = d.view.mark;
-    $('vInc').value = d.view.incomplete;
+    if (!settingsDirty) {
+      $('vSubject').value = d.view.subject;
+      $('vClass').value = d.view.cls;
+      $('vMark').value = d.view.mark;
+      $('vInc').value = d.view.incomplete;
+    }
     $('classHint').textContent = d.classes.length ? '名簿のクラス：' + d.classes.join('、') : '';
   }
 
+  // 「表示の設定」を書きかけのときは、画面を新しくしても上書きしない
+  let settingsDirty = false;
+  ['vSubject', 'vClass', 'vMark', 'vInc'].forEach((id) => $(id).addEventListener('input', () => { settingsDirty = true; }));
   const load = () => run('getHomeData').then(render).catch((e) => { $('loading').textContent = 'エラー：' + (e && e.message || e); });
 
   $('bScan').onclick = () => busy($('bScan'), run('openScanner'));
@@ -173,10 +178,11 @@
   $('st2').onclick = () => $('bPrint').click();
   $('st3').onclick = () => $('bTask').click();
   $('st4').onclick = () => $('bScan').click();
-  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value, incomplete: $('vInc').value }).then(render));
+  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value, incomplete: $('vInc').value }).then((d) => { settingsDirty = false; render(d); }));
 
   // 名簿の貼り付けなど、ダイアログを閉じて戻ってきたときに数字を新しくする
-  window.addEventListener('focus', load);
+  let lastLoad = 0;
+  window.addEventListener('focus', () => { if (Date.now() - lastLoad > 5000) { lastLoad = Date.now(); load(); } });
   load();
 </script>
 </body>

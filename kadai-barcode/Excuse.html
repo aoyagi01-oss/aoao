@@ -114,6 +114,16 @@
   // 入力欄：学籍番号・生徒ID（バーコード）・名前のどれでも。空白・Enter で確定
   function commitWho(k) {
     const input = $(k + 'Who');
+    // 「青木 さくら」のように氏名を空白つきで打ったとき：まるごと1人に当たればその人
+    const whole = norm(input.value);
+    const exact = whole && !/^[\d\s,、]+$/.test(input.value) ? D.students.filter((s) => norm(s.name) === whole) : [];
+    if (exact.length === 1) {
+      if (!picked[k].includes(exact[0].id)) picked[k].push(exact[0].id);
+      input.value = '';
+      $(k + 'Hint').innerHTML = '';
+      showPicked(k);
+      return;
+    }
     const words = input.value.normalize('NFKC').split(/[\s,、]+/).filter(Boolean);
     const hint = $(k + 'Hint');
     hint.innerHTML = '';
