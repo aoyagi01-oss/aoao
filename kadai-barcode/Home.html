@@ -91,6 +91,8 @@
     <div class="empty" id="classHint"></div>
     <label class="f">業務手帳のマスに書くもの</label>
     <select id="vMark"><option value="日付">提出した日付（10/4）</option><option value="○">○（締切後は「遅」）</option></select>
+    <label class="f">未完成（△）の数え方</label>
+    <select id="vInc"><option value="未提出">未提出あつかい（出し直させる）</option><option value="提出">提出として数える（期限内には数えない）</option></select>
     <button class="save" id="bSave">保存して表を作り直す</button>
   </details>
 </div>
@@ -149,6 +151,7 @@
     $('vSubject').value = d.view.subject;
     $('vClass').value = d.view.cls;
     $('vMark').value = d.view.mark;
+    $('vInc').value = d.view.incomplete;
     $('classHint').textContent = d.classes.length ? '名簿のクラス：' + d.classes.join('、') : '';
   }
 
@@ -166,7 +169,7 @@
   $('st2').onclick = () => $('bPrint').click();
   $('st3').onclick = () => $('bTask').click();
   $('st4').onclick = () => $('bScan').click();
-  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value }).then(render));
+  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value, incomplete: $('vInc').value }).then(render));
 
   // 名簿の貼り付けなど、ダイアログを閉じて戻ってきたときに数字を新しくする
   window.addEventListener('focus', load);
