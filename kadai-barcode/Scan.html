@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; padding: 10px; font-size: 13px; color: #222; }
+  label.t { display: block; font-weight: bold; margin: 4px 0; }
+  select, input[type=text] { width: 100%; box-sizing: border-box; font-size: 14px; padding: 6px; }
+  #code { font-size: 20px; padding: 10px; border: 3px solid #1a73e8; border-radius: 6px; margin-top: 8px; ime-mode: disabled; }
+  #code.undo { border-color: #d93025; background: #fff4f3; }
+  #focusWarn { display: none; background: #d93025; color: #fff; padding: 8px; border-radius: 6px; margin-top: 6px; font-weight: bold; cursor: pointer; }
+  body.blurred #focusWarn { display: block; }
+  .stat { display: flex; gap: 6px; margin: 8px 0; }
+  .stat div { flex: 1; background: #f1f3f4; border-radius: 6px; padding: 6px; text-align: center; }
+  .stat b { display: block; font-size: 20px; }
+  .bar { height: 8px; background: #eee; border-radius: 4px; overflow: hidden; }
+  .bar span { display: block; height: 100%; background: #34a853; width: 0; transition: width .3s; }
+  #msg { margin-top: 8px; padding: 10px; border-radius: 6px; font-size: 15px; font-weight: bold; min-height: 22px; }
+  .idle { background: #f1f3f4; color: #666; }
+  .ok, .task { background: #e6f4ea; color: #137333; }
+  .late, .notarget { background: #fef7e0; color: #b06000; }
+  .dup, .error { background: #fce8e6; color: #c5221f; }
+  .undone { background: #e8f0fe; color: #1967d2; }
+  .row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  button { font-size: 13px; padding: 6px 8px; cursor: pointer; }
+  details { margin-top: 10px; }
+  summary { font-weight: bold; cursor: pointer; }
+  #missing { margin: 4px 0 0; padding-left: 0; list-style: none; max-height: 200px; overflow: auto; columns: 2; font-size: 12px; }
+  #history { list-style: none; padding: 0; margin: 4px 0 0; font-size: 12px; max-height: 180px; overflow: auto; }
+  #history li { padding: 2px 4px; border-bottom: 1px solid #eee; }
+  .small { color: #666; font-size: 11px; }
+</style>
+</head>
+<body>
+  <label class="t" for="task">課題</label>
+  <select id="task"><option>読み込み中…</option></select>
+  <div class="small">課題のバーコードを読んでも切りかわります</div>
+
+  <div class="stat">
+    <div>提出<b id="sSub">-</b><span class="small" id="sLate"></span></div>
+    <div>対象<b id="sTarget">-</b></div>
+    <div>提出率<b id="sRate">-</b></div>
+  </div>
+  <div class="bar"><span id="sBar"></span></div>
+
+  <input type="text" id="code" placeholder="ここをクリックして読み取る" autocomplete="off" spellcheck="false">
+  <div id="focusWarn">⚠ 読み取り欄からカーソルが外れています。ここを押してから読み取ってください</div>
+  <div id="msg" class="idle">課題を選んで、バーコードを読み取ってください</div>
+
+  <div class="row">
+    <label><input type="checkbox" id="undoMode"> 取り消しモード</label>
+  </div>
+  <div class="row">
+    <button id="undoLast">直前の1件を取り消す</button>
+    <button id="refresh">集計を更新</button>
+  </div>
+
+  <details open>
+    <summary>未提出 <span id="mCount">-</span>人</summary>
+    <ul id="missing"></ul>
+  </details>
+  <details open>
+    <summary>読み取った記録</summary>
+    <ul id="history"></ul>
+  </details>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let seq = 0, shownSeq = 0, pending = 0;
+  let audio;
+
+  function beep(kind) {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const plan = { ok: [[1200, 0.12]], task: [[900, 0.1], [1200, 0.1]], undone: [[600, 0.15]],
+        late: [[1000, 0.1], [1000, 0.1]], notarget: [[1000, 0.1], [1000, 0.1]], dup: [[250, 0.4]], error: [[250, 0.4]] }[kind];
+      if (!plan) return;
+      let t = audio.currentTime;
+      plan.forEach(([f, d]) => {
+        const o = audio.createOscillator(), g = audio.createGain();
+        o.type = 'square'; o.frequency.value = f; g.gain.value = 0.08;
+        o.connect(g); g.connect(audio.destination);
+        o.start(t); o.stop(t + d); t += d + 0.06;
+      });
+    } catch (e) {}
+  }
+
+  function showStats(st) {
+    if (!st) return;
+    $('sSub').textContent = st.submitted;
+    $('sLate').textContent = st.late ? 'うち遅れ ' + st.late : '';
+    $('sTarget').textContent = st.target;
+    $('sRate').textContent = st.target ? Math.round(st.rate * 100) + '%' : '-';
+    $('sBar').style.width = (st.rate * 100) + '%';
+    $('mCount').textContent = st.missing.length;
+    const ul = $('missing');
+    ul.innerHTML = '';
+    st.missing.forEach((m) => {
+      const li = document.createElement('li');
+      li.textContent = m.cls + ' ' + m.no + ' ' + m.name;
+      ul.appendChild(li);
+    });
+  }
+
+  function showMsg(kind, text) {
+    const m = $('msg');
+    m.className = kind;
+    m.textContent = text;
+  }
+
+  function addHistory(text) {
+    const li = document.createElement('li');
+    li.textContent = text;
+    $('history').prepend(li);
+    return li;
+  }
+
+  function fail(err) {
+    pending = Math.max(0, pending - 1);
+    beep('error');
+    showMsg('error', 'エラー：' + (err && err.message || err));
+  }
+
+  function loadTask(id) {
+    showMsg('idle', '読み込み中…');
+    google.script.run.withSuccessHandler((st) => {
+      showStats(st);
+      showMsg('idle', '読み取ってください');
+      $('code').focus();
+    }).withFailureHandler(fail).getTaskStats(id);
+  }
+
+  function submitCode(raw) {
+    const code = raw.trim();
+    if (!code) return;
+    const my = ++seq;
+    pending++;
+    const li = addHistory('… ' + code);
+    google.script.run.withSuccessHandler((r) => {
+      pending = Math.max(0, pending - 1);
+      if (!r || r.kind === 'empty') { li.remove(); return; }
+      beep(r.kind);
+      const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      li.textContent = time + ' ' + r.message;
+      li.className = r.kind;
+      if (r.kind === 'task') {
+        $('task').value = r.taskId;
+      }
+      if (my >= shownSeq) {
+        shownSeq = my;
+        showMsg(r.kind, r.message);
+        showStats(r.stats);
+      }
+    }).withFailureHandler((e) => { li.textContent = '✕ ' + code + '（エラー）'; fail(e); })
+      .recordScan($('task').value, code, $('undoMode').checked);
+  }
+
+  // バーコードリーダーは文字を打ってから Enter（機種によっては Tab）を送ってくる
+  // 日本語入力がオンのときは、最初の Enter が「確定」に使われてしまう。
+  // 確定した文字がバーコードらしい（英数字だけ）なら、そのまま送る
+  function sendInput() {
+    const v = $('code').value;
+    $('code').value = '';
+    submitCode(v);
+  }
+  $('code').addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      sendInput();
+    }
+  });
+  $('code').addEventListener('compositionend', () => {
+    setTimeout(() => {
+      if (/^[0-9A-Za-z\-]+$/.test($('code').value.normalize('NFKC').trim())) sendInput();
+    }, 0);
+  });
+
+  $('code').addEventListener('blur', () => document.body.classList.add('blurred'));
+  $('code').addEventListener('focus', () => document.body.classList.remove('blurred'));
+  $('focusWarn').addEventListener('click', () => $('code').focus());
+
+  $('task').addEventListener('change', () => loadTask($('task').value));
+  $('undoMode').addEventListener('change', () => {
+    $('code').classList.toggle('undo', $('undoMode').checked);
+    showMsg($('undoMode').checked ? 'undone' : 'idle', $('undoMode').checked ? '取り消しモード：読み取った生徒の提出を消します' : '読み取ってください');
+    $('code').focus();
+  });
+  $('undoLast').addEventListener('click', () => {
+    google.script.run.withSuccessHandler((r) => {
+      beep(r.kind);
+      showMsg(r.kind, r.message);
+      addHistory(r.message);
+      showStats(r.stats);
+      $('code').focus();
+    }).withFailureHandler(fail).undoLast($('task').value);
+  });
+  $('refresh').addEventListener('click', () => {
+    $('refresh').disabled = true;
+    google.script.run.withSuccessHandler(() => { $('refresh').disabled = false; $('code').focus(); })
+      .withFailureHandler((e) => { $('refresh').disabled = false; fail(e); }).refreshAll();
+  });
+
+  google.script.run.withSuccessHandler((init) => {
+    const sel = $('task');
+    sel.innerHTML = '';
+    if (!init.tasks.length) {
+      sel.innerHTML = '<option value="">（課題一覧に課題を書いてください）</option>';
+      showMsg('error', '「課題一覧」シートに課題がありません');
+      return;
+    }
+    init.tasks.forEach((t) => {
+      const o = document.createElement('option');
+      o.value = t.id; o.textContent = t.label;
+      sel.appendChild(o);
+    });
+    sel.value = init.taskId;
+    showStats(init.stats);
+    showMsg('idle', '読み取ってください');
+    $('code').focus();
+  }).withFailureHandler(fail).getScanInit();
+
+  window.addEventListener('beforeunload', (e) => { if (pending) { e.preventDefault(); e.returnValue = ''; } });
+</script>
+</body>
+</html>

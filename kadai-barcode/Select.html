@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; padding: 10px 14px; font-size: 13px; color: #222; }
+  h3 { margin: 10px 0 4px; font-size: 14px; }
+  .box { border: 1px solid #ddd; border-radius: 6px; padding: 6px 8px; max-height: 230px; overflow: auto; }
+  .box label { display: block; padding: 2px 0; }
+  .box label.over { color: #c5221f; }
+  .classes label { display: inline-block; margin-right: 12px; }
+  .tools { margin: 4px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .tools button { font-size: 12px; padding: 2px 8px; }
+  .actions { margin-top: 12px; display: flex; gap: 10px; }
+  .actions button { font-size: 14px; padding: 8px 14px; cursor: pointer; border-radius: 4px; border: 1px solid #1a73e8; background: #fff; color: #1a73e8; }
+  .actions button.primary { background: #1a73e8; color: #fff; }
+  #result { margin-top: 12px; padding: 10px; border-radius: 6px; display: none; }
+  #result.ok { display: block; background: #e6f4ea; }
+  #result.err { display: block; background: #fce8e6; color: #c5221f; }
+  #result a { font-size: 15px; font-weight: bold; }
+  .small { color: #666; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h3>1. 課題を選ぶ</h3>
+  <div class="tools">
+    教科 <select id="subject"><option value="">すべて</option></select>
+    <button id="allT">すべて選ぶ</button>
+    <button id="overT">締切を過ぎたものだけ選ぶ</button>
+    <button id="noneT">選ぶのをやめる</button>
+  </div>
+  <div class="box" id="tasks"></div>
+  <div class="small">赤字は締切を過ぎた課題です。</div>
+
+  <h3>2. クラスを選ぶ（選ばなければ全員）</h3>
+  <div class="box classes" id="classes"></div>
+
+  <h3>3. 作るもの</h3>
+  <label><input type="checkbox" id="overdueOnly"> 締切を過ぎた課題だけにする</label>
+  <div class="actions">
+    <button class="primary" id="missing">未提出者リスト（先生用）</button>
+    <button class="primary" id="notice">提出のお願い（生徒に配る）</button>
+  </div>
+  <div class="small">「提出のお願い」は、選んだ課題のうち出していないものを生徒ごとに1枚にまとめます（切り取って渡せます）。</div>
+  <div id="result"></div>
+
+<script>
+  const DATA = <?!= payload ?>;
+  const $ = (id) => document.getElementById(id);
+
+  function isOver(t) { return t.due && DATA.today > t.due; }
+
+  function renderTasks() {
+    const subj = $('subject').value;
+    const box = $('tasks');
+    const checked = new Set([...box.querySelectorAll('input:checked')].map((i) => i.value));
+    box.innerHTML = '';
+    DATA.tasks.filter((t) => !subj || t.subject === subj).forEach((t) => {
+      const lab = document.createElement('label');
+      if (isOver(t)) lab.className = 'over';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = t.id; cb.checked = checked.has(t.id);
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' ' + (t.subject ? '【' + t.subject + '】' : '') + t.name +
+        (t.due ? '（締切 ' + t.due.replace(/-/g, '/') + '）' : '') + (t.classes ? '　対象：' + t.classes : '')));
+      box.appendChild(lab);
+    });
+    if (!box.children.length) box.textContent = '課題がありません';
+  }
+
+  [...new Set(DATA.tasks.map((t) => t.subject).filter(String))].forEach((s) => $('subject').appendChild(new Option(s, s)));
+  DATA.classes.forEach((c) => {
+    const lab = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = c;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(' ' + c));
+    $('classes').appendChild(lab);
+  });
+  $('subject').addEventListener('change', renderTasks);
+  $('allT').addEventListener('click', () => $('tasks').querySelectorAll('input').forEach((i) => { i.checked = true; }));
+  $('noneT').addEventListener('click', () => $('tasks').querySelectorAll('input').forEach((i) => { i.checked = false; }));
+  $('overT').addEventListener('click', () => $('tasks').querySelectorAll('input').forEach((i) => {
+    i.checked = isOver(DATA.tasks.find((t) => t.id === i.value));
+  }));
+
+  function make(type) {
+    const taskIds = [...$('tasks').querySelectorAll('input:checked')].map((i) => i.value);
+    const classes = [...$('classes').querySelectorAll('input:checked')].map((i) => i.value);
+    const r = $('result');
+    if (!taskIds.length) { r.className = 'err'; r.textContent = '課題を1つ以上選んでください'; return; }
+    r.className = 'ok'; r.textContent = '作成中…';
+    document.querySelectorAll('.actions button').forEach((b) => { b.disabled = true; });
+    google.script.run.withSuccessHandler((res) => {
+      document.querySelectorAll('.actions button').forEach((b) => { b.disabled = false; });
+      r.className = 'ok';
+      r.innerHTML = '';
+      const p = document.createElement('div');
+      p.textContent = '「' + res.sheetName + '」シートに作りました（' + (type === 'notice' ? '対象 ' + res.count + '人' : '未提出 のべ ' + res.count + '人') + '）。';
+      const a = document.createElement('a');
+      a.href = res.pdfUrl; a.target = '_blank'; a.textContent = '📄 PDFで開いて印刷する';
+      r.appendChild(p); r.appendChild(a);
+    }).withFailureHandler((e) => {
+      document.querySelectorAll('.actions button').forEach((b) => { b.disabled = false; });
+      r.className = 'err'; r.textContent = 'エラー：' + (e && e.message || e);
+    }).makePrintList({ type, taskIds, classes, overdueOnly: $('overdueOnly').checked });
+  }
+  $('missing').addEventListener('click', () => make('missing'));
+  $('notice').addEventListener('click', () => make('notice'));
+
+  renderTasks();
+  $('overT').click();
+</script>
+</body>
+</html>

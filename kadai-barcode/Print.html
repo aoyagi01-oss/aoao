@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<?!= include_('JsBarcode') ?>
+<style id="pageCss">
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; color: #222; }
+  .sheet { padding: 0; }
+  .labels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+  .label { border: 1px dashed #bbb; height: 34mm; box-sizing: border-box; padding: 2mm 3mm; display: flex; flex-direction: column; align-items: center; justify-content: center; break-inside: avoid; page-break-inside: avoid; overflow: hidden; }
+  .label .who { font-size: 10pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .label svg { max-width: 100%; height: 20mm; }
+  .roster { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
+  .roster caption { text-align: left; font-weight: bold; font-size: 13pt; padding: 2mm 0; }
+  .roster td, .roster th { border: 1px solid #999; padding: 1mm 2mm; font-size: 11pt; }
+  .roster tr { break-inside: avoid; page-break-inside: avoid; }
+  .roster th.n, .roster td.n { width: 12mm; text-align: center; }
+  .roster td.bc { width: 75mm; text-align: center; }
+  .roster td.bc svg { height: 17mm; max-width: 73mm; }
+  .roster td.chk { width: 30mm; }
+  .newpage { break-before: page; page-break-before: always; }
+  .tasks { display: grid; grid-template-columns: repeat(2, 1fr); }
+  .task { border: 1px dashed #bbb; padding: 3mm; break-inside: avoid; page-break-inside: avoid; text-align: center; }
+  .task .name { font-weight: bold; font-size: 12pt; }
+  .task .sub { font-size: 10pt; color: #444; }
+  .task svg { height: 18mm; max-width: 100%; }
+  @page { size: A4; margin: 8mm; }
+  @media print { .controls { display: none; } }
+</style>
+<style>
+  .controls { position: sticky; top: 0; background: #f8f9fa; border-bottom: 1px solid #ddd; padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; font-size: 13px; z-index: 1; }
+  .controls select, .controls input { font-size: 13px; padding: 3px; }
+  .controls button { font-size: 14px; padding: 6px 14px; cursor: pointer; }
+  .controls .primary { background: #1a73e8; color: #fff; border: none; border-radius: 4px; }
+  .controls .note { flex-basis: 100%; color: #666; font-size: 12px; }
+  #err { color: #c5221f; font-weight: bold; padding: 10px; }
+  #preview { padding: 10px; }
+</style>
+</head>
+<body>
+<div class="controls">
+  <label>印刷するもの
+    <select id="kind">
+      <option value="labels">生徒のバーコード（シール・カード用 3列）</option>
+      <option value="roster">名簿型（先生の手元で読む用）</option>
+      <option value="tasks">課題のバーコード（読み取り画面の課題切りかえ用）</option>
+    </select>
+  </label>
+  <label id="clsWrap">クラス <select id="cls"></select></label>
+  <label id="copyWrap">1人あたり <input type="number" id="copies" value="1" min="1" max="30" style="width:3.5em"> 枚</label>
+  <button class="primary" id="print">🖨 印刷する</button>
+  <button id="newtab">別のタブで開く</button>
+  <span class="note">印刷の設定は「A4・余白なし〜最小・倍率100%（または「ページに合わせる」を切る）」がおすすめ。読み取りにくいときは、プリンタの品質を上げてください。</span>
+</div>
+<div id="err"></div>
+<div id="preview"><div class="sheet" id="sheet"></div></div>
+
+<script>
+  const DATA = <?!= payload ?>;
+  const $ = (id) => document.getElementById(id);
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function barcode(value, opt) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    try {
+      JsBarcode(svg, value, Object.assign({ format: 'CODE128', width: 2, height: 50, margin: 6, fontSize: 14, displayValue: true }, opt || {}));
+    } catch (e) {
+      $('err').textContent = 'バーコードを作れませんでした（' + value + '）：' + e;
+    }
+    return svg;
+  }
+
+  function students() {
+    const c = $('cls').value;
+    return DATA.students.filter((s) => !c || s.cls === c);
+  }
+
+  function render() {
+    const kind = $('kind').value;
+    $('clsWrap').style.display = kind === 'tasks' ? 'none' : '';
+    $('copyWrap').style.display = kind === 'labels' ? '' : 'none';
+    const sheet = $('sheet');
+    sheet.innerHTML = '';
+    $('err').textContent = '';
+    if (typeof JsBarcode === 'undefined') {
+      $('err').textContent = 'バーコードの部品が読み込めませんでした。メニューの「バーコードをシートに作る」を使ってください。';
+      return;
+    }
+
+    if (kind === 'labels') {
+      const n = Math.max(1, Math.min(30, Number($('copies').value) || 1));
+      const box = el('div', 'labels');
+      students().forEach((s) => {
+        for (let i = 0; i < n; i++) {
+          const lab = el('div', 'label');
+          lab.appendChild(el('div', 'who', s.cls + ' ' + s.no + '番 ' + s.name));
+          lab.appendChild(barcode(s.id));
+          box.appendChild(lab);
+        }
+      });
+      sheet.appendChild(box);
+    } else if (kind === 'roster') {
+      const groups = {};
+      students().forEach((s) => { (groups[s.cls] = groups[s.cls] || []).push(s); });
+      Object.keys(groups).forEach((cls, gi) => {
+        const t = el('table', 'roster' + (gi ? ' newpage' : ''));
+        t.appendChild(el('caption', '', (DATA.title ? DATA.title + '　' : '') + cls + '　バーコード名簿'));
+        const head = el('tr');
+        ['番号', '氏名', 'バーコード', 'メモ'].forEach((h, i) => head.appendChild(el('th', i ? '' : 'n', h)));
+        t.appendChild(head);
+        groups[cls].forEach((s) => {
+          const tr = el('tr');
+          tr.appendChild(el('td', 'n', s.no));
+          tr.appendChild(el('td', '', s.name));
+          const td = el('td', 'bc');
+          td.appendChild(barcode(s.id, { height: 50, fontSize: 13, margin: 4 }));
+          tr.appendChild(td);
+          tr.appendChild(el('td', 'chk', ''));
+          t.appendChild(tr);
+        });
+        sheet.appendChild(t);
+      });
+    } else {
+      const box = el('div', 'tasks');
+      DATA.tasks.forEach((k) => {
+        const d = el('div', 'task');
+        d.appendChild(el('div', 'sub', (k.subject || '') + (k.due ? '　締切 ' + k.due.replace(/-/g, '/') : '')));
+        d.appendChild(el('div', 'name', k.name));
+        d.appendChild(barcode(k.id));
+        box.appendChild(d);
+      });
+      sheet.appendChild(box);
+    }
+    if (!sheet.children.length || !sheet.firstChild.children.length) {
+      sheet.appendChild(el('p', '', kind === 'tasks' ? '「課題一覧」に課題がありません。' : '「生徒名簿」に生徒がいません。'));
+    }
+  }
+
+  const sel = $('cls');
+  sel.appendChild(new Option('すべてのクラス', ''));
+  [...new Set(DATA.students.map((s) => s.cls))].forEach((c) => sel.appendChild(new Option(c, c)));
+  ['kind', 'cls', 'copies'].forEach((id) => $(id).addEventListener('change', render));
+
+  $('print').addEventListener('click', () => window.print());
+  // ダイアログの中から印刷できないブラウザ向け：別タブに同じ内容を出して印刷する
+  $('newtab').addEventListener('click', () => {
+    const w = window.open('', '_blank');
+    if (!w) { alert('ポップアップがブロックされました。アドレスバー右のマークから許可してください。'); return; }
+    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>バーコード</title><style>' +
+      $('pageCss').textContent + '</style></head><body>' + $('sheet').outerHTML + '</body></html>');
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+  });
+
+  render();
+</script>
+</body>
+</html>

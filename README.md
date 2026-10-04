@@ -63,3 +63,7 @@ Google ドライブの **「AI英会話 教材リスト」** というスプレ�
 | `common.js` | 共通の処理 |
 | `config.js` | Apps Script の URL |
 | `apps-script/Code.gs` | スプレッドシートに貼るプログラム |
+
+## 同じリポジトリのほかの道具
+
+- [`kadai-barcode/`](kadai-barcode/README.md)：**課題提出バーコード管理**（バーコードリーダーで課題の提出を記録し、Google スプレッドシートで提出状況・提出率・未提出者リストを管理）
