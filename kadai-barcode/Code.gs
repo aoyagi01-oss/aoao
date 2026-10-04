@@ -80,7 +80,7 @@ function openBarcodePrint() {
   t.payload = toScriptJson_({
     title: getSettings_()[SETTING.TITLE] || '',
     students: students.map(function (s) { return { id: s.id, gakuseki: s.gakuseki, cls: s.cls, no: s.no, name: s.name }; }),
-    tasks: tasks.map(function (k) { return { id: k.id, subject: k.subject, name: k.name, due: k.due }; }),
+    tasks: tasks.map(function (k) { return { id: k.id, subject: k.subject, name: displayName_(k), due: k.due }; }),
   });
   SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(1000).setHeight(720), 'バーコードの印刷');
 }
@@ -91,7 +91,7 @@ function openListDialog() {
   const t = HtmlService.createTemplateFromFile('Select');
   t.payload = toScriptJson_({
     today: todayKey_(),
-    tasks: tasks.map(function (k) { return { id: k.id, subject: k.subject, name: k.name, due: k.due, classes: k.classes.join(',') }; }),
+    tasks: tasks.map(function (k) { return { id: k.id, subject: k.subject, name: displayName_(k), due: k.due, classes: k.classes.join(',') }; }),
     classes: classList_(getStudents_()),
   });
   SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(720).setHeight(640), '未提出者リスト・提出のお願い');
@@ -185,12 +185,12 @@ function writeHowTo_(sh) {
     [''],
     ['■ 最初に1回だけ'],
     ['1. 「生徒名簿」に 学籍番号（例：1101）と氏名 を貼り付ける。クラス・番号は学籍番号から自動で入る。生徒IDも空欄でよい（自動で6けたの番号が付く）。'],
-    ['2. メニュー「課題バーコード」→「バーコードを印刷する」で生徒のバーコードを印刷し、ノートやファイルにはる（先生の手元用の名簿型もある）。バーコードの横には学籍番号と氏名が入る。'],
+    ['2. メニュー「課題バーコード」→「バーコードを印刷する」で生徒のバーコードを印刷し、ノートやファイルにはる（先生の手元用の名簿型もある）。A4に「左に学籍番号と氏名・右にバーコード」の短冊が並び、✂の点線で裁断機で切れる。'],
     ['   バーコードの中身は生徒IDだけなので、課題・教材・教科が変わっても、学年が上がって学籍番号が変わっても同じバーコードを使える。'],
     ['   進級したら、生徒名簿の学籍番号を新しい番号に書きかえ、クラス・番号の列を消す（自動で入り直す）。生徒IDの列は絶対に変えない。'],
     [''],
     ['■ 課題を出すたび'],
-    ['1. 「課題一覧」に 教科・課題名・対象クラス・締切日 を書く（課題IDは自動で付く）。対象クラスは「1-1,1-2」のように生徒名簿のクラスと同じ書き方で。空欄なら全員。'],
+    ['1. 「課題一覧」に 教科・課題名・対象クラス・締切日 を書く（課題IDは自動で付く）。どれも空欄でよい（締切日だけでも1つの課題になる）。対象クラスは「1-1,1-2」のように生徒名簿のクラスと同じ書き方で。空欄なら全員。'],
     [''],
     ['■ 回収するとき'],
     ['1. メニュー「課題バーコード」→「読み取りを始める」。右に出る画面で課題を選ぶ（課題バーコードを読んでも切りかわる）。'],
@@ -372,7 +372,9 @@ function getTasks_() {
   vals.forEach(function (r, i) {
     const name = String(r[2]).trim();
     let id = norm_(r[0]);
-    if (!name && !id) return;
+    // 教科・課題名は空欄でもよい（締切日や対象クラスだけでも1つの課題として扱う）
+    const filled = [r[1], r[2], r[3], r[4], r[5], r[6]].some(function (v) { return String(v).trim() !== ''; });
+    if (!filled && !id) return;
     if (!id || seen[id]) { // 空欄、または行をコピーして ID が重なったときは新しい ID
       maxNo += 1;
       id = 'K' + ('00' + maxNo).slice(-3);
@@ -380,7 +382,7 @@ function getTasks_() {
     }
     seen[id] = true;
     tasks.push({
-      id: id, subject: String(r[1]).trim(), name: name || '（課題名なし）',
+      id: id, subject: String(r[1]).trim(), name: name,
       classes: splitList_(r[3]), given: dateKey_(r[4]), due: dateKey_(r[5]), memo: String(r[6]), row: i + 2,
     });
   });
@@ -388,7 +390,14 @@ function getTasks_() {
 }
 
 function taskLabel_(t) {
-  return (t.subject ? '【' + t.subject + '】' : '') + t.name + (t.due ? '（締切 ' + shortDate_(t.due) + '）' : '');
+  return (t.subject ? '【' + t.subject + '】' : '') + displayName_(t) + (t.due ? '（締切 ' + shortDate_(t.due) + '）' : '');
+}
+
+// 課題名が空欄のときの呼び名（例：「10/2の課題」「課題K005」）
+function displayName_(t) {
+  if (t.name) return t.name;
+  if (t.given) return shortDate_(t.given) + 'に出した課題';
+  return '課題' + t.id;
 }
 
 function isTarget_(task, student) {
@@ -773,7 +782,7 @@ function writeSummarySheet_(ss, tasks, students, subsByTask, today) {
       pc.target++;
       if (subs[s.id]) { done++; pc.done++; if (subs[s.id].late) late++; }
     });
-    rows.push([t.id, t.subject, t.name, t.due ? shortDate_(t.due) : '', target, done, late, target - done, target ? done / target : '']
+    rows.push([t.id, t.subject, displayName_(t), t.due ? shortDate_(t.due) : '', target, done, late, target - done, target ? done / target : '']
       .concat(classes.map(function (c) { return perClass[c] ? perClass[c].done / perClass[c].target : ''; })));
     const key = t.subject || '（教科なし）';
     const b = bySubject[key] || (bySubject[key] = { tasks: 0, target: 0, done: 0, late: 0 });
@@ -885,7 +894,7 @@ function writeNotices_(sh, tasks, students, subs, title, message) {
       sh.getRange(row, 1, 1, 4).merge().setValue(message).setWrap(true);
       row++;
     }
-    const vals = missing.map(function (t) { return ['□', t.subject, t.name, t.due ? '締切 ' + shortDate_(t.due) : '']; });
+    const vals = missing.map(function (t) { return ['□', t.subject, displayName_(t), t.due ? '締切 ' + shortDate_(t.due) : '']; });
     sh.getRange(row, 1, vals.length, 4).setValues(vals);
     sh.getRange(row, 1, vals.length, 1).setHorizontalAlignment('center');
     row += vals.length;
