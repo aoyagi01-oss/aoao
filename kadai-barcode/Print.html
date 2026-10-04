@@ -9,13 +9,14 @@
   .sheet { padding: 0; }
   .labels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
   .label { border: 1px dashed #bbb; height: 34mm; box-sizing: border-box; padding: 2mm 3mm; display: flex; flex-direction: column; align-items: center; justify-content: center; break-inside: avoid; page-break-inside: avoid; overflow: hidden; }
-  .label .who { font-size: 10pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .label svg { max-width: 100%; height: 20mm; }
+  .label .who { font-size: 10pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: flex; align-items: baseline; gap: 3mm; }
+  .label .gk { font-size: 16pt; font-weight: bold; letter-spacing: 0.5mm; }
+  .label svg { max-width: 100%; height: 19mm; }
   .roster { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
   .roster caption { text-align: left; font-weight: bold; font-size: 13pt; padding: 2mm 0; }
   .roster td, .roster th { border: 1px solid #999; padding: 1mm 2mm; font-size: 11pt; }
   .roster tr { break-inside: avoid; page-break-inside: avoid; }
-  .roster th.n, .roster td.n { width: 12mm; text-align: center; }
+  .roster th.n, .roster td.n { width: 20mm; text-align: center; font-size: 13pt; }
   .roster td.bc { width: 75mm; text-align: center; }
   .roster td.bc svg { height: 17mm; max-width: 73mm; }
   .roster td.chk { width: 30mm; }
@@ -100,7 +101,10 @@
       students().forEach((s) => {
         for (let i = 0; i < n; i++) {
           const lab = el('div', 'label');
-          lab.appendChild(el('div', 'who', s.cls + ' ' + s.no + '番 ' + s.name));
+          const who = el('div', 'who');
+          if (s.gakuseki) who.appendChild(el('span', 'gk', s.gakuseki));
+          who.appendChild(el('span', '', s.gakuseki ? s.name : s.cls + ' ' + s.no + '番 ' + s.name));
+          lab.appendChild(who);
           lab.appendChild(barcode(s.id));
           box.appendChild(lab);
         }
@@ -113,11 +117,11 @@
         const t = el('table', 'roster' + (gi ? ' newpage' : ''));
         t.appendChild(el('caption', '', (DATA.title ? DATA.title + '　' : '') + cls + '　バーコード名簿'));
         const head = el('tr');
-        ['番号', '氏名', 'バーコード', 'メモ'].forEach((h, i) => head.appendChild(el('th', i ? '' : 'n', h)));
+        ['学籍番号', '氏名', 'バーコード', 'メモ'].forEach((h, i) => head.appendChild(el('th', i ? '' : 'n', h)));
         t.appendChild(head);
         groups[cls].forEach((s) => {
           const tr = el('tr');
-          tr.appendChild(el('td', 'n', s.no));
+          tr.appendChild(el('td', 'n', s.gakuseki || s.no));
           tr.appendChild(el('td', '', s.name));
           const td = el('td', 'bc');
           td.appendChild(barcode(s.id, { height: 50, fontSize: 13, margin: 4 }));

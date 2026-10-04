@@ -44,7 +44,7 @@
   </div>
   <div class="bar"><span id="sBar"></span></div>
 
-  <input type="text" id="code" placeholder="ここをクリックして読み取る" autocomplete="off" spellcheck="false">
+  <input type="text" id="code" placeholder="ここをクリックして読み取る（学籍番号を打ってもOK）" autocomplete="off" spellcheck="false">
   <div id="focusWarn">⚠ 読み取り欄からカーソルが外れています。ここを押してから読み取ってください</div>
   <div id="msg" class="idle">課題を選んで、バーコードを読み取ってください</div>
 
@@ -98,7 +98,7 @@
     ul.innerHTML = '';
     st.missing.forEach((m) => {
       const li = document.createElement('li');
-      li.textContent = m.cls + ' ' + m.no + ' ' + m.name;
+      li.textContent = (m.gakuseki || (m.cls + ' ' + m.no)) + ' ' + m.name;
       ul.appendChild(li);
     });
   }
