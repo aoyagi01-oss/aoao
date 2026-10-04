@@ -148,8 +148,9 @@ function saveViewSettings(v) {
   const sh = sheet_(SHEET.SETTINGS);
   const vals = sh.getRange(1, 1, sh.getLastRow(), 1).getValues();
   function put(key, value) {
-    for (let i = 0; i < vals.length; i++) if (String(vals[i][0]).trim() === key) { sh.getRange(i + 1, 2).setValue(value); return; }
-    sh.appendRow([key, value]);
+    for (let i = 0; i < vals.length; i++) if (String(vals[i][0]).trim() === key) { sh.getRange(i + 1, 2).setNumberFormat('@').setValue(value); return; }
+    sh.appendRow([key, '']);
+    sh.getRange(sh.getLastRow(), 2).setNumberFormat('@').setValue(value);
   }
   put(SETTING.SUBJECT, v.subject || '');
   put(SETTING.CLASS, v.cls || '');
@@ -204,6 +205,7 @@ function addTask(t) {
   const late = latePolicy_(t.late).label;
   sh.appendRow(['', String(t.subject || '').trim(), String(t.name || '').trim(), classes.join(','), toDate_(t.given), toDate_(t.due), late, String(t.memo || '')]);
   const row = sh.getLastRow();
+  sh.getRange(row, 4).setNumberFormat('@').setValue(classes.join(','));
   sh.getRange(row, 5, 1, 2).setNumberFormat('yyyy/mm/dd');
   const tasks = getTasks_();
   const task = tasks.filter(function (k) { return k.row === row; })[0];
@@ -526,6 +528,8 @@ function setup_(showMessage) {
     students.sh.getRange('B1').setNote('4けたの学籍番号（例：1101＝1年1組1番）。クラス・番号が空欄なら、ここから自動で入ります。');
   }
 
+  if (students.sh.getRange('C2').getNumberFormat() !== '@') students.sh.getRange('C2:C').setNumberFormat('@'); // 「1-1」が日付にならないように
+
   const tasks = make(SHEET.TASKS, TASK_HEADERS, [70, 80, 220, 160, 90, 90, 130, 160, 50, 50, 60, 60, 60]);
   if (!tasks.fresh && String(tasks.sh.getRange(1, 7).getValue()) === 'メモ') {
     // 旧版の課題一覧（「締切後の扱い」の列なし）には列を差しこむ
@@ -533,6 +537,7 @@ function setup_(showMessage) {
     tasks.sh.getRange(1, 1, 1, TASK_HEADERS.length).setValues([TASK_HEADERS]);
     tasks.sh.getRange('G2:G').clearDataValidations().setNumberFormat('@'); // となりの日付の列の決まりを引きつがない
   }
+  if (tasks.sh.getRange('D2').getNumberFormat() !== '@') tasks.sh.getRange('D2:D').setNumberFormat('@'); // 対象クラス「1-1」が日付にならないように
   const gRule = tasks.sh.getRange('G2').getDataValidation();
   if (tasks.fresh || !gRule || gRule.getCriteriaType() !== SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) {
     tasks.sh.getRange('G2:G').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(LATE_CHOICES, true).setAllowInvalid(true).build());
@@ -661,10 +666,13 @@ function norm_(v) {
 }
 
 function normClass_(v) {
+  // 「1-1」はスプレッドシートが勝手に日付（1月1日）にしてしまうことがあるので、日付なら「月-日」に戻す
+  if (v instanceof Date && !isNaN(v)) return Utilities.formatDate(v, tz_(), 'M-d');
   return String(v === null || v === undefined ? '' : v).normalize('NFKC').replace(/\s+/g, '');
 }
 
 function splitList_(v) {
+  if (v instanceof Date && !isNaN(v)) return [normClass_(v)];
   return String(v || '').normalize('NFKC').split(/[,、，;；\/／\n]+/).map(function (s) { return s.replace(/\s+/g, ''); }).filter(String);
 }
 
@@ -725,12 +733,14 @@ function getStudents_() {
     const gakuseki = norm_(r[1]);
     let cls = normClass_(r[2]);
     let no = r[3];
+    if (r[2] instanceof Date) sh.getRange(i + 2, 3).setNumberFormat('@').setValue(cls); // 日付になってしまったクラスを文字に戻す
     // 4けたの学籍番号（1101＝1年1組1番）から、空欄のクラス・番号を入れる
     const m = gakuseki.match(/^(\d)(\d)(\d\d)$/);
     if (m && (cls === '' || no === '')) {
       if (cls === '') cls = m[1] + '-' + m[2];
       if (no === '') no = Number(m[3]);
-      sh.getRange(i + 2, 3, 1, 2).setValues([[cls, no]]);
+      sh.getRange(i + 2, 3).setNumberFormat('@').setValue(cls);
+      sh.getRange(i + 2, 4).setValue(no);
     }
     const ex = r[6];
     list.push({
@@ -786,6 +796,7 @@ function getTasks_() {
       sh.getRange(i + 2, 1).setValue(id);
     }
     seen[id] = true;
+    if (r[3] instanceof Date) sh.getRange(i + 2, 4).setNumberFormat('@').setValue(normClass_(r[3])); // 日付になってしまった対象クラスを文字に戻す
     tasks.push({
       id: id, subject: String(r[1]).trim(), name: name,
       classes: splitList_(r[3]), given: dateKey_(r[4]), due: dateKey_(r[5]), late: latePolicy_(String(r[6]).trim() || defaultLate),
@@ -1054,7 +1065,7 @@ function recordScan(taskId, raw, mode) {
         mine.forEach(function (r) { sh.getRange(r.row, 10).setValue('未完成'); });
       } else {
         sh.appendRow([new Date(), task.id, task.subject, task.name, st.id, st.gakuseki, st.cls, st.no, st.name, '未完成']);
-        sh.getRange(sh.getLastRow(), 5, 1, 2).setNumberFormat('@').setValues([[st.id, st.gakuseki]]);
+        sh.getRange(sh.getLastRow(), 5, 1, 3).setNumberFormat('@').setValues([[st.id, st.gakuseki, st.cls]]);
       }
       result = { kind: 'incomplete', message: '未完成：' + who + (incompleteCounts_() ? '（提出として数えます）' : '（未提出あつかい。直して出したら、ふつうに読む）'), studentId: st.id };
     } else if (mode === 'undo') {
@@ -1077,7 +1088,7 @@ function recordScan(taskId, raw, mode) {
       const saved = !late && !!task.due && dateKey_(now) > task.due;
       const judge = (!target ? '対象外' : (late ? '遅れ' : '期限内')) + (resubmit ? '（再提出）' : '');
       sh.appendRow([now, task.id, task.subject, task.name, st.id, st.gakuseki, st.cls, st.no, st.name, judge]);
-      sh.getRange(sh.getLastRow(), 5, 1, 2).setNumberFormat('@').setValues([[st.id, st.gakuseki]]);
+      sh.getRange(sh.getLastRow(), 5, 1, 3).setNumberFormat('@').setValues([[st.id, st.gakuseki, st.cls]]);
       const exempt = isExemptTarget_(task, st);
       result = {
         kind: !target ? 'notarget' : (exempt ? 'ok' : (late ? 'late' : 'ok')),
