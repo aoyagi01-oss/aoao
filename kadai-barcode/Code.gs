@@ -13,7 +13,7 @@ const SHEET = {
   STATUS: '提出状況',
   SUMMARY: '集計',
   PRINT_MISSING: '印刷_未提出者',
-  PRINT_NOTICE: '印刷_提出のお願い',
+  PRINT_NOTICE: '印刷_課題提出について',
   PRINT_BARCODE: '印刷_バーコード',
   EXCUSE: '欠席・配慮',
 };
@@ -39,8 +39,8 @@ const SETTING = {
   TITLE: '学校名・担当（印刷物の見出し）',
   SUBJECT: '提出状況・集計に出す教科（空欄＝すべて／複数は「,」区切り）',
   CLASS: '提出状況・集計に出すクラス（空欄＝すべて／複数は「,」区切り）',
-  NOTICE: '「提出のお願い」に書く文',
-  MARK: '提出状況（業務手帳）の書き方（「日付」または「○」）',
+  NOTICE: '「課題提出について」に書く文',
+  MARK: '提出状況（教務手帳）の書き方（「日付」または「○」）',
   INCOMPLETE: '未完成の数え方（「未提出」または「提出」）',
   LATE: '締切後の扱い（課題一覧で空欄のとき）',
 };
@@ -71,13 +71,13 @@ function onOpen() {
     .addSeparator()
     .addItem('📷 読み取る', 'openScanner')
     .addItem('➕ 課題を登録する', 'openTaskForm')
-    .addItem('📒 提出状況（業務手帳）を見る', 'showStatusSheet')
+    .addItem('📒 提出状況（教務手帳）を見る', 'showStatusSheet')
     .addSeparator()
     .addSubMenu(ui.createMenu('その他')
       .addItem('🤒 欠席・配慮・免除', 'openExcuseDialog')
       .addItem('👥 名簿を貼り付ける', 'openRosterDialog')
       .addItem('🖨 バーコードを印刷する', 'openBarcodePrint')
-      .addItem('🖨 未提出者リスト・提出のお願い', 'openListDialog')
+      .addItem('🖨 未提出者リスト・課題提出について', 'openListDialog')
       .addItem('🔄 提出状況・集計を更新', 'refreshAll')
       .addSeparator()
       .addItem('バーコードをシートに作る（印刷画面が出ないとき）', 'makeBarcodeSheet')
@@ -472,7 +472,7 @@ function openListDialog() {
     tasks: tasks.map(function (k) { return { id: k.id, subject: k.subject, name: displayName_(k), due: k.due, classes: k.classes.join(',') }; }),
     classes: classList_(getStudents_()),
   });
-  SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(720).setHeight(640), '未提出者リスト・提出のお願い');
+  SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(720).setHeight(640), '未提出者リスト・課題提出について');
 }
 
 // ───────── 初期設定 ─────────
@@ -501,6 +501,10 @@ function setup_(showMessage) {
   }
 
   const howto = make(SHEET.HOWTO);
+  if (howto.sh.getLastRow() > 0 && howto.sh.createTextFinder('業務手帳').findNext()) {
+    howto.sh.clear(); // 古い言い方の「使い方」は書き直す
+    writeHowTo_(howto.sh);
+  }
   if (howto.sh.getLastRow() === 0) {
     writeHowTo_(howto.sh);
     ss.setActiveSheet(howto.sh);
@@ -511,6 +515,11 @@ function setup_(showMessage) {
   if (settings.fresh) {
     settings.sh.getRange(2, 1, SETTING_DEFAULTS.length, 2).setValues(SETTING_DEFAULTS);
   } else {
+    // 名前を変えた設定項目は、新しい名前に書きかえる（中身はそのまま）
+    const oldNotice = settings.sh.createTextFinder('「提出のお願い」に書く文').matchEntireCell(true).findNext();
+    if (oldNotice) oldNotice.setValue(SETTING.NOTICE);
+    const oldPrint = ss.getSheetByName('印刷_提出のお願い');
+    if (oldPrint && ss.getSheets().length > 1) ss.deleteSheet(oldPrint);
     // あとから増えた設定項目を書き足す
     const have = settings.sh.getLastRow() > 1 ? settings.sh.getRange(2, 1, settings.sh.getLastRow() - 1, 1).getValues().map(function (r) { return String(r[0]).trim(); }) : [];
     SETTING_DEFAULTS.forEach(function (r) { if (have.indexOf(r[0]) < 0) settings.sh.appendRow(r); });
@@ -599,7 +608,7 @@ function writeHowTo_(sh) {
     ['■ ふだん'],
     ['1. 課題を登録する：ホームの「➕ 課題を登録する」。教科・課題名は空欄でもOK。締切は「明日」「1週間後」などのボタンで。'],
     ['2. 読み取る：「登録して、読み取りへ」を押すか、ホームの課題の「📷 読む」。読み取り欄をクリックしてからピッ・ピッ。提出物の順番はばらばらでOK。'],
-    ['3. 見る・配る：「📒 提出状況（業務手帳）」で一覧。「📝 未提出者・提出のお願い」で印刷。'],
+    ['3. 見る・配る：「📒 提出状況（教務手帳）」で一覧。「📝 未提出者・課題提出について」で印刷。'],
     [''],
     ['■ 遅れ・欠席への配慮'],
     ['・課題を登録するときに「締切を過ぎて出したら？」を1つ選ぶだけ（次からは同じ選び方が最初から入る）：遅れとして記録／少しの遅れは期限内（1〜7日。欠席などへの配慮。1人ずつ登録しなくてよい）／区別しない'],
@@ -610,7 +619,7 @@ function writeHowTo_(sh) {
     ['新しい名簿をそのまま「名簿の貼り付け」に貼るだけ。同じ名前の生徒は学籍番号が新しくなり、バーコードは刷り直さずに使えます。'],
     [''],
     ['■ シートについて（ふつうはさわらなくてOK）'],
-    ['生徒名簿・課題一覧・提出記録：データのもと（手で直してもよい）　提出状況：業務手帳の形の一覧（自動）　集計：提出率（自動）　設定：表示の設定'],
+    ['生徒名簿・課題一覧・提出記録：データのもと（手で直してもよい）　提出状況：教務手帳の形の一覧（自動）　集計：提出率（自動）　設定：表示の設定'],
     ['生徒名簿の「生徒ID」はバーコードの中身です。変えないでください。'],
   ];
   sh.getRange(1, 1, lines.length, 1).setValues(lines).setWrap(true).setVerticalAlignment('top');
@@ -1193,7 +1202,7 @@ function statusView_(allTasks, allStudents) {
   };
 }
 
-// ───────── 提出状況（業務手帳の形） ─────────
+// ───────── 提出状況（教務手帳の形） ─────────
 //  1行目（かくし）：課題ID　　A列（かくし）：生徒ID
 //  2〜4行目：教科／課題名／締切日　　5行目から：1人1行（学籍番号・氏名・課題ごとの提出日・提出数・提出率・未提出）
 const STATUS_TOP = 5;
@@ -1278,7 +1287,7 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today) {
     if (n) sh.getRange(STATUS_TOP, STATUS_FIXED + 1, students.length, n).setNumberFormat('m/d').setHorizontalAlignment('center');
     sh.getRange(STATUS_TOP, STATUS_FIXED + n + 1, students.length, 4).setHorizontalAlignment('center');
     sh.getRange(STATUS_TOP, STATUS_FIXED + n + 2, students.length, 2).setNumberFormat('0%');
-    // クラスの切れ目に太線（業務手帳のページの区切りのように）
+    // クラスの切れ目に太線（教務手帳のページの区切りのように）
     for (let i = 1; i < students.length; i++) {
       if (students[i].cls !== students[i - 1].cls) {
         sh.getRange(STATUS_TOP + i, 1, 1, width).setBorder(true, null, null, null, null, null, '#000000', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
@@ -1298,7 +1307,7 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today) {
   sh.setFrozenColumns(STATUS_FIXED);
   sh.hideRows(1);
   sh.hideColumns(1);
-  sh.getRange(2, 2).setValue('業務手帳').setFontSize(12);
+  sh.getRange(2, 2).setValue('教務手帳').setFontSize(12);
   sh.getRange(3, 2).setValue((mark === 'circle' ? '○＝提出\n遅＝遅れ\n' : '日付＝提出日\n黄＝遅れ\n') + '青＝欠席・配慮で期限内\n△＝未完成\n赤＝未提出（締切後）\n免＝免除　－＝対象外')
     .setFontWeight('normal').setFontSize(8).setHorizontalAlignment('left');
   sh.getRange(4, 2).setNote('提出率は「締切を過ぎた課題・締切のない課題・提出済みの課題」で計算。\n最終更新：' + Utilities.formatDate(new Date(), tz_(), 'yyyy/MM/dd HH:mm'));
@@ -1336,7 +1345,7 @@ function updateStatusRow_(st, allTasks, logs) {
     sh.getRange(STATUS_TOP + idx, 1, 1, r.vals.length).setValues([r.vals]).setBackgrounds([r.bgs]);
   } catch (err) {
     console.warn('提出状況の書きかえに失敗：' + (err && err.stack || err));
-    return '記録はできましたが、提出状況（業務手帳）の書きかえに失敗しました：' + (err && err.message || err);
+    return '記録はできましたが、提出状況（教務手帳）の書きかえに失敗しました：' + (err && err.message || err);
   }
   return '';
 }
@@ -1474,7 +1483,7 @@ function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, mess
     count++;
     ensureSize_(sh, row + missing.length + 6, 4);
     const start = row;
-    sh.getRange(row, 1, 1, 4).merge().setValue('提出のお願い' + (title ? '　　' + title : '')).setFontWeight('bold').setFontSize(13);
+    sh.getRange(row, 1, 1, 4).merge().setValue('課題提出について' + (title ? '　　' + title : '')).setFontWeight('bold').setFontSize(13);
     row++;
     sh.getRange(row, 1, 1, 4).merge().setValue((s.gakuseki ? s.gakuseki + '　' : '') + s.cls + '　' + s.no + '番　' + s.name + '　さん').setFontSize(13);
     row++;

@@ -11,16 +11,16 @@
   .page { position: relative; width: 194mm; height: 270mm; overflow: hidden; break-after: page; page-break-after: always; }
   .page:last-child { break-after: auto; page-break-after: auto; }
   /* 1人1本の短冊：左に学籍番号・氏名、右にバーコードを並べる。生徒は右から1つずつ切ってはる */
-  .strip { box-sizing: border-box; height: 22.5mm; display: flex; align-items: stretch; overflow: hidden; }
-  .strip .who { flex: 0 0 46mm; box-sizing: border-box; padding: 0 2mm 0 6mm; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
-  .strip .gk { font-size: 22pt; font-weight: bold; letter-spacing: 1mm; line-height: 1.1; font-family: Arial, "Noto Sans JP", sans-serif; }
-  .strip .nm { font-size: 12pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .strip .cl { font-size: 8pt; color: #555; }
+  .strip { box-sizing: border-box; height: 30mm; display: flex; align-items: stretch; overflow: hidden; }
+  .strip .who { flex: 0 0 56mm; box-sizing: border-box; padding: 0 2mm 0 7mm; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+  .strip .gk { font-size: 28pt; font-weight: bold; letter-spacing: 1.2mm; line-height: 1.1; font-family: Arial, "Noto Sans JP", sans-serif; }
+  .strip .nm { font-size: 16pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .strip .cl { font-size: 10pt; color: #555; }
   .strip .bc { flex: 1 1 0; min-width: 0; position: relative; box-sizing: border-box; border-left: 0.25mm dotted #888; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 1mm; }
-  .strip .bc .tag { font-size: 8pt; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .strip .bc .tag b { font-size: 10pt; font-family: Arial, sans-serif; margin-right: 1mm; }
+  .strip .bc .tag { font-size: 10pt; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .strip .bc .tag b { font-size: 12pt; font-family: Arial, sans-serif; margin-right: 1mm; }
   .strip .bc::before { content: "✂"; position: absolute; left: -1.7mm; top: -0.3mm; font-size: 7pt; line-height: 1; color: #666; background: #fff; transform: rotate(-90deg); }
-  .strip svg { height: 15mm; max-width: 100%; }
+  .strip svg { height: 20mm; max-width: 100%; }
   .cut { position: absolute; left: 0; right: 0; height: 0; border-top: 0.35mm dashed #444; }
   .cut::before { content: "✂"; position: absolute; left: 0.5mm; top: -2.6mm; font-size: 9pt; line-height: 1; background: #fff; color: #222; }
   .roster { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
@@ -55,7 +55,7 @@
 <div class="controls">
   <label>印刷するもの
     <select id="kind">
-      <option value="labels">生徒のバーコード（A4・切り取り線つきの短冊）</option>
+      <option value="labels">生徒のバーコード（A4・切り取り線つきの短冊・クラスごと）</option>
       <option value="roster">名簿型（先生の手元で読む用）</option>
       <option value="tasks">課題のバーコード（読み取り画面の課題切りかえ用）</option>
     </select>
@@ -114,14 +114,21 @@
     }
 
     if (kind === 'labels') {
-      // A4 1ページに12本。横の点線で1回切ると、その生徒専用の短冊が1本できる
+      // A4 1ページに9本（高さ30mm）。横の点線で1回切ると、その生徒専用の短冊が1本できる
+      // クラスごとにページを分ける（クラスの中は番号順）
       const n = Math.max(1, Math.min(30, Number($('copies').value) || 1));
       const per = Number($('cols').value) || 3;
-      const ROWS = 12, H = 22.5;
-      const list = [];
-      students().forEach((s) => { for (let i = 0; i < n; i++) list.push(s); });
-      for (let p = 0; p < list.length; p += ROWS) {
-        const items = list.slice(p, p + ROWS);
+      const ROWS = 9, H = 30;
+      const groups = {};
+      students().forEach((s) => { (groups[s.cls] = groups[s.cls] || []).push(s); });
+      const pages = [];
+      Object.keys(groups).sort((a, b) => a.localeCompare(b, 'ja', { numeric: true })).forEach((cls) => {
+        const list = [];
+        groups[cls].sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0) || String(a.gakuseki).localeCompare(String(b.gakuseki)))
+          .forEach((s) => { for (let i = 0; i < n; i++) list.push(s); });
+        for (let p = 0; p < list.length; p += ROWS) pages.push(list.slice(p, p + ROWS));
+      });
+      pages.forEach((items) => {
         const page = el('div', 'page');
         items.forEach((s) => {
           const strip = el('div', 'strip');
@@ -137,7 +144,7 @@
             if (s.gakuseki) tag.appendChild(el('b', '', s.gakuseki));
             tag.appendChild(document.createTextNode(s.gakuseki ? s.name : s.cls + ' ' + s.no + '番 ' + s.name));
             bc.appendChild(tag);
-            bc.appendChild(barcode(s.id, { height: 40, fontSize: 11, margin: 3, width: per >= 4 ? 1.6 : 2 }));
+            bc.appendChild(barcode(s.id, { height: 50, fontSize: 13, margin: 3, width: per >= 4 ? 1.8 : (per === 3 ? 2.2 : 2.6) }));
             strip.appendChild(bc);
           }
           page.appendChild(strip);
@@ -149,7 +156,7 @@
           page.appendChild(c);
         }
         sheet.appendChild(page);
-      }
+      });
     } else if (kind === 'roster') {
       const groups = {};
       students().forEach((s) => { (groups[s.cls] = groups[s.cls] || []).push(s); });
