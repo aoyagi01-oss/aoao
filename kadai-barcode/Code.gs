@@ -1533,11 +1533,10 @@ function writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title) 
   return total;
 }
 
-// 「担当：青柳 先生」（名前に「先生」が入っていなければ付ける）
+// 「担当：青柳」（入れた名前をそのまま出す）
 function teacherLabel_(settings) {
   const name = String(settings[SETTING.TEACHER] || '').trim();
-  if (!name) return '';
-  return '担当：' + name + (/先生$/.test(name) ? '' : ' 先生');
+  return name ? '担当：' + name : '';
 }
 
 function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, message, teacher) {
