@@ -194,7 +194,7 @@
       const box = el('div', 'tasks');
       DATA.tasks.forEach((k) => {
         const d = el('div', 'task');
-        d.appendChild(el('div', 'sub', (k.subject || '') + (k.due ? '　締切 ' + k.due.replace(/-/g, '/') : '')));
+        d.appendChild(el('div', 'sub', (k.subject || '') + (k.due ? '　締切 ' + k.due.slice(5).replace(/^0/, '').replace('-0', '-').replace('-', '/') : '')));
         d.appendChild(el('div', 'name', k.name));
         d.appendChild(barcode(k.id));
         box.appendChild(d);

@@ -206,7 +206,7 @@ function addTask(t) {
   sh.appendRow(['', String(t.subject || '').trim(), String(t.name || '').trim(), classes.join(','), toDate_(t.given), toDate_(t.due), late, String(t.memo || '')]);
   const row = sh.getLastRow();
   sh.getRange(row, 4).setNumberFormat('@').setValue(classes.join(','));
-  sh.getRange(row, 5, 1, 2).setNumberFormat('yyyy/mm/dd');
+  sh.getRange(row, 5, 1, 2).setNumberFormat('m/d');
   const tasks = getTasks_();
   const task = tasks.filter(function (k) { return k.row === row; })[0];
   if (!task) throw new Error('課題を登録できませんでした。もう一度ためしてください');
@@ -364,8 +364,8 @@ function addExcuses(o) {
     sh.getRange(start, 2, rows.length, 1).setNumberFormat('@');
     sh.getRange(start, 4, rows.length, 1).setNumberFormat('@');
     sh.getRange(start, 1, rows.length, EXCUSE_HEADERS.length).setValues(rows);
-    sh.getRange(start, 5, rows.length, 2).setNumberFormat('yyyy/mm/dd');
-    sh.getRange(start, 9, rows.length, 1).setNumberFormat('yyyy/mm/dd hh:mm');
+    sh.getRange(start, 5, rows.length, 2).setNumberFormat('m/d');
+    sh.getRange(start, 9, rows.length, 1).setNumberFormat('m/d hh:mm');
   } finally {
     lock.releaseLock();
   }
@@ -597,7 +597,7 @@ function setup_(showMessage) {
   }
   if (tasks.fresh) {
     const dateRule = SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).setHelpText('日付を入れてください（例：2026/10/5）').build();
-    tasks.sh.getRange('E2:F').setDataValidation(dateRule).setNumberFormat('yyyy/mm/dd');
+    tasks.sh.getRange('E2:F').setDataValidation(dateRule).setNumberFormat('m/d');
     tasks.sh.getRange('M2:M').setNumberFormat('0%');
     tasks.sh.getRange('I1:M1').setBackground('#e0e0e0');
     tasks.sh.getRange('I1').setNote('I〜M列は「提出状況・集計を更新」で自動で書き込まれます。');
@@ -612,16 +612,25 @@ function setup_(showMessage) {
     log.sh.getRange('F2:F').setNumberFormat('@');
   }
   if (log.fresh) {
-    log.sh.getRange('A2:A').setNumberFormat('yyyy/mm/dd hh:mm');
+    log.sh.getRange('A2:A').setNumberFormat('m/d hh:mm');
     log.sh.getRange('E2:F').setNumberFormat('@');
   }
+
+  // 日付は「月/日」で表示する（年は出さない）。前の版のシートもここで切りかえる
+  if (tasks.sh.getRange('E2').getNumberFormat() !== 'm/d') tasks.sh.getRange('E2:F').setNumberFormat('m/d');
+  if (log.sh.getRange('A2').getNumberFormat() !== 'm/d hh:mm') log.sh.getRange('A2:A').setNumberFormat('m/d hh:mm');
 
   const exc = make(SHEET.EXCUSE, EXCUSE_HEADERS, [130, 70, 120, 80, 90, 90, 90, 200, 130]);
   if (exc.fresh) {
     exc.sh.getRange('B2:B').setNumberFormat('@');
     exc.sh.getRange('D2:D').setNumberFormat('@');
-    exc.sh.getRange('E2:F').setNumberFormat('yyyy/mm/dd');
+    exc.sh.getRange('E2:F').setNumberFormat('m/d');
     exc.sh.getRange('A1').setNote('欠席：日付（から〜まで）に休んだ。その期間にかかる課題は、休んだ日数だけこの生徒の締切が延びる（土日はとばす）\n配慮：その課題は遅れても期限内あつかい\n免除：その課題はこの生徒は対象外');
+  }
+
+  if (exc.sh.getRange('E2').getNumberFormat() !== 'm/d') {
+    exc.sh.getRange('E2:F').setNumberFormat('m/d');
+    exc.sh.getRange('I2:I').setNumberFormat('m/d hh:mm');
   }
 
   make(SHEET.STATUS);
@@ -1356,7 +1365,7 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today) {
   sh.getRange(2, 2).setValue('教務手帳').setFontSize(12);
   sh.getRange(3, 2).setValue((mark === 'circle' ? '○＝提出\n遅＝遅れ\n' : '日付＝提出日\n黄＝遅れ\n') + '青＝欠席・配慮で期限内\n△＝未完成\n赤＝未提出（締切後）\n免＝免除　－＝対象外')
     .setFontWeight('normal').setFontSize(8).setHorizontalAlignment('left');
-  sh.getRange(4, 2).setNote('提出率は「締切を過ぎた課題・締切のない課題・提出済みの課題」で計算。\n最終更新：' + Utilities.formatDate(new Date(), tz_(), 'yyyy/MM/dd HH:mm'));
+  sh.getRange(4, 2).setNote('提出率は「締切を過ぎた課題・締切のない課題・提出済みの課題」で計算。\n最終更新：' + Utilities.formatDate(new Date(), tz_(), 'M/d HH:mm'));
 }
 
 // 読み取るたびに、その生徒の行だけを書きかえる（表に課題・生徒が足りないときは全体を作り直す）
@@ -1389,6 +1398,8 @@ function updateStatusRow_(st, allTasks, logs) {
     }
     const r = statusRow_(st, view.tasks, subsByTask, today, view.mark);
     sh.getRange(STATUS_TOP + idx, 1, 1, r.vals.length).setValues([r.vals]).setBackgrounds([r.bgs]);
+    // マスに日付を打つと表示が「2026/10/06」に変わってしまうので、月/日に戻す
+    if (view.tasks.length) sh.getRange(STATUS_TOP + idx, STATUS_FIXED + 1, 1, view.tasks.length).setNumberFormat('m/d');
   } catch (err) {
     console.warn('提出状況の書きかえに失敗：' + (err && err.stack || err));
     return '記録はできましたが、提出状況（教務手帳）の書きかえに失敗しました：' + (err && err.message || err);
@@ -1449,7 +1460,7 @@ function writeSummarySheet_(ss, tasks, students, subsByTask, today) {
   }
   sh.setColumnWidth(3, 220);
   sh.setFrozenRows(2);
-  sh.getRange(1, 3).setValue('最終更新：' + Utilities.formatDate(new Date(), tz_(), 'yyyy/MM/dd HH:mm')).setFontColor('#666666');
+  sh.getRange(1, 3).setValue('最終更新：' + Utilities.formatDate(new Date(), tz_(), 'M/d HH:mm')).setFontColor('#666666');
 }
 
 // ───────── 印刷用シート（Select.html から呼ばれる） ─────────
@@ -1492,7 +1503,7 @@ function makePrintList(opts) {
 function writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title) {
   [70, 60, 45, 160, 60, 230].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
   let row = 1;
-  sh.getRange(row, 1, 1, 6).merge().setValue('未提出者一覧' + (title ? '　' + title : '') + '　（' + Utilities.formatDate(new Date(), tz_(), 'yyyy/M/d HH:mm') + ' 現在）').setFontSize(14).setFontWeight('bold');
+  sh.getRange(row, 1, 1, 6).merge().setValue('未提出者一覧' + (title ? '　' + title : '') + '　（' + Utilities.formatDate(new Date(), tz_(), 'M/d HH:mm') + ' 現在）').setFontSize(14).setFontWeight('bold');
   row += 2;
   let total = 0;
   tasks.forEach(function (t) {
