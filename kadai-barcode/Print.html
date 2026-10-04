@@ -22,6 +22,8 @@
   .strip .bc::before { content: "✂"; position: absolute; left: -1.7mm; top: -0.3mm; font-size: 7pt; line-height: 1; color: #666; background: #fff; transform: rotate(-90deg); }
   .strip svg { height: 20mm; max-width: 100%; }
   .cut { position: absolute; left: 0; right: 0; height: 0; border-top: 0.35mm dashed #444; }
+  .cut.clsbreak { border-top: 0.8mm solid #000; }
+  .cut.clsbreak::after { content: attr(data-cls); position: absolute; right: 1mm; top: -2.4mm; font-size: 9pt; font-weight: bold; line-height: 1; background: #fff; padding: 0 1mm; }
   .cut::before { content: "✂"; position: absolute; left: 0.5mm; top: -2.6mm; font-size: 9pt; line-height: 1; background: #fff; color: #222; }
   .roster { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
   .roster caption { text-align: left; font-weight: bold; font-size: 13pt; padding: 2mm 0; }
@@ -62,6 +64,7 @@
   </label>
   <label id="clsWrap">クラス <select id="cls"></select></label>
   <label id="colWrap">1本の短冊のバーコード <select id="cols"><option value="2">2つ</option><option value="3" selected>3つ</option><option value="4">4つ</option></select></label>
+  <label id="pageWrap"><input type="checkbox" id="perPage"> クラスごとに新しいページにする</label>
   <label id="copyWrap">1人あたり <input type="number" id="copies" value="1" min="1" max="30" style="width:3.5em"> 本</label>
   <button class="primary" id="print">🖨 印刷する</button>
   <button id="newtab">別のタブで開く</button>
@@ -102,6 +105,7 @@
     $('clsWrap').style.display = kind === 'tasks' ? 'none' : '';
     $('copyWrap').style.display = kind === 'labels' ? '' : 'none';
     $('colWrap').style.display = kind === 'labels' ? '' : 'none';
+    $('pageWrap').style.display = kind === 'labels' ? '' : 'none';
     // 学籍番号が入っていない生徒がいたら知らせる（その生徒はクラス・番号だけが印刷される）
     const noGk = kind === 'tasks' ? [] : students().filter((s) => !s.gakuseki);
     $('warn').textContent = noGk.length ? '⚠ 学籍番号が空欄の生徒がいます（' + noGk.length + '人）：' + noGk.slice(0, 10).map((s) => s.cls + ' ' + s.no + '番 ' + s.name).join('、') + (noGk.length > 10 ? ' …' : '') + '　→ 生徒名簿に学籍番号を入れてから印刷してください' : '';
@@ -115,19 +119,22 @@
 
     if (kind === 'labels') {
       // A4 1ページに9本（高さ30mm）。横の点線で1回切ると、その生徒専用の短冊が1本できる
-      // クラスごとにページを分ける（クラスの中は番号順）
+      // クラス順・番号順。ふつうは上に詰めて続け、クラスの切れ目に太線を引く（「クラスごとに新しいページ」も選べる）
       const n = Math.max(1, Math.min(30, Number($('copies').value) || 1));
       const per = Number($('cols').value) || 3;
       const ROWS = 9, H = 30;
       const groups = {};
       students().forEach((s) => { (groups[s.cls] = groups[s.cls] || []).push(s); });
       const pages = [];
+      const all = [];
       Object.keys(groups).sort((a, b) => a.localeCompare(b, 'ja', { numeric: true })).forEach((cls) => {
         const list = [];
         groups[cls].sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0) || String(a.gakuseki).localeCompare(String(b.gakuseki)))
           .forEach((s) => { for (let i = 0; i < n; i++) list.push(s); });
-        for (let p = 0; p < list.length; p += ROWS) pages.push(list.slice(p, p + ROWS));
+        if ($('perPage').checked) { for (let p = 0; p < list.length; p += ROWS) pages.push(list.slice(p, p + ROWS)); }
+        else all.push(...list);
       });
+      for (let p = 0; p < all.length; p += ROWS) pages.push(all.slice(p, p + ROWS));
       pages.forEach((items) => {
         const page = el('div', 'page');
         items.forEach((s) => {
@@ -153,6 +160,11 @@
         for (let r = 0; r <= items.length; r++) {
           const c = el('div', 'cut');
           c.style.top = r === 0 ? '0.2mm' : (r * H) + 'mm';
+          // クラスの切れ目（ページの途中で次のクラスが始まるところ）
+          if (r > 0 && r < items.length && items[r].cls !== items[r - 1].cls) {
+            c.classList.add('clsbreak');
+            c.dataset.cls = '▼ ' + items[r].cls;
+          }
           page.appendChild(c);
         }
         sheet.appendChild(page);
@@ -197,7 +209,7 @@
   const sel = $('cls');
   sel.appendChild(new Option('すべてのクラス', ''));
   [...new Set(DATA.students.map((s) => s.cls))].forEach((c) => sel.appendChild(new Option(c, c)));
-  ['kind', 'cls', 'copies', 'cols'].forEach((id) => $(id).addEventListener('change', render));
+  ['kind', 'cls', 'copies', 'cols', 'perPage'].forEach((id) => $(id).addEventListener('change', render));
 
   $('print').addEventListener('click', () => window.print());
   // ダイアログの中から印刷できないブラウザ向け：別タブに同じ内容を出して印刷する
