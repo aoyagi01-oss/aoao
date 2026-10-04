@@ -10,23 +10,19 @@
   /* 短冊：A4 1ページ＝194mm×270mm（余白8mm）に、高さ22.5mmの短冊を12段。切り取り線は紙の端から端まで通す */
   .page { position: relative; width: 194mm; height: 270mm; overflow: hidden; break-after: page; page-break-after: always; }
   .page:last-child { break-after: auto; page-break-after: auto; }
-  .strips { display: grid; grid-auto-rows: 22.5mm; }
-  .strip { box-sizing: border-box; display: flex; align-items: center; padding: 0 3mm 0 7mm; overflow: hidden; }
-  .strip .who { flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+  /* 1人1本の短冊：左に学籍番号・氏名、右にバーコードを並べる。生徒は右から1つずつ切ってはる */
+  .strip { box-sizing: border-box; height: 22.5mm; display: flex; align-items: stretch; overflow: hidden; }
+  .strip .who { flex: 0 0 46mm; box-sizing: border-box; padding: 0 2mm 0 6mm; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
   .strip .gk { font-size: 22pt; font-weight: bold; letter-spacing: 1mm; line-height: 1.1; font-family: Arial, "Noto Sans JP", sans-serif; }
-  .strip .nm { font-size: 13pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .strip .nm { font-size: 12pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .strip .cl { font-size: 8pt; color: #555; }
-  .strip .bc { flex: 1 1 auto; display: flex; justify-content: center; align-items: center; min-width: 0; }
-  .strip svg { height: 17mm; max-width: 100%; }
-  .cols1 .who { width: 75mm; }
-  .cols2 .who { width: 38mm; }
-  .cols2 .strip { padding-left: 6mm; }
-  .cols2 .gk { font-size: 18pt; letter-spacing: 0.5mm; }
-  .cols2 .nm { font-size: 10.5pt; }
+  .strip .bc { flex: 1 1 0; min-width: 0; position: relative; box-sizing: border-box; border-left: 0.25mm dotted #888; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 1mm; }
+  .strip .bc .tag { font-size: 8pt; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .strip .bc .tag b { font-size: 10pt; font-family: Arial, sans-serif; margin-right: 1mm; }
+  .strip .bc::before { content: "✂"; position: absolute; left: -1.7mm; top: -0.3mm; font-size: 7pt; line-height: 1; color: #666; background: #fff; transform: rotate(-90deg); }
+  .strip svg { height: 15mm; max-width: 100%; }
   .cut { position: absolute; left: 0; right: 0; height: 0; border-top: 0.35mm dashed #444; }
   .cut::before { content: "✂"; position: absolute; left: 0.5mm; top: -2.6mm; font-size: 9pt; line-height: 1; background: #fff; color: #222; }
-  .vcut { position: absolute; top: 0; width: 0; border-left: 0.35mm dashed #444; }
-  .vcut::before { content: "✂"; position: absolute; left: -1.6mm; top: 0.5mm; font-size: 9pt; line-height: 1; background: #fff; transform: rotate(90deg); }
   .roster { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
   .roster caption { text-align: left; font-weight: bold; font-size: 13pt; padding: 2mm 0; }
   .roster td, .roster th { border: 1px solid #999; padding: 1mm 2mm; font-size: 11pt; }
@@ -65,11 +61,11 @@
     </select>
   </label>
   <label id="clsWrap">クラス <select id="cls"></select></label>
-  <label id="colWrap">並べ方 <select id="cols"><option value="1">1列（12枚/ページ）</option><option value="2">2列（24枚/ページ）</option></select></label>
-  <label id="copyWrap">1人あたり <input type="number" id="copies" value="1" min="1" max="30" style="width:3.5em"> 枚</label>
+  <label id="colWrap">1本の短冊のバーコード <select id="cols"><option value="2">2つ</option><option value="3" selected>3つ</option><option value="4">4つ</option></select></label>
+  <label id="copyWrap">1人あたり <input type="number" id="copies" value="1" min="1" max="30" style="width:3.5em"> 本</label>
   <button class="primary" id="print">🖨 印刷する</button>
   <button id="newtab">別のタブで開く</button>
-  <span class="note">印刷の設定は「A4・余白：デフォルト・倍率100%（「ページに合わせる」は切る）」にしてください。点線（✂）にそって裁断機で切ります。読み取りにくいときは、プリンタの品質を上げてください。</span>
+  <span class="note">印刷の設定は「A4・余白：デフォルト・倍率100%（「ページに合わせる」は切る）」にしてください。横の太い点線（✂）で裁断機で1回切ると、その生徒専用の短冊になります（シールタイプのA4用紙もOK）。生徒は右側の細い点線からバーコードを1つずつ切ってはります。読み取りにくいときは、プリンタの品質を上げてください。</span>
 </div>
 <div id="err"></div>
 <div id="warn" style="color:#b06000;font-weight:bold;padding:0 10px"></div>
@@ -118,17 +114,15 @@
     }
 
     if (kind === 'labels') {
+      // A4 1ページに12本。横の点線で1回切ると、その生徒専用の短冊が1本できる
       const n = Math.max(1, Math.min(30, Number($('copies').value) || 1));
-      const cols = Number($('cols').value) || 1;
+      const per = Number($('cols').value) || 3;
       const ROWS = 12, H = 22.5;
       const list = [];
       students().forEach((s) => { for (let i = 0; i < n; i++) list.push(s); });
-      const per = ROWS * cols;
-      for (let p = 0; p < list.length; p += per) {
-        const items = list.slice(p, p + per);
-        const page = el('div', 'page cols' + cols);
-        const box = el('div', 'strips');
-        box.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+      for (let p = 0; p < list.length; p += ROWS) {
+        const items = list.slice(p, p + ROWS);
+        const page = el('div', 'page');
         items.forEach((s) => {
           const strip = el('div', 'strip');
           const who = el('div', 'who');
@@ -136,25 +130,23 @@
           who.appendChild(el('div', 'nm', s.name));
           who.appendChild(el('div', 'cl', s.cls + '　' + s.no + '番'));
           strip.appendChild(who);
-          const bc = el('div', 'bc');
-          bc.appendChild(barcode(s.id, { height: 50, fontSize: 12, margin: 4 }));
-          strip.appendChild(bc);
-          box.appendChild(strip);
+          for (let k = 0; k < per; k++) {
+            // 切り取ったあとも、だれのものかわかるように、どのバーコードにも学籍番号と名前を入れる
+            const bc = el('div', 'bc');
+            const tag = el('div', 'tag');
+            if (s.gakuseki) tag.appendChild(el('b', '', s.gakuseki));
+            tag.appendChild(document.createTextNode(s.gakuseki ? s.name : s.cls + ' ' + s.no + '番 ' + s.name));
+            bc.appendChild(tag);
+            bc.appendChild(barcode(s.id, { height: 40, fontSize: 11, margin: 3, width: per >= 4 ? 1.6 : 2 }));
+            strip.appendChild(bc);
+          }
+          page.appendChild(strip);
         });
-        page.appendChild(box);
-        // 切り取り線（ページの端から端まで。使った段の上下すべて）
-        const rowsUsed = Math.ceil(items.length / cols);
-        for (let r = 0; r <= rowsUsed; r++) {
+        // 横の切り取り線（紙の端から端まで）
+        for (let r = 0; r <= items.length; r++) {
           const c = el('div', 'cut');
-          c.style.top = (r * H) + 'mm';
-          if (r === 0) c.style.top = '0.2mm';
+          c.style.top = r === 0 ? '0.2mm' : (r * H) + 'mm';
           page.appendChild(c);
-        }
-        if (cols === 2) {
-          const v = el('div', 'vcut');
-          v.style.left = '97mm';
-          v.style.height = (rowsUsed * H) + 'mm';
-          page.appendChild(v);
         }
         sheet.appendChild(page);
       }
