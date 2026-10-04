@@ -15,6 +15,7 @@ const SHEET = {
   PRINT_MISSING: '印刷_未提出者',
   PRINT_NOTICE: '印刷_提出のお願い',
   PRINT_BARCODE: '印刷_バーコード',
+  EXCUSE: '欠席・配慮',
 };
 
 // 生徒IDはバーコードの中身（ずっと変えない）。学籍番号は毎年変わってよい（1101＝1年1組1番）
@@ -37,7 +38,13 @@ const SETTING_DEFAULTS = [
   [SETTING.MARK, '日付'],
 ];
 
-const COLOR = { header: '#cfe2f3', ok: '#d9ead3', late: '#fff2cc', overdue: '#f4cccc', notYet: '#ffffff', none: '#eeeeee' };
+const COLOR = { header: '#cfe2f3', ok: '#d9ead3', late: '#fff2cc', overdue: '#f4cccc', notYet: '#ffffff', none: '#eeeeee', excused: '#c9daf8' };
+
+// 欠席・配慮のシート。1行が1件。
+//  欠席：日付（から〜まで）に休んだ。→ その期間にかかる課題は、休んだ日数だけその生徒の締切を延ばす（土日はとばす）
+//  配慮：その課題は、遅れて出しても期限内あつかい（未提出でも赤にしない）
+//  免除：その課題は、その生徒は対象外（提出率の分母から外す）
+const EXCUSE_HEADERS = ['種類（欠席／配慮／免除）', '学籍番号', '氏名', '生徒ID', '日付（から）', '日付（まで）', '課題ID（配慮・免除）', 'メモ', '登録日時'];
 
 // ───────── メニュー ─────────
 
@@ -51,6 +58,7 @@ function onOpen() {
     .addItem('📒 提出状況（業務手帳）を見る', 'showStatusSheet')
     .addSeparator()
     .addSubMenu(ui.createMenu('その他')
+      .addItem('🤒 欠席・配慮・免除', 'openExcuseDialog')
       .addItem('👥 名簿を貼り付ける', 'openRosterDialog')
       .addItem('🖨 バーコードを印刷する', 'openBarcodePrint')
       .addItem('🖨 未提出者リスト・提出のお願い', 'openListDialog')
@@ -256,15 +264,137 @@ function importRoster(rows) {
   }
 }
 
+// ───────── 欠席・配慮・免除の登録（Excuse.html） ─────────
+
+function openExcuseDialog() {
+  setup_(false);
+  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutputFromFile('Excuse').setWidth(820).setHeight(660), '欠席・配慮・免除');
+}
+
+function getExcuseData() {
+  setup_(false);
+  const students = sortStudents_(getStudents_().filter(function (s) { return !s.excluded; }));
+  const tasks = getTasks_();
+  const taskMap = {};
+  tasks.forEach(function (t) { taskMap[t.id] = t; });
+  const byId = {};
+  students.forEach(function (s) { byId[s.id] = s; });
+  const sh = sheet_(SHEET.EXCUSE);
+  const entries = [];
+  if (sh.getLastRow() > 1) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, EXCUSE_HEADERS.length).getValues().forEach(function (r, i) {
+      if (String(r[0]).trim() === '') return;
+      const st = byId[norm_(r[3])];
+      const from = dateKey_(r[4]), to = dateKey_(r[5]);
+      const t = taskMap[norm_(r[6])];
+      entries.push({
+        row: i + 2, type: String(r[0]).trim(), sid: norm_(r[3]),
+        who: st ? whoOf_(st) : (String(r[1]) + ' ' + String(r[2])).trim(),
+        period: from ? shortDate_(from) + (to && to !== from ? '〜' + shortDate_(to) : '') : '',
+        task: t ? taskLabel_(t) : (r[6] ? String(r[6]) : ''),
+        memo: String(r[7]),
+      });
+    });
+  }
+  return {
+    today: todayKey_(),
+    students: students.map(function (s) { return { id: s.id, gakuseki: s.gakuseki, name: s.name, cls: s.cls, no: s.no }; }),
+    tasks: tasks.slice().reverse().map(function (t) { return { id: t.id, label: taskLabel_(t) }; }),
+    entries: entries.reverse(),
+  };
+}
+
+// o: { type: '欠席' | '配慮' | '免除', ids: [生徒ID...], from, to, taskId, memo }
+function addExcuses(o) {
+  const type = o.type === '配慮' || o.type === '免除' ? o.type : '欠席';
+  if (type !== '欠席' && !o.taskId) throw new Error('課題を選んでください');
+  if (type === '欠席' && !o.from) throw new Error('休んだ日を入れてください');
+  const students = getStudents_();
+  const byId = {};
+  students.forEach(function (s) { byId[s.id] = s; });
+  const now = new Date();
+  const rows = (o.ids || []).map(norm_).filter(function (id) { return byId[id]; }).map(function (id) {
+    const s = byId[id];
+    return [type, s.gakuseki, s.name, s.id, type === '欠席' ? toDate_(o.from) : '', type === '欠席' ? toDate_(o.to || o.from) : '',
+      type === '欠席' ? '' : norm_(o.taskId), String(o.memo || ''), now];
+  });
+  if (!rows.length) throw new Error('生徒を選んでください');
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    const sh = sheet_(SHEET.EXCUSE);
+    const start = sh.getLastRow() + 1;
+    ensureSize_(sh, start + rows.length, EXCUSE_HEADERS.length);
+    sh.getRange(start, 2, rows.length, 1).setNumberFormat('@');
+    sh.getRange(start, 4, rows.length, 1).setNumberFormat('@');
+    sh.getRange(start, 1, rows.length, EXCUSE_HEADERS.length).setValues(rows);
+    sh.getRange(start, 5, rows.length, 2).setNumberFormat('yyyy/mm/dd');
+    sh.getRange(start, 9, rows.length, 1).setNumberFormat('yyyy/mm/dd hh:mm');
+  } finally {
+    lock.releaseLock();
+  }
+  EXC_ = null;
+  rebuildStatus_();
+  return getExcuseData();
+}
+
+function deleteExcuse(row, sid) {
+  const sh = sheet_(SHEET.EXCUSE);
+  if (row < 2 || row > sh.getLastRow() || norm_(sh.getRange(row, 4).getValue()) !== norm_(sid)) {
+    throw new Error('シートが変わっています。画面を開き直してください。');
+  }
+  sh.deleteRow(row);
+  EXC_ = null;
+  rebuildStatus_();
+  return getExcuseData();
+}
+
+// 読み取り画面で、遅れて出した生徒を「配慮（期限内あつかい）」にする
+function excuseLate(taskId, studentId) {
+  const tasks = getTasks_();
+  const task = findTask_(tasks, taskId);
+  const st = getStudents_().filter(function (x) { return x.id === norm_(studentId); })[0];
+  if (!task || !st) return { kind: 'error', message: '見つかりませんでした' };
+  addExcuseRow_(['配慮', st.gakuseki, st.name, st.id, '', '', task.id, '遅れて提出（欠席など）：読み取り画面から', new Date()]);
+  EXC_ = null;
+  const logs = readLog_();
+  updateStatusRow_(st, tasks, logs);
+  return { kind: 'undone', message: '配慮しました：' + whoOf_(st) + ' → 期限内あつかい', stats: taskStats_(task, getStudents_(), logs) };
+}
+
+function addExcuseRow_(r) {
+  const sh = sheet_(SHEET.EXCUSE);
+  sh.appendRow(r);
+  sh.getRange(sh.getLastRow(), 2).setNumberFormat('@').setValue(r[1]);
+  sh.getRange(sh.getLastRow(), 4).setNumberFormat('@').setValue(r[3]);
+}
+
+// 提出状況（業務手帳）だけを作り直す
+function rebuildStatus_() {
+  const ss = SpreadsheetApp.getActive();
+  const allTasks = getTasks_();
+  const view = statusView_(allTasks, getStudents_());
+  const logs = readLog_();
+  const subsByTask = {};
+  view.tasks.forEach(function (t) { subsByTask[t.id] = submissionsOf_(t, logs); });
+  writeStatusSheet_(ss, view.tasks, view.students, subsByTask, todayKey_());
+}
+
+function showSummarySheet() {
+  refreshAll();
+  const ss = SpreadsheetApp.getActive();
+  ss.setActiveSheet(ss.getSheetByName(SHEET.SUMMARY));
+}
+
 // ───────── 配布用のひな形 ─────────
 
 function makeTemplate() {
   const ui = SpreadsheetApp.getUi();
   const ok = ui.alert('配布用のひな形にします',
-    '生徒名簿・課題一覧・提出記録の中身をすべて消します（シートと設定は残ります）。\n元に戻せないので、必ずこのスプレッドシートのコピーで行ってください。\n\n続けますか？', ui.ButtonSet.OK_CANCEL);
+    '生徒名簿・課題一覧・提出記録・欠席・配慮の中身をすべて消します（シートと設定は残ります）。\n元に戻せないので、必ずこのスプレッドシートのコピーで行ってください。\n\n続けますか？', ui.ButtonSet.OK_CANCEL);
   if (ok !== ui.Button.OK) return;
   const ss = SpreadsheetApp.getActive();
-  [SHEET.STUDENTS, SHEET.TASKS, SHEET.LOG].forEach(function (n) {
+  [SHEET.STUDENTS, SHEET.TASKS, SHEET.LOG, SHEET.EXCUSE].forEach(function (n) {
     const sh = ss.getSheetByName(n);
     if (sh && sh.getMaxRows() > 2) sh.deleteRows(3, sh.getMaxRows() - 2);
     if (sh) sh.getRange(2, 1, 1, sh.getMaxColumns()).clearContent();
@@ -387,6 +517,14 @@ function setup_(showMessage) {
     log.sh.getRange('E2:F').setNumberFormat('@');
   }
 
+  const exc = make(SHEET.EXCUSE, EXCUSE_HEADERS, [130, 70, 120, 80, 90, 90, 90, 200, 130]);
+  if (exc.fresh) {
+    exc.sh.getRange('B2:B').setNumberFormat('@');
+    exc.sh.getRange('D2:D').setNumberFormat('@');
+    exc.sh.getRange('E2:F').setNumberFormat('yyyy/mm/dd');
+    exc.sh.getRange('A1').setNote('欠席：日付（から〜まで）に休んだ。その期間にかかる課題は、休んだ日数だけこの生徒の締切が延びる（土日はとばす）\n配慮：その課題は遅れても期限内あつかい\n免除：その課題はこの生徒は対象外');
+  }
+
   make(SHEET.STATUS);
   make(SHEET.SUMMARY);
 
@@ -416,6 +554,12 @@ function writeHowTo_(sh) {
     ['1. 課題を登録する：ホームの「➕ 課題を登録する」。教科・課題名は空欄でもOK。締切は「明日」「1週間後」などのボタンで。'],
     ['2. 読み取る：「登録して、読み取りへ」を押すか、ホームの課題の「📷 読む」。読み取り欄をクリックしてからピッ・ピッ。提出物の順番はばらばらでOK。'],
     ['3. 見る・配る：「📒 提出状況（業務手帳）」で一覧。「📝 未提出者・提出のお願い」で印刷。'],
+    [''],
+    ['■ 遅れ・欠席・配慮'],
+    ['・遅れて出した提出も「提出」として数えます。ただし「期限内」とは分けて、提出率と期限内提出率の両方を出します（業務手帳では黄色）。'],
+    ['・欠席：ホームの「🤒 欠席・配慮・免除」で休んだ日を入れると、その期間にかかる課題は休んだ日数（登校日）だけその生徒の締切が延びます。延びた締切までに出せば期限内（青）。'],
+    ['・配慮：特定の課題を、その生徒だけ「遅れても期限内あつかい」に。遅れて出してきたときは、読み取り画面に出るボタンでその場で配慮できます。'],
+    ['・免除：長期欠席・入院などで、その課題を出さなくてよい生徒に。提出率の計算から外れます（業務手帳では「免」）。'],
     [''],
     ['■ 進級したら'],
     ['新しい名簿をそのまま「名簿の貼り付け」に貼るだけ。同じ名前の生徒は学籍番号が新しくなり、バーコードは刷り直さずに使えます。'],
@@ -618,7 +762,100 @@ function displayName_(t) {
 
 function isTarget_(task, student) {
   if (student.excluded) return false;
+  if (isExempt_(task, student.id)) return false;
   return !task.classes.length || task.classes.indexOf(student.cls) >= 0;
+}
+
+// 学級としては対象だが、免除にした生徒
+function isExemptTarget_(task, student) {
+  return !student.excluded && isExempt_(task, student.id) && (!task.classes.length || task.classes.indexOf(student.cls) >= 0);
+}
+
+// ───────── 欠席・配慮・免除 ─────────
+
+let EXC_ = null; // 1回の実行の中だけ覚えておく
+
+function excuses_() {
+  if (EXC_) return EXC_;
+  const out = { absent: {}, task: {} };
+  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET.EXCUSE);
+  if (sh && sh.getLastRow() > 1) {
+    const vals = sh.getRange(2, 1, sh.getLastRow() - 1, EXCUSE_HEADERS.length).getValues();
+    let byGk = null;
+    vals.forEach(function (r) {
+      const type = String(r[0]).normalize('NFKC').trim();
+      let sid = norm_(r[3]);
+      if (!sid && r[1] !== '') { // 手で学籍番号だけ書いた行
+        if (!byGk) { byGk = {}; getStudents_().forEach(function (st) { if (st.gakuseki && !st.excluded) byGk[st.gakuseki] = st.id; }); }
+        sid = byGk[norm_(r[1])] || '';
+      }
+      if (!sid) return;
+      if (/欠/.test(type)) {
+        const from = dateKey_(r[4]);
+        const to = dateKey_(r[5]) || from;
+        if (!from) return;
+        const days = out.absent[sid] || (out.absent[sid] = {});
+        for (let k = from, n = 0; k <= to && n < 120; k = addDaysKey_(k, 1), n++) days[k] = true;
+      } else {
+        const tid = norm_(r[6]);
+        if (!tid) return;
+        if (/免/.test(type)) out.task[tid + '|' + sid] = '免除';
+        else if (/配|慮|延/.test(type) && out.task[tid + '|' + sid] !== '免除') out.task[tid + '|' + sid] = '配慮';
+      }
+    });
+  }
+  EXC_ = out;
+  return out;
+}
+
+function keyToUtc_(key) {
+  const p = key.split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+}
+
+function utcToKey_(d) {
+  return d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+}
+
+function addDaysKey_(key, n) {
+  const d = keyToUtc_(key);
+  d.setUTCDate(d.getUTCDate() + n);
+  return utcToKey_(d);
+}
+
+function isWeekday_(key) {
+  const w = keyToUtc_(key).getUTCDay();
+  return w !== 0 && w !== 6;
+}
+
+// 土日をとばして n 日あとの日付
+function addSchoolDays_(key, n) {
+  let k = key;
+  while (n > 0) { k = addDaysKey_(k, 1); if (isWeekday_(k)) n--; }
+  return k;
+}
+
+function isExempt_(task, sid) {
+  return excuses_().task[task.id + '|' + sid] === '免除';
+}
+
+// その生徒にとっての締切。{ due: 'yyyy-MM-dd'（空＝締切なし）, ext: 延ばした日数, excused: 配慮 }
+function dueFor_(task, sid) {
+  if (!task.due) return { due: '', ext: 0, excused: false };
+  const ex = excuses_();
+  if (ex.task[task.id + '|' + sid] === '配慮') return { due: '', ext: 0, excused: true };
+  const days = ex.absent[sid];
+  if (!days) return { due: task.due, ext: 0, excused: false };
+  // 課題を出した日から締切日までに休んだ日（平日）を数える。出した日が空欄なら締切の1週間前から
+  const start = task.given && task.given <= task.due ? task.given : addDaysKey_(task.due, -6);
+  let n = 0;
+  Object.keys(days).forEach(function (k) { if (k >= start && k <= task.due && isWeekday_(k)) n++; });
+  return n ? { due: addSchoolDays_(task.due, n), ext: n, excused: false } : { due: task.due, ext: 0, excused: false };
+}
+
+function isOverdue_(task, sid, today) {
+  const d = dueFor_(task, sid);
+  return !!d.due && today > d.due;
 }
 
 function readLog_() {
@@ -630,15 +867,21 @@ function readLog_() {
   }).filter(function (r) { return r.taskId && r.studentId; });
 }
 
-function isLate_(task, time) {
-  return !!task.due && time instanceof Date && dateKey_(time) > task.due;
+// 遅れ＝その生徒の締切（欠席で延ばした分・配慮をふくむ）を過ぎてから出した
+function isLate_(task, time, sid) {
+  const d = dueFor_(task, sid);
+  return !!d.due && time instanceof Date && dateKey_(time) > d.due;
 }
 
 // 課題ごとに「だれが・いつ」出したか（同じ生徒が2回あれば最初の記録）
+//  late：遅れ　excused：もとの締切は過ぎたが、欠席・配慮で期限内あつかい
 function submissionsOf_(task, logs) {
   const map = {};
   logs.forEach(function (r) {
-    if (r.taskId === task.id && !map[r.studentId]) map[r.studentId] = { time: r.time, late: isLate_(task, r.time) };
+    if (r.taskId !== task.id || map[r.studentId]) return;
+    const late = isLate_(task, r.time, r.studentId);
+    const afterDue = !!task.due && r.time instanceof Date && dateKey_(r.time) > task.due;
+    map[r.studentId] = { time: r.time, late: late, excused: afterDue && !late };
   });
   return map;
 }
@@ -655,7 +898,8 @@ function taskStats_(task, students, logs) {
       submitted++;
       if (sub.late) late++;
     } else {
-      missing.push({ gakuseki: s.gakuseki, cls: s.cls, no: s.no, name: s.name });
+      const d = dueFor_(task, s.id);
+      missing.push({ gakuseki: s.gakuseki, cls: s.cls, no: s.no, name: s.name, note: d.excused ? '配慮' : (d.ext ? '〆' + shortDate_(d.due) : '') });
     }
   });
   return {
@@ -739,14 +983,19 @@ function recordScan(taskId, raw, undoMode) {
       result = { kind: 'dup', message: 'すでに提出済み：' + who + (t ? '（' + t + '）' : '') };
     } else {
       const now = new Date();
-      const late = isLate_(task, now);
-      const target = isTarget_(task, st);
+      const late = isLate_(task, now, st.id);
+      const target = isTarget_(task, st) || isExemptTarget_(task, st);
+      const d = dueFor_(task, st.id);
+      const saved = !late && !!task.due && dateKey_(now) > task.due;
       const judge = !target ? '対象外' : (late ? '遅れ' : '期限内');
       sh.appendRow([now, task.id, task.subject, task.name, st.id, st.gakuseki, st.cls, st.no, st.name, judge]);
       sh.getRange(sh.getLastRow(), 5, 1, 2).setNumberFormat('@').setValues([[st.id, st.gakuseki]]);
+      const exempt = isExemptTarget_(task, st);
       result = {
-        kind: !target ? 'notarget' : (late ? 'late' : 'ok'),
-        message: (!target ? '対象外のクラスですが記録しました：' : (late ? '締切後の提出：' : '提出：')) + who,
+        kind: !target ? 'notarget' : (exempt ? 'ok' : (late ? 'late' : 'ok')),
+        message: (!target ? '対象外のクラスですが記録しました：' : (exempt ? '提出（この課題は免除の生徒）：' : (late ? '締切後の提出：' : '提出：'))) + who +
+          (saved ? (d.excused ? '（配慮：期限内あつかい）' : '（欠席のため ' + shortDate_(d.due) + ' まで延長：期限内）') : ''),
+        studentId: st.id,
       };
     }
     SpreadsheetApp.flush();
@@ -851,30 +1100,33 @@ const STATUS_TOP = 5;
 const STATUS_FIXED = 3;
 
 function statusCell_(s, t, subsByTask, today, mark) {
+  if (isExemptTarget_(t, s)) return { v: '免', bg: COLOR.none, considered: false };
   if (!isTarget_(t, s)) return { v: '－', bg: COLOR.none, considered: false };
   const sub = subsByTask[t.id][s.id];
-  const overdue = !!t.due && today > t.due;
   if (sub) {
     const v = mark === 'circle' ? (sub.late ? '遅' : '○') : (sub.time instanceof Date ? sub.time : '○');
-    return { v: v, bg: sub.late ? COLOR.late : COLOR.ok, considered: true, done: true };
+    return { v: v, bg: sub.late ? COLOR.late : (sub.excused ? COLOR.excused : COLOR.ok), considered: true, done: true, onTime: !sub.late };
   }
-  return { v: '', bg: overdue ? COLOR.overdue : COLOR.notYet, considered: overdue || !t.due, overdue: overdue };
+  const d = dueFor_(t, s.id);
+  const overdue = !!d.due && today > d.due;
+  return { v: '', bg: overdue ? COLOR.overdue : COLOR.notYet, considered: overdue || (!t.due && !d.excused), overdue: overdue };
 }
 
 function statusRow_(s, tasks, subsByTask, today, mark) {
-  let considered = 0, done = 0, overdueMissing = 0;
+  let considered = 0, done = 0, onTime = 0, overdueMissing = 0;
   const vals = [s.id, s.gakuseki || (s.cls + '-' + s.no), s.name];
   const bgs = ['#ffffff', '#ffffff', '#ffffff'];
   tasks.forEach(function (t) {
     const c = statusCell_(s, t, subsByTask, today, mark);
     if (c.considered) considered++;
     if (c.done) done++;
+    if (c.onTime) onTime++;
     if (c.overdue) overdueMissing++;
     vals.push(c.v);
     bgs.push(c.bg);
   });
-  vals.push(done, considered ? done / considered : '', overdueMissing || '');
-  bgs.push('#ffffff', '#ffffff', overdueMissing ? COLOR.overdue : '#ffffff');
+  vals.push(done, considered ? done / considered : '', considered ? onTime / considered : '', overdueMissing || '');
+  bgs.push('#ffffff', '#ffffff', '#ffffff', overdueMissing ? COLOR.overdue : '#ffffff');
   return { vals: vals, bgs: bgs };
 }
 
@@ -890,14 +1142,14 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today) {
   if (sh.getMaxRows() > 1) sh.showRows(1, sh.getMaxRows());
 
   const n = tasks.length;
-  const width = STATUS_FIXED + n + 3;
+  const width = STATUS_FIXED + n + 4;
   const head = [
-    ['（この行とA列は消さないでください）', '', ''].concat(tasks.map(function (t) { return t.id; }), ['', '', '']),
-    ['', '', '教科'].concat(tasks.map(function (t) { return t.subject; }), ['', '', '']),
-    ['', '', '課題名'].concat(tasks.map(function (t) { return t.name; }), ['提出数', '提出率', '未提出\n（締切後）']),
+    ['（この行とA列は消さないでください）', '', ''].concat(tasks.map(function (t) { return t.id; }), ['', '', '', '']),
+    ['', '', '教科'].concat(tasks.map(function (t) { return t.subject; }), ['', '', '', '']),
+    ['', '', '課題名'].concat(tasks.map(function (t) { return t.name; }), ['提出数', '提出率', '期限内\n提出率', '未提出\n（締切後）']),
     ['生徒ID', '学籍番号', '氏名'].concat(tasks.map(function (t) {
       return t.due ? '〆' + shortDate_(t.due) : (t.given ? '出' + shortDate_(t.given) : '');
-    }), ['', '', '']),
+    }), ['', '', '', '']),
   ];
   const values = head.slice();
   const colors = head.map(function () { const r = []; for (let i = 0; i < width; i++) r.push(COLOR.header); return r; });
@@ -917,8 +1169,8 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today) {
     const body = sh.getRange(STATUS_TOP, 1, students.length, width);
     body.setBorder(true, true, true, true, true, true, '#bbbbbb', SpreadsheetApp.BorderStyle.SOLID);
     if (n) sh.getRange(STATUS_TOP, STATUS_FIXED + 1, students.length, n).setNumberFormat('m/d').setHorizontalAlignment('center');
-    sh.getRange(STATUS_TOP, STATUS_FIXED + n + 1, students.length, 3).setHorizontalAlignment('center');
-    sh.getRange(STATUS_TOP, STATUS_FIXED + n + 2, students.length, 1).setNumberFormat('0%');
+    sh.getRange(STATUS_TOP, STATUS_FIXED + n + 1, students.length, 4).setHorizontalAlignment('center');
+    sh.getRange(STATUS_TOP, STATUS_FIXED + n + 2, students.length, 2).setNumberFormat('0%');
     // クラスの切れ目に太線（業務手帳のページの区切りのように）
     for (let i = 1; i < students.length; i++) {
       if (students[i].cls !== students[i - 1].cls) {
@@ -934,13 +1186,13 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today) {
   sh.setColumnWidth(2, 70);
   sh.setColumnWidth(3, 120);
   for (let c = 0; c < n; c++) sh.setColumnWidth(STATUS_FIXED + 1 + c, 52);
-  [50, 55, 60].forEach(function (w, i) { sh.setColumnWidth(STATUS_FIXED + n + 1 + i, w); });
+  [50, 55, 55, 60].forEach(function (w, i) { sh.setColumnWidth(STATUS_FIXED + n + 1 + i, w); });
   sh.setFrozenRows(4);
   sh.setFrozenColumns(STATUS_FIXED);
   sh.hideRows(1);
   sh.hideColumns(1);
   sh.getRange(2, 2).setValue('業務手帳').setFontSize(12);
-  sh.getRange(3, 2).setValue(mark === 'circle' ? '○＝提出\n遅＝締切後\n赤＝未提出\n（締切後）\n－＝対象外' : '日付＝提出日\n黄＝締切後\n赤＝未提出\n（締切後）\n－＝対象外')
+  sh.getRange(3, 2).setValue((mark === 'circle' ? '○＝提出\n遅＝遅れ\n' : '日付＝提出日\n黄＝遅れ\n') + '青＝欠席・配慮で期限内\n赤＝未提出（締切後）\n免＝免除　－＝対象外')
     .setFontWeight('normal').setFontSize(8).setHorizontalAlignment('left');
   sh.getRange(4, 2).setNote('提出率は「締切を過ぎた課題・締切のない課題・提出済みの課題」で計算。\n最終更新：' + Utilities.formatDate(new Date(), tz_(), 'yyyy/MM/dd HH:mm'));
 }
@@ -983,22 +1235,23 @@ function writeSummarySheet_(ss, tasks, students, subsByTask, today) {
   const sh = ss.getSheetByName(SHEET.SUMMARY);
   sh.clear();
   const classes = classList_(students);
-  const header = ['課題ID', '教科', '課題名', '締切', '対象', '提出', 'うち遅れ', '未提出', '提出率'].concat(classes.map(function (c) { return c + '\n提出率'; }));
+  const header = ['課題ID', '教科', '課題名', '締切', '対象', '提出', 'うち遅れ', '未提出', '免除', '提出率', '期限内\n提出率'].concat(classes.map(function (c) { return c + '\n提出率'; }));
   const rows = [];
   const bySubject = {};
 
   tasks.forEach(function (t) {
     const subs = subsByTask[t.id];
-    let target = 0, done = 0, late = 0;
+    let target = 0, done = 0, late = 0, exempt = 0;
     const perClass = {};
     students.forEach(function (s) {
+      if (isExemptTarget_(t, s)) exempt++;
       if (!isTarget_(t, s)) return;
       target++;
       const pc = perClass[s.cls] || (perClass[s.cls] = { target: 0, done: 0 });
       pc.target++;
       if (subs[s.id]) { done++; pc.done++; if (subs[s.id].late) late++; }
     });
-    rows.push([t.id, t.subject, displayName_(t), t.due ? shortDate_(t.due) : '', target, done, late, target - done, target ? done / target : '']
+    rows.push([t.id, t.subject, displayName_(t), t.due ? shortDate_(t.due) : '', target, done, late, target - done, exempt || '', target ? done / target : '', target ? (done - late) / target : '']
       .concat(classes.map(function (c) { return perClass[c] ? perClass[c].done / perClass[c].target : ''; })));
     const key = t.subject || '（教科なし）';
     const b = bySubject[key] || (bySubject[key] = { tasks: 0, target: 0, done: 0, late: 0 });
@@ -1010,20 +1263,20 @@ function writeSummarySheet_(ss, tasks, students, subsByTask, today) {
   sh.getRange(2, 1, 1, header.length).setValues([header]).setFontWeight('bold').setBackground(COLOR.header).setWrap(true);
   if (rows.length) {
     sh.getRange(3, 1, rows.length, header.length).setValues(rows);
-    sh.getRange(3, 9, rows.length, header.length - 8).setNumberFormat('0%');
+    sh.getRange(3, 10, rows.length, header.length - 9).setNumberFormat('0%');
   }
 
   const top = 3 + rows.length + 2;
   sh.getRange(top, 1).setValue('教科別の提出率').setFontWeight('bold').setFontSize(13);
-  const subjHeader = ['教科', '課題数', '対象（のべ）', '提出（のべ）', 'うち遅れ', '提出率'];
+  const subjHeader = ['教科', '課題数', '対象（のべ）', '提出（のべ）', 'うち遅れ', '提出率', '期限内提出率'];
   const subjRows = Object.keys(bySubject).map(function (k) {
     const b = bySubject[k];
-    return [k, b.tasks, b.target, b.done, b.late, b.target ? b.done / b.target : ''];
+    return [k, b.tasks, b.target, b.done, b.late, b.target ? b.done / b.target : '', b.target ? (b.done - b.late) / b.target : ''];
   });
   sh.getRange(top + 1, 1, 1, subjHeader.length).setValues([subjHeader]).setFontWeight('bold').setBackground(COLOR.header);
   if (subjRows.length) {
     sh.getRange(top + 2, 1, subjRows.length, subjHeader.length).setValues(subjRows);
-    sh.getRange(top + 2, 6, subjRows.length, 1).setNumberFormat('0%');
+    sh.getRange(top + 2, 6, subjRows.length, 2).setNumberFormat('0%');
   }
   sh.setColumnWidth(3, 220);
   sh.setFrozenRows(2);
@@ -1053,23 +1306,27 @@ function makePrintList(opts) {
   const name = opts.type === 'notice' ? SHEET.PRINT_NOTICE : SHEET.PRINT_MISSING;
   const sh = freshSheet_(ss, name);
 
+  // まだ出していない、かどうか（「締切を過ぎた課題だけ」のときは、その生徒の締切＝欠席で延ばした締切で見る）
+  const isMissing = function (t, s) {
+    return isTarget_(t, s) && !subs[t.id][s.id] && (!opts.overdueOnly || isOverdue_(t, s.id, today));
+  };
   const count = opts.type === 'notice'
-    ? writeNotices_(sh, tasks, students, subs, title, String(settings[SETTING.NOTICE] || ''))
-    : writeMissingList_(sh, tasks, students, subs, title);
+    ? writeNotices_(sh, tasks, students, isMissing, title, String(settings[SETTING.NOTICE] || ''))
+    : writeMissingList_(sh, tasks, students, isMissing, title);
 
   ss.setActiveSheet(sh);
   SpreadsheetApp.flush();
   return { ok: true, count: count, sheetName: name, pdfUrl: pdfUrl_(ss, sh) };
 }
 
-function writeMissingList_(sh, tasks, students, subs, title) {
+function writeMissingList_(sh, tasks, students, isMissing, title) {
   [70, 60, 45, 160, 60, 230].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
   let row = 1;
   sh.getRange(row, 1, 1, 6).merge().setValue('未提出者一覧' + (title ? '　' + title : '') + '　（' + Utilities.formatDate(new Date(), tz_(), 'yyyy/M/d HH:mm') + ' 現在）').setFontSize(14).setFontWeight('bold');
   row += 2;
   let total = 0;
   tasks.forEach(function (t) {
-    const missing = students.filter(function (s) { return isTarget_(t, s) && !subs[t.id][s.id]; });
+    const missing = students.filter(function (s) { return isMissing(t, s); });
     const target = students.filter(function (s) { return isTarget_(t, s); }).length;
     ensureSize_(sh, row + missing.length + 5, 6);
     sh.getRange(row, 1, 1, 6).merge()
@@ -1083,7 +1340,7 @@ function writeMissingList_(sh, tasks, students, subs, title) {
     }
     sh.getRange(row, 1, 1, 6).setValues([['学籍番号', 'クラス', '番号', '氏名', '確認', 'メモ']]).setFontWeight('bold').setFontColor('#555555');
     row++;
-    const vals = missing.map(function (s) { return [s.gakuseki, s.cls, s.no, s.name, '□', '']; });
+    const vals = missing.map(function (s) { return [s.gakuseki, s.cls, s.no, s.name, '□', dueNote_(t, s.id)]; });
     sh.getRange(row, 1, vals.length, 1).setNumberFormat('@');
     sh.getRange(row, 1, vals.length, 6).setValues(vals).setBorder(null, null, true, null, false, true, '#cccccc', SpreadsheetApp.BorderStyle.SOLID);
     row += vals.length + 1;
@@ -1092,12 +1349,12 @@ function writeMissingList_(sh, tasks, students, subs, title) {
   return total;
 }
 
-function writeNotices_(sh, tasks, students, subs, title, message) {
+function writeNotices_(sh, tasks, students, isMissing, title, message) {
   [70, 220, 260, 100].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
   let row = 1;
   let count = 0;
   students.forEach(function (s) {
-    const missing = tasks.filter(function (t) { return isTarget_(t, s) && !subs[t.id][s.id]; });
+    const missing = tasks.filter(function (t) { return isMissing(t, s); });
     if (!missing.length) return;
     count++;
     ensureSize_(sh, row + missing.length + 6, 4);
@@ -1110,7 +1367,10 @@ function writeNotices_(sh, tasks, students, subs, title, message) {
       sh.getRange(row, 1, 1, 4).merge().setValue(message).setWrap(true);
       row++;
     }
-    const vals = missing.map(function (t) { return ['□', t.subject, displayName_(t), t.due ? '締切 ' + shortDate_(t.due) : '']; });
+    const vals = missing.map(function (t) {
+      const d = dueFor_(t, s.id);
+      return ['□', t.subject, displayName_(t), d.due ? '締切 ' + shortDate_(d.due) + (d.ext ? '（延長）' : '') : ''];
+    });
     sh.getRange(row, 1, vals.length, 4).setValues(vals);
     sh.getRange(row, 1, vals.length, 1).setHorizontalAlignment('center');
     row += vals.length;
@@ -1120,6 +1380,14 @@ function writeNotices_(sh, tasks, students, subs, title, message) {
   });
   if (!count) sh.getRange(1, 1).setValue('選んだ課題・クラスでは、未提出の生徒はいません。');
   return count;
+}
+
+// 未提出者リストのメモ欄：欠席で締切を延ばした・配慮している
+function dueNote_(t, sid) {
+  const d = dueFor_(t, sid);
+  if (d.excused) return '配慮（期限内あつかい）';
+  if (d.ext) return '欠席' + d.ext + '日 → 締切 ' + shortDate_(d.due) + ' に延長';
+  return '';
 }
 
 function pdfUrl_(ss, sh) {

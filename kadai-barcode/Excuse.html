@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; padding: 10px 16px; font-size: 13px; color: #202124; }
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid #dadce0; margin-bottom: 12px; }
+  .tabs button { border: none; background: none; padding: 8px 14px; font-size: 14px; cursor: pointer; border-bottom: 3px solid transparent; color: #5f6368; }
+  .tabs button.on { border-color: #1a73e8; color: #1967d2; font-weight: bold; }
+  .pane { display: none; }
+  .pane.on { display: block; }
+  .explain { background: #f1f3f4; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12px; line-height: 1.6; }
+  label.f { display: block; font-weight: bold; margin: 10px 0 4px; }
+  label.f small { font-weight: normal; color: #5f6368; }
+  input[type=text], input[type=date], select { box-sizing: border-box; padding: 6px; font-size: 14px; border: 1px solid #dadce0; border-radius: 6px; }
+  .who { width: 100%; }
+  .picked { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; min-height: 26px; }
+  .tag { background: #e8f0fe; color: #1967d2; border-radius: 12px; padding: 3px 4px 3px 10px; font-size: 12px; }
+  .tag b { cursor: pointer; padding: 0 6px; }
+  .tag.bad { background: #fce8e6; color: #c5221f; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+  .chip { padding: 3px 10px; border: 1px solid #dadce0; border-radius: 14px; background: #fff; font-size: 12px; cursor: pointer; }
+  .chip.on { background: #e8f0fe; border-color: #1a73e8; color: #1967d2; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .go { margin-top: 14px; padding: 10px 22px; border: none; border-radius: 8px; background: #1a73e8; color: #fff; font-size: 15px; font-weight: bold; cursor: pointer; }
+  .go:disabled { opacity: .5; }
+  .kind { display: flex; gap: 8px; }
+  .kind label { flex: 1; border: 2px solid #dadce0; border-radius: 8px; padding: 8px; cursor: pointer; }
+  .kind label.on { border-color: #1a73e8; background: #f4f8fe; }
+  .kind small { display: block; color: #5f6368; font-size: 11px; margin-top: 2px; }
+  #msg { margin-top: 10px; padding: 8px; border-radius: 8px; display: none; }
+  #msg.ok { display: block; background: #e6f4ea; color: #137333; }
+  #msg.err { display: block; background: #fce8e6; color: #c5221f; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border-bottom: 1px solid #eee; padding: 5px 6px; text-align: left; font-size: 12px; }
+  th { background: #f8f9fa; position: sticky; top: 0; }
+  .list { max-height: 470px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; }
+  .del { font-size: 11px; padding: 2px 8px; cursor: pointer; }
+  .hint div { margin-top: 6px; color: #b06000; font-size: 12px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .t-欠席 { color: #1967d2; font-weight: bold; }
+  .t-配慮 { color: #137333; font-weight: bold; }
+  .t-免除 { color: #5f6368; font-weight: bold; }
+</style>
+</head>
+<body>
+<div class="tabs">
+  <button data-p="absent" class="on">🤒 欠席を入れる</button>
+  <button data-p="task">💙 課題ごとの配慮・免除</button>
+  <button data-p="list">📋 登録したもの</button>
+</div>
+
+<div class="pane on" id="p-absent">
+  <div class="explain">
+    休んだ日を入れておくと、<b>その期間にかかっている課題は、休んだ日数（登校日）だけ、その生徒の締切が自動で延びます</b>（土日はとばします）。<br>
+    延びた締切までに出せば「期限内」になり、業務手帳では <span style="background:#c9daf8;padding:0 4px">青</span> で表示されます。未提出者リスト・提出のお願いにも、延びた締切が出ます。
+  </div>
+  <label class="f">休んだ生徒 <small>学籍番号を打つ／名前で探す／バーコードを読む（何人でも）</small></label>
+  <input type="text" class="who" id="aWho" placeholder="例：1101 1203　または　青木" autocomplete="off">
+  <div class="picked" id="aPicked"></div>
+  <div class="hint" id="aHint"></div>
+  <label class="f">休んだ日</label>
+  <div class="row">
+    <input type="date" id="aFrom"> 〜 <input type="date" id="aTo"> <small style="color:#5f6368">（1日だけなら同じ日のまま）</small>
+  </div>
+  <div class="chips" id="aDays"></div>
+  <label class="f">理由 <small>（任意）</small></label>
+  <input type="text" id="aMemo" placeholder="例：かぜ" style="width:60%">
+  <div class="chips" id="aReasons"></div>
+  <button class="go" id="aGo">欠席を登録する</button>
+</div>
+
+<div class="pane" id="p-task">
+  <div class="explain">
+    特定の課題について、生徒ごとに決めます。保健室登校・別室・家庭の事情・長期欠席など、欠席日だけでは決められないときに使います。
+  </div>
+  <label class="f">課題</label>
+  <select id="tTask" style="width:100%"></select>
+  <label class="f">生徒 <small>学籍番号を打つ／名前で探す／バーコードを読む（何人でも）</small></label>
+  <input type="text" class="who" id="tWho" placeholder="例：1101 1203　または　青木" autocomplete="off">
+  <div class="picked" id="tPicked"></div>
+  <div class="hint" id="tHint"></div>
+  <label class="f">あつかい</label>
+  <div class="kind" id="tKind">
+    <label class="on" data-k="配慮"><input type="radio" name="k" checked> 💙 配慮<small>遅れて出しても「期限内」。未提出でも赤にしない</small></label>
+    <label data-k="免除"><input type="radio" name="k"> ⬜ 免除<small>この課題は出さなくてよい。提出率の計算から外す</small></label>
+  </div>
+  <label class="f">理由 <small>（任意）</small></label>
+  <input type="text" id="tMemo" placeholder="例：入院のため" style="width:60%">
+  <button class="go" id="tGo">登録する</button>
+</div>
+
+<div class="pane" id="p-list">
+  <div class="explain">まちがえて登録したものは「取り消す」で消せます（シート「欠席・配慮」を直接直してもかまいません）。</div>
+  <div class="list"><table><thead><tr><th>種類</th><th>生徒</th><th>休んだ日</th><th>課題</th><th>理由</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+</div>
+
+<div id="msg"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const run = (name, ...args) => new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[name](...args));
+  let D = null;
+  const picked = { a: [], t: [] };
+
+  function addDays(key, n) {
+    const [y, m, d] = key.split('-').map(Number);
+    const dt = new Date(y, m - 1, d + n);
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+  }
+  const norm = (v) => String(v).normalize('NFKC').replace(/\s+/g, '').toUpperCase();
+  const label = (s) => (s.gakuseki || (s.cls + '-' + s.no)) + ' ' + s.name;
+
+  // 入力欄：学籍番号・生徒ID（バーコード）・名前のどれでも。空白・Enter で確定
+  function commitWho(k) {
+    const input = $(k + 'Who');
+    const words = input.value.normalize('NFKC').split(/[\s,、]+/).filter(Boolean);
+    const hint = $(k + 'Hint');
+    hint.innerHTML = '';
+    const rest = [];
+    words.forEach((w) => {
+      const key = norm(w);
+      let hits = D.students.filter((s) => s.id === key || s.gakuseki === key);
+      if (!hits.length && !/^\d+$/.test(key)) hits = D.students.filter((s) => norm(s.name).includes(key));
+      if (hits.length === 1) {
+        if (!picked[k].includes(hits[0].id)) picked[k].push(hits[0].id);
+      } else {
+        rest.push(w);
+        const line = document.createElement('div');
+        line.textContent = hits.length ? '「' + w + '」は' + hits.length + '人います。選んでください：' : '「' + w + '」は名簿にありません';
+        hits.slice(0, 12).forEach((h) => {
+          const c = document.createElement('span');
+          c.className = 'chip';
+          c.textContent = label(h);
+          c.onclick = () => {
+            if (!picked[k].includes(h.id)) picked[k].push(h.id);
+            input.value = input.value.normalize('NFKC').split(/[\s,、]+/).filter((x) => x && x !== w).join(' ');
+            line.remove();
+            showPicked(k);
+            input.focus();
+          };
+          line.appendChild(c);
+        });
+        hint.appendChild(line);
+      }
+    });
+    input.value = rest.join(' ');
+    showPicked(k);
+  }
+
+  function setupWho(k) {
+    const input = $(k + 'Who');
+    input.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Tab') { if (input.value.trim()) { e.preventDefault(); commitWho(k); } }
+    });
+    // バーコードリーダー・日本語入力で確定したとき
+    input.addEventListener('compositionend', () => setTimeout(() => { if (/^[0-9A-Za-z\-\s]+$/.test(input.value.normalize('NFKC').trim())) commitWho(k); }, 0));
+  }
+
+  function showPicked(k) {
+    const box = $(k + 'Picked');
+    box.innerHTML = '';
+    picked[k].forEach((id) => {
+      const s = D.students.find((x) => x.id === id);
+      const t = document.createElement('span');
+      t.className = 'tag';
+      t.textContent = label(s);
+      const x = document.createElement('b');
+      x.textContent = '×';
+      x.onclick = () => { picked[k] = picked[k].filter((v) => v !== id); showPicked(k); };
+      t.appendChild(x);
+      box.appendChild(t);
+    });
+  }
+
+  function chips(box, items, onPick) {
+    items.forEach(([text, val]) => {
+      const c = document.createElement('span');
+      c.className = 'chip';
+      c.textContent = text;
+      c.onclick = () => { box.querySelectorAll('.chip').forEach((x) => x.classList.remove('on')); c.classList.add('on'); onPick(val); };
+      box.appendChild(c);
+    });
+  }
+
+  function showList() {
+    const body = $('rows');
+    body.innerHTML = '';
+    if (!D.entries.length) body.innerHTML = '<tr><td colspan="6" style="color:#5f6368">まだ登録はありません</td></tr>';
+    D.entries.forEach((e) => {
+      const tr = document.createElement('tr');
+      [e.type, e.who, e.period, e.task, e.memo].forEach((v, i) => {
+        const td = document.createElement('td');
+        td.textContent = v;
+        if (i === 0) td.className = 't-' + v;
+        tr.appendChild(td);
+      });
+      const td = document.createElement('td');
+      const b = document.createElement('button');
+      b.className = 'del'; b.textContent = '取り消す';
+      b.onclick = () => {
+        if (!confirm(e.type + '：' + e.who + ' を取り消しますか？')) return;
+        b.disabled = true;
+        run('deleteExcuse', e.row, e.sid).then((d) => { D = d; showList(); msg('ok', '取り消しました'); }).catch((err) => { b.disabled = false; msg('err', err.message || err); });
+      };
+      td.appendChild(b); tr.appendChild(td);
+      body.appendChild(tr);
+    });
+  }
+
+  function msg(kind, text) { $('msg').className = kind; $('msg').textContent = text; }
+
+  function submit(btn, makePayload, k) {
+    if ($(k + 'Who').value.trim()) commitWho(k);
+    if ($(k + 'Who').value.trim()) { msg('err', '生徒の入力に、まだ決まっていないものがあります（下の候補から選んでください）'); return; }
+    const payload = makePayload();
+    btn.disabled = true;
+    run('addExcuses', payload).then((d) => {
+      D = d;
+      const n = picked[k].length;
+      picked[k] = []; showPicked(k); showList(); $(k + 'Hint').innerHTML = '';
+      msg('ok', '✓ ' + n + '人分を登録しました。業務手帳にも反映しました。');
+    }).catch((e) => msg('err', 'エラー：' + (e && e.message || e))).finally(() => { btn.disabled = false; });
+  }
+
+  document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === 'p-' + b.dataset.p));
+    $('msg').className = '';
+  });
+  document.querySelectorAll('#tKind label').forEach((l) => l.onclick = () => {
+    document.querySelectorAll('#tKind label').forEach((x) => x.classList.toggle('on', x === l));
+    l.querySelector('input').checked = true;
+  });
+
+  run('getExcuseData').then((d) => {
+    D = d;
+    $('aFrom').value = d.today; $('aTo').value = d.today;
+    $('aFrom').addEventListener('change', () => { if ($('aTo').value < $('aFrom').value) $('aTo').value = $('aFrom').value; });
+    chips($('aDays'), [['今日', 0], ['昨日', -1], ['おととい', -2]], (n) => { $('aFrom').value = addDays(d.today, n); $('aTo').value = addDays(d.today, n); });
+    chips($('aReasons'), [['かぜ', 'かぜ'], ['インフルエンザ', 'インフルエンザ'], ['感染症', '感染症'], ['忌引', '忌引'], ['公欠', '公欠'], ['通院', '通院']], (v) => { $('aMemo').value = v; });
+    d.tasks.forEach((t) => $('tTask').appendChild(new Option(t.label, t.id)));
+    if (!d.tasks.length) $('tTask').appendChild(new Option('（まだ課題がありません）', ''));
+    setupWho('a'); setupWho('t');
+    showList();
+    $('aGo').onclick = () => submit($('aGo'), () => ({ type: '欠席', ids: picked.a, from: $('aFrom').value, to: $('aTo').value, memo: $('aMemo').value }), 'a');
+    $('tGo').onclick = () => submit($('tGo'), () => ({ type: document.querySelector('#tKind label.on').dataset.k, ids: picked.t, taskId: $('tTask').value, memo: $('tMemo').value }), 't');
+    $('aWho').focus();
+  }).catch((e) => msg('err', 'エラー：' + (e && e.message || e)));
+</script>
+</body>
+</html>
