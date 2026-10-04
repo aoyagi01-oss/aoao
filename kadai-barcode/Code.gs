@@ -438,9 +438,53 @@ function onEdit(e) {
   try {
     const sh = e.range.getSheet();
     if (sh.getName() === SHEET.TASKS && e.range.getRow() > 1) getTasks_();
+    else if (sh.getName() === SHEET.STATUS && e.range.getLastRow() >= STATUS_TOP) statusEdit_(e.range);
   } catch (err) {
     // 単純トリガーでは失敗しても何もしない（読み取り時や集計時にも ID は付く）
+    console.warn('onEdit：' + (err && err.stack || err));
   }
+}
+
+// 教務手帳のマスに直接書いたとき（バーコードを読まずに、手で記録する）
+//  ○・日付・そのほかの文字 → 提出（日付を書いたらその日の提出）／△ → 未完成／消す → 記録を取り消す
+function statusEdit_(range) {
+  const sh = range.getSheet();
+  const lastCol = sh.getLastColumn();
+  if (lastCol <= STATUS_FIXED) return;
+  const ids = sh.getRange(1, STATUS_FIXED + 1, 1, lastCol - STATUS_FIXED).getValues()[0].map(norm_);
+  const nTasks = ids.indexOf('') < 0 ? ids.length : ids.indexOf('');
+  const r0 = Math.max(range.getRow(), STATUS_TOP);
+  const r1 = range.getLastRow();
+  const c0 = Math.max(range.getColumn(), STATUS_FIXED + 1);
+  const c1 = Math.min(range.getLastColumn(), STATUS_FIXED + nTasks);
+  if (r0 > r1 || c0 > c1) return; // 名前や合計の列は、書いても次の作り直しで元に戻る
+  const ss = SpreadsheetApp.getActive();
+  if ((r1 - r0 + 1) * (c1 - c0 + 1) > 40) {
+    // まちがえて広い範囲を消した・貼ったときは、記録は変えずに表を元に戻す
+    ss.toast('一度に書きかえられるのは40マスまでです。記録は変えずに、表を元に戻しました。', '教務手帳', 8);
+    refreshAll();
+    return;
+  }
+  const sids = sh.getRange(r0, 1, r1 - r0 + 1, 1).getValues().map(function (r) { return norm_(r[0]); });
+  const vals = sh.getRange(r0, c0, r1 - r0 + 1, c1 - c0 + 1).getValues();
+  const touched = {};
+  vals.forEach(function (row, i) {
+    if (!sids[i]) return;
+    row.forEach(function (v, j) {
+      const taskId = ids[c0 - STATUS_FIXED - 1 + j];
+      const text = String(v).trim();
+      if (text === '－' || text === '免') return; // 対象外・免除のマスはそのまま
+      touched[sids[i]] = true;
+      if (text === '') recordScan(taskId, sids[i], 'undo');
+      else if (/△|未完/.test(text)) recordScan(taskId, sids[i], 'incomplete', v instanceof Date ? v : null);
+      else recordScan(taskId, sids[i], 'submit', v instanceof Date ? v : null);
+    });
+  });
+  // すでに記録があった・対象外だったなどで変わらなかったマスも、正しい表示（日付・色）に戻す
+  const tasks = getTasks_();
+  const logs = readLog_();
+  getStudents_().forEach(function (st) { if (touched[st.id]) updateStatusRow_(st, tasks, logs); });
+  ss.toast('教務手帳に書いた内容を、提出記録に入れました。', '教務手帳', 4);
 }
 
 function openScanner() {
@@ -609,6 +653,7 @@ function writeHowTo_(sh) {
     ['1. 課題を登録する：ホームの「➕ 課題を登録する」。教科・課題名は空欄でもOK。締切は「明日」「1週間後」などのボタンで。'],
     ['2. 読み取る：「登録して、読み取りへ」を押すか、ホームの課題の「📷 読む」。読み取り欄をクリックしてからピッ・ピッ。提出物の順番はばらばらでOK。'],
     ['3. 見る・配る：「📒 提出状況（教務手帳）」で一覧。「📝 未提出者・課題提出について」で印刷。'],
+    ['   遅れて1人だけ出しに来たときは、教務手帳のマスに直接「○」や日付（10/6）を書いてもよい（△＝未完成、消す＝取り消し）。自動で提出記録に入ります。'],
     [''],
     ['■ 遅れ・欠席への配慮'],
     ['・課題を登録するときに「締切を過ぎて出したら？」を1つ選ぶだけ（次からは同じ選び方が最初から入る）：遅れとして記録／少しの遅れは期限内（1〜7日。欠席などへの配慮。1人ずつ登録しなくてよい）／区別しない'],
@@ -1031,7 +1076,8 @@ function findTask_(tasks, id) {
 }
 
 // mode：'submit'（提出）／'incomplete'（未完成）／'undo'（取り消し）。古い画面からの true は取り消し
-function recordScan(taskId, raw, mode) {
+// when：提出した日時（教務手帳に日付を書いたとき）。ふだんは今
+function recordScan(taskId, raw, mode, when) {
   if (mode === true) mode = 'undo';
   if (mode !== 'undo' && mode !== 'incomplete') mode = 'submit';
   const code = norm_(raw);
@@ -1073,7 +1119,7 @@ function recordScan(taskId, raw, mode) {
       if (mine.length) {
         mine.forEach(function (r) { sh.getRange(r.row, 10).setValue('未完成'); });
       } else {
-        sh.appendRow([new Date(), task.id, task.subject, task.name, st.id, st.gakuseki, st.cls, st.no, st.name, '未完成']);
+        sh.appendRow([when instanceof Date ? when : new Date(), task.id, task.subject, task.name, st.id, st.gakuseki, st.cls, st.no, st.name, '未完成']);
         sh.getRange(sh.getLastRow(), 5, 1, 3).setNumberFormat('@').setValues([[st.id, st.gakuseki, st.cls]]);
       }
       result = { kind: 'incomplete', message: '未完成：' + who + (incompleteCounts_() ? '（提出として数えます）' : '（未提出あつかい。直して出したら、ふつうに読む）'), studentId: st.id };
@@ -1090,7 +1136,7 @@ function recordScan(taskId, raw, mode) {
       result = { kind: 'dup', message: 'すでに提出済み：' + who + (t ? '（' + t + '）' : '') };
     } else {
       const resubmit = mine.length > 0; // 未完成だった生徒が出し直した
-      const now = new Date();
+      const now = when instanceof Date ? when : new Date();
       const late = isLate_(task, now, st.id);
       const target = isTarget_(task, st) || isExemptTarget_(task, st);
       const d = dueFor_(task, st.id);
