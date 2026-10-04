@@ -26,6 +26,7 @@
   <h3>1. 課題を選ぶ</h3>
   <div class="tools">
     教科 <select id="subject"><option value="">すべて</option></select>
+    <span id="teacherWrap">担当 <select id="teacher"><option value="">すべて</option></select></span>
     <button id="allT">すべて選ぶ</button>
     <button id="overT">締切を過ぎたものだけ選ぶ</button>
     <button id="noneT">選ぶのをやめる</button>
@@ -53,16 +54,18 @@
 
   function renderTasks() {
     const subj = $('subject').value;
+    const who = $('teacher').value;
     const box = $('tasks');
     const checked = new Set([...box.querySelectorAll('input:checked')].map((i) => i.value));
     box.innerHTML = '';
-    DATA.tasks.filter((t) => !subj || t.subject === subj).forEach((t) => {
+    DATA.tasks.filter((t) => (!subj || t.subject === subj) && (!who || t.teacher === who)).forEach((t) => {
       const lab = document.createElement('label');
       if (isOver(t)) lab.className = 'over';
       const cb = document.createElement('input');
       cb.type = 'checkbox'; cb.value = t.id; cb.checked = checked.has(t.id);
       lab.appendChild(cb);
       lab.appendChild(document.createTextNode(' ' + (t.subject ? '【' + t.subject + '】' : '') + t.name +
+        (t.teacher ? '［' + t.teacher + '］' : '') +
         (t.due ? '（締切 ' + t.due.slice(5).replace(/^0/, '').replace('-0', '-').replace('-', '/') + '）' : '') + (t.classes ? '　対象：' + t.classes : '')));
       box.appendChild(lab);
     });
@@ -79,6 +82,12 @@
     $('classes').appendChild(lab);
   });
   $('subject').addEventListener('change', renderTasks);
+  // 共有して使うとき：担当でしぼりこむ（自分の課題があれば、最初は自分の課題だけ）
+  const teachers = [...new Set(DATA.tasks.map((t) => t.teacher).filter(String))];
+  teachers.forEach((n) => $('teacher').appendChild(new Option(n, n)));
+  if (teachers.length < 2) $('teacherWrap').style.display = 'none';
+  else if (DATA.me && teachers.includes(DATA.me)) $('teacher').value = DATA.me;
+  $('teacher').addEventListener('change', () => { renderTasks(); $('overT').click(); });
   $('allT').addEventListener('click', () => $('tasks').querySelectorAll('input').forEach((i) => { i.checked = true; }));
   $('noneT').addEventListener('click', () => $('tasks').querySelectorAll('input').forEach((i) => { i.checked = false; }));
   $('overT').addEventListener('click', () => $('tasks').querySelectorAll('input').forEach((i) => {

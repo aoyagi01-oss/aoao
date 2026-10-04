@@ -20,8 +20,8 @@ const SHEET = {
 
 // 生徒IDはバーコードの中身（ずっと変えない）。学籍番号は毎年変わってよい（1101＝1年1組1番）
 const STUDENT_HEADERS = ['生徒ID（バーコード・変えない）', '学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
-const TASK_HEADERS = ['課題ID', '教科', '課題名', '対象クラス（空欄＝全員）', '出した日', '締切日', '締切後の扱い', 'メモ', '対象', '提出', 'うち遅れ', '未提出', '提出率'];
-const TASK_STAT_COL = 9; // I列から右は自動で書きこむ
+const TASK_HEADERS = ['課題ID', '教科', '課題名', '対象クラス（空欄＝全員）', '出した日', '締切日', '締切後の扱い', 'メモ', '担当', '対象', '提出', 'うち遅れ', '未提出', '提出率'];
+const TASK_STAT_COL = 10; // J列から右は自動で書きこむ
 
 // 締切後に出したときの扱い（課題ごと。課題を登録するときに選ぶ）
 //  遅れとして記録／◯日まで期限内（欠席などへの配慮）／区別しない
@@ -116,14 +116,22 @@ function userKey_(name) {
 
 function getHomeData() {
   setup_(false);
+  // 1人で使っていたころに「設定」シートに入れた担当の名前は、最初にホームを開いた先生の名前にする
+  const props = PropertiesService.getUserProperties();
+  const shared = String(getSettings_()[SETTING.TEACHER] || '').trim();
+  if (props.getProperty(userKey_('teacher')) == null && shared) {
+    props.setProperty(userKey_('teacher'), shared);
+    putSetting_(SETTING.TEACHER, '');
+  }
+  const cfg = viewConfig_();
   const students = getStudents_().filter(function (s) { return !s.excluded; });
   const tasks = getTasks_();
   const logs = readLog_();
   const today = todayKey_();
-  const settings = getSettings_();
-  const recent = tasks.slice(-6).reverse().map(function (t) {
+  const mine = tasks.filter(function (t) { return !cfg.mine || t.teacher === cfg.teacher; });
+  const recent = mine.slice(-6).reverse().map(function (t) {
     const st = taskStats_(t, students, logs);
-    return { id: t.id, label: taskLabel_(t), submitted: st.submitted, target: st.target, overdue: st.overdue, missing: st.missing.length };
+    return { id: t.id, label: taskLabelT_(t), submitted: st.submitted, target: st.target, overdue: st.overdue, missing: st.missing.length };
   });
   return {
     students: students.length,
@@ -135,7 +143,10 @@ function getHomeData() {
     printed: docProps_().getProperty('barcodePrinted') === '1',
     recent: recent,
     subjects: subjectList_(tasks),
-    view: { teacher: String(settings[SETTING.TEACHER] || ''), subject: String(settings[SETTING.SUBJECT] || ''), cls: String(settings[SETTING.CLASS] || ''), mark: /○|〇|丸/.test(String(settings[SETTING.MARK] || '')) ? '○' : '日付', incomplete: incompleteCounts_() ? '提出' : '未提出' },
+    view: {
+      teacher: cfg.teacher, personal: cfg.personal || props.getProperty(userKey_('personal')) === '1', subject: cfg.subject, cls: cfg.cls, mine: cfg.mine,
+      mark: markMode_() === 'circle' ? '○' : '日付', incomplete: incompleteCounts_() ? '提出' : '未提出',
+    },
   };
 }
 
@@ -145,20 +156,32 @@ function subjectList_(tasks) {
   return Object.keys(seen);
 }
 
-// ホームの「表示の設定」を「設定」シートに書きこむ
-function saveViewSettings(v) {
+function putSetting_(key, value) {
   const sh = sheet_(SHEET.SETTINGS);
   const vals = sh.getRange(1, 1, sh.getLastRow(), 1).getValues();
-  function put(key, value) {
-    for (let i = 0; i < vals.length; i++) if (String(vals[i][0]).trim() === key) { sh.getRange(i + 1, 2).setNumberFormat('@').setValue(value); return; }
-    sh.appendRow([key, '']);
-    sh.getRange(sh.getLastRow(), 2).setNumberFormat('@').setValue(value);
+  for (let i = 0; i < vals.length; i++) if (String(vals[i][0]).trim() === key) { sh.getRange(i + 1, 2).setNumberFormat('@').setValue(value); return; }
+  sh.appendRow([key, '']);
+  sh.getRange(sh.getLastRow(), 2).setNumberFormat('@').setValue(value);
+}
+
+// ホームの「設定」
+//  担当の名前・自分専用の教務手帳・その中のしぼりこみ → この先生だけ
+//  ふつうの教務手帳のしぼりこみ・○か日付か・未完成の数え方 → 全員共通（「設定」シート）
+function saveViewSettings(v) {
+  const p = PropertiesService.getUserProperties();
+  if (v.teacher !== undefined) p.setProperty(userKey_('teacher'), String(v.teacher || '').trim());
+  const personal = !!v.personal && !!teacherName_();
+  p.setProperty(userKey_('personal'), personal ? '1' : '0');
+  if (personal) {
+    p.setProperty(userKey_('pSubject'), String(v.subject || ''));
+    p.setProperty(userKey_('pClass'), String(v.cls || ''));
+    p.setProperty(userKey_('pMine'), v.mine ? '1' : '0');
+  } else {
+    putSetting_(SETTING.SUBJECT, v.subject || '');
+    putSetting_(SETTING.CLASS, v.cls || '');
   }
-  if (v.teacher !== undefined) put(SETTING.TEACHER, String(v.teacher || '').trim());
-  put(SETTING.SUBJECT, v.subject || '');
-  put(SETTING.CLASS, v.cls || '');
-  put(SETTING.MARK, v.mark === '○' ? '○' : '日付');
-  if (v.incomplete) put(SETTING.INCOMPLETE, v.incomplete === '提出' ? '提出' : '未提出');
+  putSetting_(SETTING.MARK, v.mark === '○' ? '○' : '日付');
+  if (v.incomplete) putSetting_(SETTING.INCOMPLETE, v.incomplete === '提出' ? '提出' : '未提出');
   INC_COUNTS_ = null;
   refreshAll();
   return getHomeData();
@@ -167,7 +190,7 @@ function saveViewSettings(v) {
 function showStatusSheet() {
   refreshAll();
   const ss = SpreadsheetApp.getActive();
-  ss.setActiveSheet(ss.getSheetByName(SHEET.STATUS));
+  ss.setActiveSheet(ss.getSheetByName(viewConfig_().statusName));
 }
 
 function startScanFor(taskId) {
@@ -188,6 +211,7 @@ function getTaskFormData() {
     lastClasses: props.getProperty(userKey_('lastClasses')) || '',
     // 締切後の扱い：前に選んだもの（はじめてのときは空 → 画面で「はじめに決めてください」）
     lastLate: props.getProperty(userKey_('lastLate')) || '',
+    teacher: teacherName_(),
     defaultLate: latePolicy_(getSettings_()[SETTING.LATE]).label,
     today: todayKey_(),
   };
@@ -206,7 +230,10 @@ function addTask(t) {
   const sh = sheet_(SHEET.TASKS);
   const classes = (t.classes || []).map(normClass_).filter(String);
   const late = latePolicy_(t.late).label;
-  sh.appendRow(['', String(t.subject || '').trim(), String(t.name || '').trim(), classes.join(','), toDate_(t.given), toDate_(t.due), late, String(t.memo || '')]);
+  // 担当：画面で入れた名前（入れなければ、この先生の名前）。はじめて入れた名前は、この先生の名前として覚える
+  const teacher = String(t.teacher !== undefined ? t.teacher : teacherName_()).trim();
+  if (teacher && !teacherName_()) PropertiesService.getUserProperties().setProperty(userKey_('teacher'), teacher);
+  sh.appendRow(['', String(t.subject || '').trim(), String(t.name || '').trim(), classes.join(','), toDate_(t.given), toDate_(t.due), late, String(t.memo || ''), teacher]);
   const row = sh.getLastRow();
   sh.getRange(row, 4).setNumberFormat('@').setValue(classes.join(','));
   sh.getRange(row, 5, 1, 2).setNumberFormat('m/d');
@@ -218,6 +245,12 @@ function addTask(t) {
   props.setProperty(userKey_('lastClasses'), classes.join(','));
   props.setProperty(userKey_('lastLate'), late);
   props.setProperty(userKey_('lastTask'), task.id);
+  // 自分の教務手帳に、新しい課題の列をすぐ足す
+  const view = statusView_(tasks, getStudents_());
+  const logs = readLog_();
+  const subs = {};
+  view.tasks.forEach(function (k) { subs[k.id] = submissionsOf_(k, logs); });
+  try { writeStatusSheet_(SpreadsheetApp.getActive(), view.tasks, view.students, subs, todayKey_(), view.cfg.statusName); } catch (e) { console.warn(e); }
   return { id: task.id, label: taskLabel_(task) };
 }
 
@@ -337,7 +370,7 @@ function getExcuseData() {
   return {
     today: todayKey_(),
     students: students.map(function (s) { return { id: s.id, gakuseki: s.gakuseki, name: s.name, cls: s.cls, no: s.no }; }),
-    tasks: tasks.slice().reverse().map(function (t) { return { id: t.id, label: taskLabel_(t) }; }),
+    tasks: tasks.slice().reverse().map(function (t) { return { id: t.id, label: taskLabelT_(t) }; }),
     entries: entries.reverse(),
   };
 }
@@ -411,7 +444,7 @@ function addExcuseRow_(r) {
 function showSummarySheet() {
   refreshAll();
   const ss = SpreadsheetApp.getActive();
-  ss.setActiveSheet(ss.getSheetByName(SHEET.SUMMARY));
+  ss.setActiveSheet(ss.getSheetByName(viewConfig_().summaryName));
 }
 
 // ───────── 配布用のひな形 ─────────
@@ -430,6 +463,10 @@ function makeTemplate() {
     body.clearContent();
   });
   [SHEET.STATUS, SHEET.SUMMARY].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) sh.clear(); });
+  ss.getSheets().forEach(function (sh) { // 先生ごとの教務手帳・集計は消す
+    const n = sh.getName();
+    if ((n.indexOf(SHEET.STATUS + '（') === 0 || n.indexOf(SHEET.SUMMARY + '（') === 0) && ss.getSheets().length > 1) ss.deleteSheet(sh);
+  });
   [SHEET.PRINT_MISSING, SHEET.PRINT_NOTICE, SHEET.PRINT_BARCODE].forEach(function (n) { const sh = ss.getSheetByName(n); if (sh) ss.deleteSheet(sh); });
   docProps_().deleteProperty('barcodePrinted');
   ss.setActiveSheet(ss.getSheetByName(SHEET.HOWTO));
@@ -441,7 +478,7 @@ function onEdit(e) {
   try {
     const sh = e.range.getSheet();
     if (sh.getName() === SHEET.TASKS && e.range.getRow() > 1) getTasks_();
-    else if (sh.getName() === SHEET.STATUS && e.range.getLastRow() >= STATUS_TOP) statusEdit_(e.range);
+    else if (isStatusSheet_(sh.getName()) && e.range.getLastRow() >= STATUS_TOP) statusEdit_(e.range);
   } catch (err) {
     // 単純トリガーでは失敗しても何もしない（読み取り時や集計時にも ID は付く）
     console.warn('onEdit：' + (err && err.stack || err));
@@ -516,8 +553,9 @@ function openListDialog() {
   const t = HtmlService.createTemplateFromFile('Select');
   t.payload = toScriptJson_({
     today: todayKey_(),
-    tasks: tasks.map(function (k) { return { id: k.id, subject: k.subject, name: displayName_(k), due: k.due, classes: k.classes.join(',') }; }),
+    tasks: tasks.map(function (k) { return { id: k.id, subject: k.subject, name: displayName_(k), due: k.due, classes: k.classes.join(','), teacher: k.teacher }; }),
     classes: classList_(getStudents_()),
+    me: teacherName_(),
   });
   SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(720).setHeight(640), '未提出者リスト・課題提出について');
 }
@@ -586,7 +624,20 @@ function setup_(showMessage) {
 
   if (students.sh.getRange('C2').getNumberFormat() !== '@') students.sh.getRange('C2:C').setNumberFormat('@'); // 「1-1」が日付にならないように
 
-  const tasks = make(SHEET.TASKS, TASK_HEADERS, [70, 80, 220, 160, 90, 90, 130, 160, 50, 50, 60, 60, 60]);
+  const tasks = make(SHEET.TASKS, TASK_HEADERS, [70, 80, 220, 160, 90, 90, 130, 160, 80, 50, 50, 60, 60, 60]);
+  if (!tasks.fresh && String(tasks.sh.getRange(1, 9).getValue()) === '対象') {
+    // 旧版の課題一覧（「担当」の列なし）には列を差しこむ
+    tasks.sh.insertColumnBefore(9);
+    tasks.sh.getRange(1, 1, 1, TASK_HEADERS.length).setValues([TASK_HEADERS]);
+    tasks.sh.getRange('I2:I').clearDataValidations().setNumberFormat('@');
+    // それまでの課題は、更新後に最初に開いた先生（ふつうはこのファイルを作った先生）の課題にする
+    const me = teacherName_();
+    const lastT = tasks.sh.getLastRow();
+    if (me && lastT > 1) {
+      const rows = tasks.sh.getRange(2, 1, lastT - 1, 1).getValues();
+      tasks.sh.getRange(2, 9, lastT - 1, 1).setValues(rows.map(function (r) { return [r[0] !== '' ? me : '']; }));
+    }
+  }
   if (!tasks.fresh && String(tasks.sh.getRange(1, 7).getValue()) === 'メモ') {
     // 旧版の課題一覧（「締切後の扱い」の列なし）には列を差しこむ
     tasks.sh.insertColumnBefore(7);
@@ -601,9 +652,10 @@ function setup_(showMessage) {
   if (tasks.fresh) {
     const dateRule = SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).setHelpText('日付を入れてください（例：2026/10/5）').build();
     tasks.sh.getRange('E2:F').setDataValidation(dateRule).setNumberFormat('m/d');
-    tasks.sh.getRange('M2:M').setNumberFormat('0%');
-    tasks.sh.getRange('I1:M1').setBackground('#e0e0e0');
-    tasks.sh.getRange('I1').setNote('I〜M列は「提出状況・集計を更新」で自動で書き込まれます。');
+    tasks.sh.getRange('N2:N').setNumberFormat('0%');
+    tasks.sh.getRange('J1:N1').setBackground('#e0e0e0');
+    tasks.sh.getRange('J1').setNote('J〜N列は「提出状況・集計を更新」で自動で書き込まれます。');
+    tasks.sh.getRange('I1').setNote('課題を登録した先生の名前（ホームの設定の「担当の先生の名前」）。共有して使うとき、自分の課題だけを表示するのに使います。');
     tasks.sh.getRange('G1').setNote('締切を過ぎて出したときの扱い。空欄なら「設定」シートの値。\n・遅れとして記録\n・◯日まで期限内（欠席などへの配慮。土日はとばして数える）\n・区別しない');
   }
 
@@ -708,10 +760,11 @@ function insertSampleData() {
   const now = new Date();
   function day(n) { const d = new Date(now); d.setDate(d.getDate() + n); return d; }
   const tk = ss.getSheetByName(SHEET.TASKS);
-  tk.getRange(tk.getLastRow() + 1, 1, 3, 8).setValues([
-    ['', '国語', '漢字ノート 第3回', '', day(-10), day(-3), '遅れとして記録', ''],
-    ['', '数学', 'ワーク p.20〜25', '1-1', day(-5), day(-1), '3日まで期限内', ''],
-    ['', '英語', 'Unit 2 ワークシート', '1-1,1-2', day(-1), day(5), '遅れとして記録', ''],
+  const me = teacherName_();
+  tk.getRange(tk.getLastRow() + 1, 1, 3, 9).setValues([
+    ['', '国語', '漢字ノート 第3回', '', day(-10), day(-3), '遅れとして記録', '', me],
+    ['', '数学', 'ワーク p.20〜25', '1-1', day(-5), day(-1), '3日まで期限内', '', me],
+    ['', '英語', 'Unit 2 ワークシート', '1-1,1-2', day(-1), day(5), '遅れとして記録', '', me],
   ]);
   getStudents_();
   getTasks_();
@@ -841,7 +894,7 @@ function getTasks_() {
   const sh = sheet_(SHEET.TASKS);
   const last = sh.getLastRow();
   if (last < 2) return [];
-  const vals = sh.getRange(2, 1, last - 1, 8).getValues();
+  const vals = sh.getRange(2, 1, last - 1, 9).getValues();
   const defaultLate = getSettings_()[SETTING.LATE];
   let maxNo = 0;
   vals.forEach(function (r) {
@@ -866,7 +919,7 @@ function getTasks_() {
     tasks.push({
       id: id, subject: String(r[1]).trim(), name: name,
       classes: splitList_(r[3]), given: dateKey_(r[4]), due: dateKey_(r[5]), late: latePolicy_(String(r[6]).trim() || defaultLate),
-      memo: String(r[7]), row: i + 2,
+      memo: String(r[7]), teacher: String(r[8]).trim(), row: i + 2,
     });
   });
   return tasks;
@@ -874,6 +927,11 @@ function getTasks_() {
 
 function taskLabel_(t) {
   return (t.subject ? '【' + t.subject + '】' : '') + displayName_(t) + (t.due ? '（締切 ' + shortDate_(t.due) + '）' : '');
+}
+
+// 共有して使うとき、だれの課題か分かるように［担当］を付ける
+function taskLabelT_(t) {
+  return taskLabel_(t) + (t.teacher ? '［' + t.teacher + '］' : '');
 }
 
 // 課題名が空欄のときの呼び名（例：「10/2の課題」「課題K005」）
@@ -1068,7 +1126,7 @@ function getScanInit() {
   const last = PropertiesService.getUserProperties().getProperty(userKey_('lastTask'));
   const lastTask = tasks.some(function (t) { return t.id === last; }) ? last : (tasks[0] ? tasks[0].id : '');
   return {
-    tasks: tasks.map(function (t) { return { id: t.id, label: t.id + ' ' + taskLabel_(t) }; }),
+    tasks: tasks.map(function (t) { return { id: t.id, label: t.id + ' ' + taskLabelT_(t) }; }),
     taskId: lastTask,
     stats: lastTask ? getTaskStats(lastTask) : null,
   };
@@ -1232,31 +1290,35 @@ function refreshAll() {
   const subsByTask = {};
   allTasks.forEach(function (t) { subsByTask[t.id] = submissionsOf_(t, logs); });
 
-  // 課題一覧の I〜M 列（全課題・全生徒。設定のしぼりこみはかけない）
+  // 課題一覧の J〜N 列（全課題・全生徒。設定のしぼりこみはかけない）
   const tkSheet = sheet_(SHEET.TASKS);
   allTasks.forEach(function (t) {
     const st = taskStats_(t, active, logs);
     tkSheet.getRange(t.row, TASK_STAT_COL, 1, 5).setValues([[st.target, st.submitted, st.late, st.target - st.submitted, st.target ? st.rate : '']]);
   });
-  tkSheet.getRange('M2:M').setNumberFormat('0%');
+  tkSheet.getRange('N2:N').setNumberFormat('0%');
 
   const view = statusView_(allTasks, allStudents);
-  writeStatusSheet_(ss, view.tasks, view.students, subsByTask, today);
-  writeSummarySheet_(ss, view.tasks, view.students, subsByTask, today);
+  writeStatusSheet_(ss, view.tasks, view.students, subsByTask, today, view.cfg.statusName);
+  writeSummarySheet_(ss, view.tasks, view.students, subsByTask, today, view.cfg);
 
   ss.toast('提出状況・集計を更新しました' + (warnings.length ? '\n⚠ ' + warnings.join('\n⚠ ') : ''), '課題バーコード', warnings.length ? 15 : 5);
   return { ok: true, warnings: warnings };
 }
 
 // 「設定」の教科・クラスのしぼりこみをかけた、表に出す課題と生徒
-function statusView_(allTasks, allStudents) {
-  const settings = getSettings_();
-  const subjectFilter = splitList_(settings[SETTING.SUBJECT]);
-  const classFilter = splitList_(settings[SETTING.CLASS]).map(normClass_);
+function statusView_(allTasks, allStudents, cfg) {
+  cfg = cfg || viewConfig_();
+  const subjectFilter = splitList_(cfg.subject);
+  const classFilter = splitList_(cfg.cls).map(normClass_);
   return {
-    tasks: allTasks.filter(function (t) { return !subjectFilter.length || subjectFilter.indexOf(t.subject.normalize('NFKC').replace(/\s+/g, '')) >= 0; }),
+    cfg: cfg,
+    tasks: allTasks.filter(function (t) {
+      if (cfg.mine && t.teacher !== cfg.teacher) return false;
+      return !subjectFilter.length || subjectFilter.indexOf(t.subject.normalize('NFKC').replace(/\s+/g, '')) >= 0;
+    }),
     students: sortStudents_(allStudents.filter(function (s) { return !s.excluded && (!classFilter.length || classFilter.indexOf(s.cls) >= 0); })),
-    mark: /○|〇|丸/.test(String(settings[SETTING.MARK] || '')) ? 'circle' : 'date',
+    mark: markMode_(),
   };
 }
 
@@ -1304,9 +1366,9 @@ function statusRow_(s, tasks, subsByTask, today, mark) {
   return { vals: vals, bgs: bgs };
 }
 
-function writeStatusSheet_(ss, tasks, students, subsByTask, today) {
-  const mark = statusView_([], []).mark;
-  const sh = ss.getSheetByName(SHEET.STATUS);
+function writeStatusSheet_(ss, tasks, students, subsByTask, today, sheetName) {
+  const mark = markMode_();
+  const sh = sheetOrNew_(ss, sheetName || SHEET.STATUS);
   if (sh.getFilter()) sh.getFilter().remove();
   sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).breakApart();
   sh.clear();
@@ -1371,38 +1433,49 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today) {
   sh.getRange(4, 2).setNote('提出率は「締切を過ぎた課題・締切のない課題・提出済みの課題」で計算。\n最終更新：' + Utilities.formatDate(new Date(), tz_(), 'M/d HH:mm'));
 }
 
-// 読み取るたびに、その生徒の行だけを書きかえる（表に課題・生徒が足りないときは全体を作り直す）
+// 読み取るたびに、その生徒の行だけを書きかえる
+//  自分の教務手帳：課題・生徒が足りなければ全体を作り直す
+//  ほかの先生の教務手帳：その課題の列とその生徒の行があれば、その行だけ書きかえる
 // 失敗しても読み取りは止めず、理由を返す（読み取り画面に出す）
 function updateStatusRow_(st, allTasks, logs) {
   try {
     const ss = SpreadsheetApp.getActive();
-    const sh = ss.getSheetByName(SHEET.STATUS);
-    if (!sh) return;
     const view = statusView_(allTasks, getStudents_());
-    const built = sh.getLastRow() >= 4 && String(sh.getRange(4, 3).getValue()) === '氏名';
-    const lastCol = built ? sh.getLastColumn() : 0;
-    const ids = lastCol > STATUS_FIXED ? sh.getRange(1, STATUS_FIXED + 1, 1, lastCol - STATUS_FIXED).getValues()[0].map(norm_) : [];
-    const sheetIds = ids.slice(0, ids.indexOf('') < 0 ? ids.length : ids.indexOf(''));
-    const viewIds = view.tasks.map(function (t) { return t.id; });
-    const subsByTask = {};
-    view.tasks.forEach(function (t) { subsByTask[t.id] = submissionsOf_(t, logs); });
     const today = todayKey_();
-    if (!built || sheetIds.join(',') !== viewIds.join(',')) {
-      writeStatusSheet_(ss, view.tasks, view.students, subsByTask, today);
-      return;
-    }
-    if (!view.students.some(function (s) { return s.id === st.id; })) return; // しぼりこみで表に出ていない生徒
-    const nRows = sh.getLastRow() - STATUS_TOP + 1;
-    const col = nRows > 0 ? sh.getRange(STATUS_TOP, 1, nRows, 1).getValues().map(function (r) { return norm_(r[0]); }) : [];
-    const idx = col.indexOf(st.id);
-    if (idx < 0) {
-      writeStatusSheet_(ss, view.tasks, view.students, subsByTask, today);
-      return;
-    }
-    const r = statusRow_(st, view.tasks, subsByTask, today, view.mark);
-    sh.getRange(STATUS_TOP + idx, 1, 1, r.vals.length).setValues([r.vals]).setBackgrounds([r.bgs]);
-    // マスに日付を打つと表示が「2026/10/06」に変わってしまうので、月/日に戻す
-    if (view.tasks.length) sh.getRange(STATUS_TOP + idx, STATUS_FIXED + 1, 1, view.tasks.length).setNumberFormat('m/d');
+    const taskMap = {};
+    allTasks.forEach(function (t) { taskMap[t.id] = t; });
+    const subsCache = {};
+    const subsFor = function (ts) {
+      const out = {};
+      ts.forEach(function (t) { out[t.id] = subsCache[t.id] || (subsCache[t.id] = submissionsOf_(t, logs)); });
+      return out;
+    };
+    ss.getSheets().forEach(function (sh) {
+      if (!isStatusSheet_(sh.getName())) return;
+      const own = sh.getName() === view.cfg.statusName;
+      const built = sh.getLastRow() >= 4 && String(sh.getRange(4, 3).getValue()) === '氏名';
+      const lastCol = built ? sh.getLastColumn() : 0;
+      const ids = lastCol > STATUS_FIXED ? sh.getRange(1, STATUS_FIXED + 1, 1, lastCol - STATUS_FIXED).getValues()[0].map(norm_) : [];
+      const sheetIds = ids.slice(0, ids.indexOf('') < 0 ? ids.length : ids.indexOf(''));
+      if (own && (!built || sheetIds.join(',') !== view.tasks.map(function (t) { return t.id; }).join(','))) {
+        writeStatusSheet_(ss, view.tasks, view.students, subsFor(view.tasks), today, sh.getName());
+        return;
+      }
+      if (!built) return;
+      const tasks = sheetIds.map(function (id) { return taskMap[id]; });
+      if (tasks.some(function (t) { return !t; })) return; // 課題が消えた表は、その先生が開いたときに作り直す
+      const nRows = sh.getLastRow() - STATUS_TOP + 1;
+      const col = nRows > 0 ? sh.getRange(STATUS_TOP, 1, nRows, 1).getValues().map(function (r) { return norm_(r[0]); }) : [];
+      const idx = col.indexOf(st.id);
+      if (idx < 0) {
+        if (own && view.students.some(function (s) { return s.id === st.id; })) writeStatusSheet_(ss, view.tasks, view.students, subsFor(view.tasks), today, sh.getName());
+        return; // しぼりこみで表に出ていない生徒
+      }
+      const r = statusRow_(st, tasks, subsFor(tasks), today, view.mark);
+      sh.getRange(STATUS_TOP + idx, 1, 1, r.vals.length).setValues([r.vals]).setBackgrounds([r.bgs]);
+      // マスに日付を打つと表示が「2026/10/06」に変わってしまうので、月/日に戻す
+      if (tasks.length) sh.getRange(STATUS_TOP + idx, STATUS_FIXED + 1, 1, tasks.length).setNumberFormat('m/d');
+    });
   } catch (err) {
     console.warn('提出状況の書きかえに失敗：' + (err && err.stack || err));
     return '記録はできましたが、提出状況（教務手帳）の書きかえに失敗しました：' + (err && err.message || err);
@@ -1410,8 +1483,9 @@ function updateStatusRow_(st, allTasks, logs) {
   return '';
 }
 
-function writeSummarySheet_(ss, tasks, students, subsByTask, today) {
-  const sh = ss.getSheetByName(SHEET.SUMMARY);
+function writeSummarySheet_(ss, tasks, students, subsByTask, today, cfg) {
+  cfg = cfg || viewConfig_();
+  const sh = sheetOrNew_(ss, cfg.summaryName);
   sh.clear();
   const classes = classList_(students);
   const header = ['課題ID', '教科', '課題名', '締切', '対象', '提出', 'うち遅れ', '未提出', '未完成', '免除', '提出率', '期限内\n提出率'].concat(classes.map(function (c) { return c + '\n提出率'; }));
@@ -1440,8 +1514,7 @@ function writeSummarySheet_(ss, tasks, students, subsByTask, today) {
   });
 
   ensureSize_(sh, rows.length + Object.keys(bySubject).length + 10, header.length);
-  const st = getSettings_();
-  const filt = [String(st[SETTING.SUBJECT] || '').trim(), String(st[SETTING.CLASS] || '').trim()].filter(String);
+  const filt = [cfg.mine ? cfg.teacher + 'の課題' : '', String(cfg.subject || '').trim(), String(cfg.cls || '').trim()].filter(String);
   sh.getRange(1, 1).setValue('課題別の提出状況' + (filt.length ? '（しぼりこみ中：' + filt.join('／') + '）' : '')).setFontWeight('bold').setFontSize(13);
   sh.getRange(2, 1, 1, header.length).setValues([header]).setFontWeight('bold').setBackground(COLOR.header).setWrap(true);
   if (rows.length) {
@@ -1495,8 +1568,8 @@ function makePrintList(opts) {
   };
   const incompleteOf = function (t, s) { return !!subs[t.id][s.id]; }; // 未提出の中で、未完成で出したもの
   const count = opts.type === 'notice'
-    ? writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, String(settings[SETTING.NOTICE] || ''), teacherLabel_(settings))
-    : writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title + (teacherLabel_(settings) ? '　' + teacherLabel_(settings) : ''));
+    ? writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, String(settings[SETTING.NOTICE] || ''), teacherLabel_())
+    : writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title + (teacherLabel_() ? '　' + teacherLabel_() : ''));
 
   ss.setActiveSheet(sh);
   SpreadsheetApp.flush();
@@ -1533,10 +1606,51 @@ function writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title) 
   return total;
 }
 
-// 「担当：青柳」（入れた名前をそのまま出す）
-function teacherLabel_(settings) {
-  const name = String(settings[SETTING.TEACHER] || '').trim();
+// 「担当：青柳」（この先生の名前をそのまま出す）
+function teacherLabel_() {
+  const name = teacherName_();
   return name ? '担当：' + name : '';
+}
+
+// この先生の名前（先生ごとに覚える。1人で使っていたころの「設定」シートの名前も使う）
+function teacherName_() {
+  const own = PropertiesService.getUserProperties().getProperty(userKey_('teacher'));
+  if (own != null) return String(own).trim();
+  return String(getSettings_()[SETTING.TEACHER] || '').trim();
+}
+
+// 教務手帳・集計の見せ方
+//  ふつう（1人で使う・みんなで同じ表を見る）：「提出状況」「集計」シート、しぼりこみは「設定」シート
+//  自分専用：「提出状況（青柳）」「集計（青柳）」シート、しぼりこみ・自分の課題だけはこの先生だけのもの
+function viewConfig_() {
+  const p = PropertiesService.getUserProperties();
+  const settings = getSettings_();
+  const name = teacherName_();
+  if (p.getProperty(userKey_('personal')) === '1' && name) {
+    const safe = name.replace(/[\[\]\/\\?*:'']/g, '');
+    return {
+      personal: true, teacher: name,
+      statusName: SHEET.STATUS + '（' + safe + '）', summaryName: SHEET.SUMMARY + '（' + safe + '）',
+      subject: p.getProperty(userKey_('pSubject')) || '', cls: p.getProperty(userKey_('pClass')) || '',
+      mine: p.getProperty(userKey_('pMine')) === '1',
+    };
+  }
+  return {
+    personal: false, teacher: name, statusName: SHEET.STATUS, summaryName: SHEET.SUMMARY,
+    subject: String(settings[SETTING.SUBJECT] || ''), cls: String(settings[SETTING.CLASS] || ''), mine: false,
+  };
+}
+
+function isStatusSheet_(name) {
+  return name === SHEET.STATUS || name.indexOf(SHEET.STATUS + '（') === 0;
+}
+
+function markMode_() {
+  return /○|〇|丸/.test(String(getSettings_()[SETTING.MARK] || '')) ? 'circle' : 'date';
+}
+
+function sheetOrNew_(ss, name) {
+  return ss.getSheetByName(name) || ss.insertSheet(name, ss.getSheets().length);
 }
 
 function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, message, teacher) {

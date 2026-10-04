@@ -41,6 +41,9 @@
   <label class="f">課題名 <small>（空欄でもOK）</small></label>
   <input type="text" id="name" placeholder="例：ワーク p.20〜25">
 
+  <label class="f">担当 <small>（あなたの名前。共有して使うとき、だれの課題か分かるように）</small></label>
+  <input type="text" id="teacher" placeholder="例：青柳">
+
   <label class="f">提出するクラス</label>
   <div class="chips" id="classes"></div>
   <div class="hint">何も選ばなければ全員が対象です</div>
@@ -89,6 +92,7 @@
 
   function init(d) {
     today = d.today;
+    $('teacher').value = d.teacher || '';
     $('given').value = today;
     d.subjects.forEach((s) => $('subjects').appendChild(new Option(s, s)));
     $('subject').value = d.lastSubject;
@@ -143,6 +147,7 @@
   function collect() {
     return {
       late: lateText(),
+      teacher: $('teacher').value,
       subject: $('subject').value,
       name: $('name').value,
       classes: [...document.querySelectorAll('#classes .chip.on')].map((c) => c.dataset.cls),

@@ -40,6 +40,8 @@
   label.f { display: block; margin: 8px 0 2px; font-size: 12px; color: #5f6368; }
   select, input[type=text] { width: 100%; box-sizing: border-box; padding: 5px; font-size: 13px; }
   .save { margin-top: 8px; padding: 6px 12px; }
+  .share { margin-top: 8px; padding: 8px; background: #f8f9fa; border-radius: 8px; }
+  .share label { display: block; font-size: 13px; margin: 2px 0; }
   #loading { color: #5f6368; padding: 20px 0; text-align: center; }
   .empty { color: #5f6368; font-size: 12px; padding: 6px 0; }
 </style>
@@ -87,14 +89,20 @@
 
   <details>
     <summary>設定（担当の先生・表示）</summary>
-    <label class="f">担当の先生の名前（「課題提出について」の紙に出ます）</label>
+    <label class="f">あなたの名前（課題の担当・「課題提出について」の紙に出ます）</label>
     <input type="text" id="vTeacher" placeholder="例：青柳">
+    <div class="share">
+      <label><input type="checkbox" id="vPersonal"> 自分専用の教務手帳を使う</label>
+      <div class="empty">ほかの先生と共有して使うときにオン。「提出状況（あなたの名前）」のシートができ、下のしぼりこみはあなただけのものになります。1人で使うときはオフのままでOK。</div>
+      <label id="mineWrap"><input type="checkbox" id="vMine"> 自分が担当の課題だけ出す</label>
+    </div>
     <label class="f">提出状況に出す教科（空欄＝すべて）</label>
     <input type="text" id="vSubject" list="subjects" placeholder="例：数学">
     <datalist id="subjects"></datalist>
     <label class="f">提出状況に出すクラス（空欄＝すべて）</label>
     <input type="text" id="vClass" placeholder="例：1-1,1-2">
     <div class="empty" id="classHint"></div>
+    <div class="empty" style="margin-top:10px">ここから下は、共有しているときは全員共通です。</div>
     <label class="f">教務手帳のマスに書くもの</label>
     <select id="vMark"><option value="日付">提出した日付（10/4）</option><option value="○">○（締切後は「遅」）</option></select>
     <label class="f">未完成（△）の数え方</label>
@@ -156,6 +164,9 @@
     d.subjects.forEach((s) => $('subjects').appendChild(new Option(s, s)));
     if (!settingsDirty) {
       $('vTeacher').value = d.view.teacher;
+      $('vPersonal').checked = d.view.personal;
+      $('vMine').checked = d.view.mine;
+      $('mineWrap').style.display = d.view.personal ? '' : 'none';
       $('vSubject').value = d.view.subject;
       $('vClass').value = d.view.cls;
       $('vMark').value = d.view.mark;
@@ -166,7 +177,12 @@
 
   // 「表示の設定」を書きかけのときは、画面を新しくしても上書きしない
   let settingsDirty = false;
-  ['vTeacher', 'vSubject', 'vClass', 'vMark', 'vInc'].forEach((id) => $(id).addEventListener('input', () => { settingsDirty = true; }));
+  ['vTeacher', 'vSubject', 'vClass', 'vMark', 'vInc', 'vPersonal', 'vMine'].forEach((id) => $(id).addEventListener('input', () => { settingsDirty = true; }));
+  $('vPersonal').addEventListener('change', () => {
+    settingsDirty = true;
+    $('mineWrap').style.display = $('vPersonal').checked ? '' : 'none';
+    if ($('vPersonal').checked && !$('vTeacher').value.trim()) { alert('自分専用の教務手帳を使うには、先に「あなたの名前」を入れてください。'); $('vPersonal').checked = false; $('mineWrap').style.display = 'none'; $('vTeacher').focus(); }
+  });
   const load = () => run('getHomeData').then(render).catch((e) => { $('loading').textContent = 'エラー：' + (e && e.message || e); });
 
   $('bScan').onclick = () => busy($('bScan'), run('openScanner'));
@@ -181,7 +197,7 @@
   $('st2').onclick = () => $('bPrint').click();
   $('st3').onclick = () => $('bTask').click();
   $('st4').onclick = () => $('bScan').click();
-  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { teacher: $('vTeacher').value, subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value, incomplete: $('vInc').value }).then((d) => { settingsDirty = false; render(d); }));
+  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { teacher: $('vTeacher').value, personal: $('vPersonal').checked, mine: $('vMine').checked, subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value, incomplete: $('vInc').value }).then((d) => { settingsDirty = false; render(d); }));
 
   // 名簿の貼り付けなど、ダイアログを閉じて戻ってきたときに数字を新しくする
   let lastLoad = 0;
