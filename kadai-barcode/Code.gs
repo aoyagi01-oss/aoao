@@ -20,7 +20,19 @@ const SHEET = {
 
 // 生徒IDはバーコードの中身（ずっと変えない）。学籍番号は毎年変わってよい（1101＝1年1組1番）
 const STUDENT_HEADERS = ['生徒ID（バーコード・変えない）', '学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
-const TASK_HEADERS = ['課題ID', '教科', '課題名', '対象クラス（空欄＝全員）', '出した日', '締切日', 'メモ', '対象', '提出', 'うち遅れ', '未提出', '提出率'];
+const TASK_HEADERS = ['課題ID', '教科', '課題名', '対象クラス（空欄＝全員）', '出した日', '締切日', '締切後の扱い', 'メモ', '対象', '提出', 'うち遅れ', '未提出', '提出率'];
+const TASK_STAT_COL = 9; // I列から右は自動で書きこむ
+
+// 締切後に出したときの扱い（課題ごと。課題を登録するときに選ぶ）
+//  遅れとして記録／◯日まで期限内（欠席などへの配慮）／区別しない
+const LATE_CHOICES = ['遅れとして記録', '1日まで期限内', '2日まで期限内', '3日まで期限内', '5日まで期限内', '7日まで期限内', '区別しない'];
+function latePolicy_(text) {
+  const t = String(text || '').normalize('NFKC');
+  if (/区別しない|しない|なし/.test(t)) return { mode: 'none', days: 0, label: '区別しない' };
+  const m = t.match(/(\d+)/);
+  if (m && Number(m[1]) > 0) return { mode: 'grace', days: Math.min(30, Number(m[1])), label: Number(m[1]) + '日まで期限内' };
+  return { mode: 'strict', days: 0, label: '遅れとして記録' };
+}
 const LOG_HEADERS = ['読み取り日時', '課題ID', '教科', '課題名', '生徒ID', '学籍番号', 'クラス', '番号', '氏名', '判定'];
 
 const SETTING = {
@@ -30,6 +42,7 @@ const SETTING = {
   NOTICE: '「提出のお願い」に書く文',
   MARK: '提出状況（業務手帳）の書き方（「日付」または「○」）',
   INCOMPLETE: '未完成の数え方（「未提出」または「提出」）',
+  LATE: '締切後の扱い（課題一覧で空欄のとき）',
 };
 const SETTING_DEFAULTS = [
   [SETTING.TITLE, ''],
@@ -38,6 +51,7 @@ const SETTING_DEFAULTS = [
   [SETTING.NOTICE, '次の課題がまだ提出されていません。できるだけ早く提出してください。'],
   [SETTING.MARK, '日付'],
   [SETTING.INCOMPLETE, '未提出'],
+  [SETTING.LATE, '遅れとして記録'],
 ];
 
 const COLOR = { header: '#cfe2f3', ok: '#d9ead3', late: '#fff2cc', overdue: '#f4cccc', notYet: '#ffffff', none: '#eeeeee', excused: '#c9daf8', incomplete: '#fce5cd' };
@@ -168,6 +182,9 @@ function getTaskFormData() {
     subjects: subjectList_(getTasks_()),
     lastSubject: props.getProperty(userKey_('lastSubject')) || '',
     lastClasses: props.getProperty(userKey_('lastClasses')) || '',
+    // 締切後の扱い：前に選んだもの（はじめてのときは空 → 画面で「はじめに決めてください」）
+    lastLate: props.getProperty(userKey_('lastLate')) || '',
+    defaultLate: latePolicy_(getSettings_()[SETTING.LATE]).label,
     today: todayKey_(),
   };
 }
@@ -181,7 +198,8 @@ function toDate_(key) {
 function addTask(t) {
   const sh = sheet_(SHEET.TASKS);
   const classes = (t.classes || []).map(normClass_).filter(String);
-  sh.appendRow(['', String(t.subject || '').trim(), String(t.name || '').trim(), classes.join(','), toDate_(t.given), toDate_(t.due), String(t.memo || '')]);
+  const late = latePolicy_(t.late).label;
+  sh.appendRow(['', String(t.subject || '').trim(), String(t.name || '').trim(), classes.join(','), toDate_(t.given), toDate_(t.due), late, String(t.memo || '')]);
   const row = sh.getLastRow();
   sh.getRange(row, 5, 1, 2).setNumberFormat('yyyy/mm/dd');
   const tasks = getTasks_();
@@ -189,6 +207,7 @@ function addTask(t) {
   const props = PropertiesService.getUserProperties();
   props.setProperty(userKey_('lastSubject'), String(t.subject || '').trim());
   props.setProperty(userKey_('lastClasses'), classes.join(','));
+  props.setProperty(userKey_('lastLate'), late);
   props.setProperty(userKey_('lastTask'), task.id);
   return { id: task.id, label: taskLabel_(task) };
 }
@@ -506,13 +525,22 @@ function setup_(showMessage) {
     students.sh.getRange('B1').setNote('4けたの学籍番号（例：1101＝1年1組1番）。クラス・番号が空欄なら、ここから自動で入ります。');
   }
 
-  const tasks = make(SHEET.TASKS, TASK_HEADERS, [70, 80, 220, 160, 90, 90, 160, 50, 50, 60, 60, 60]);
+  const tasks = make(SHEET.TASKS, TASK_HEADERS, [70, 80, 220, 160, 90, 90, 130, 160, 50, 50, 60, 60, 60]);
+  if (!tasks.fresh && String(tasks.sh.getRange(1, 7).getValue()) === 'メモ') {
+    // 旧版の課題一覧（「締切後の扱い」の列なし）には列を差しこむ
+    tasks.sh.insertColumnBefore(7);
+    tasks.sh.getRange(1, 1, 1, TASK_HEADERS.length).setValues([TASK_HEADERS]);
+  }
+  if (tasks.fresh || !tasks.sh.getRange('G2').getDataValidation()) {
+    tasks.sh.getRange('G2:G').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(LATE_CHOICES, true).setAllowInvalid(true).build());
+  }
   if (tasks.fresh) {
     const dateRule = SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).setHelpText('日付を入れてください（例：2026/10/5）').build();
     tasks.sh.getRange('E2:F').setDataValidation(dateRule).setNumberFormat('yyyy/mm/dd');
-    tasks.sh.getRange('L2:L').setNumberFormat('0%');
-    tasks.sh.getRange('H1:L1').setBackground('#e0e0e0');
-    tasks.sh.getRange('H1').setNote('H〜L列は「提出状況・集計を更新」で自動で書き込まれます。');
+    tasks.sh.getRange('M2:M').setNumberFormat('0%');
+    tasks.sh.getRange('I1:M1').setBackground('#e0e0e0');
+    tasks.sh.getRange('I1').setNote('I〜M列は「提出状況・集計を更新」で自動で書き込まれます。');
+    tasks.sh.getRange('G1').setNote('締切を過ぎて出したときの扱い。空欄なら「設定」シートの値。\n・遅れとして記録\n・◯日まで期限内（欠席などへの配慮。土日はとばして数える）\n・区別しない');
   }
 
   const log = make(SHEET.LOG, LOG_HEADERS, [150, 60, 80, 200, 110, 70, 60, 50, 130, 70]);
@@ -559,12 +587,10 @@ function writeHowTo_(sh) {
     ['2. 読み取る：「登録して、読み取りへ」を押すか、ホームの課題の「📷 読む」。読み取り欄をクリックしてからピッ・ピッ。提出物の順番はばらばらでOK。'],
     ['3. 見る・配る：「📒 提出状況（業務手帳）」で一覧。「📝 未提出者・提出のお願い」で印刷。'],
     [''],
-    ['■ 遅れ・欠席・配慮'],
-    ['・遅れて出した提出も「提出」として数えます。ただし「期限内」とは分けて、提出率と期限内提出率の両方を出します（業務手帳では黄色）。'],
-    ['・欠席：ホームの「🤒 欠席・配慮・免除」で休んだ日を入れると、その期間にかかる課題は休んだ日数（登校日）だけその生徒の締切が延びます。延びた締切までに出せば期限内（青）。'],
-    ['・配慮：特定の課題を、その生徒だけ「遅れても期限内あつかい」に。遅れて出してきたときは、読み取り画面に出るボタンでその場で配慮できます。'],
-    ['・免除：長期欠席・入院などで、その課題を出さなくてよい生徒に。提出率の計算から外れます（業務手帳では「免」）。'],
-    ['・未完成（使いたい先生だけ）：読み取り画面のモードを「△ 未完成」にして読むと△になり、ふつうは未提出あつかい。直して出したら「✓ 提出」で読めば再提出として記録されます。数え方はホームの「表示の設定」で変えられます。'],
+    ['■ 遅れ・欠席への配慮'],
+    ['・課題を登録するときに「締切を過ぎて出したら？」を1つ選ぶだけ（次からは同じ選び方が最初から入る）：遅れとして記録／少しの遅れは期限内（1〜7日。欠席などへの配慮。1人ずつ登録しなくてよい）／区別しない'],
+    ['・遅れて出した提出も「提出」として数え、提出率と期限内提出率の両方を出します。'],
+    ['・必要な先生だけ：ホームの下の「1人ずつの欠席・配慮・免除」、読み取り画面の「△ 未完成」モード。使わなくてもかまいません。'],
     [''],
     ['■ 進級したら'],
     ['新しい名簿をそのまま「名簿の貼り付け」に貼るだけ。同じ名前の生徒は学籍番号が新しくなり、バーコードは刷り直さずに使えます。'],
@@ -598,10 +624,10 @@ function insertSampleData() {
   const now = new Date();
   function day(n) { const d = new Date(now); d.setDate(d.getDate() + n); return d; }
   const tk = ss.getSheetByName(SHEET.TASKS);
-  tk.getRange(tk.getLastRow() + 1, 1, 3, 7).setValues([
-    ['', '国語', '漢字ノート 第3回', '', day(-10), day(-3), ''],
-    ['', '数学', 'ワーク p.20〜25', '1-1', day(-5), day(-1), ''],
-    ['', '英語', 'Unit 2 ワークシート', '1-1,1-2', day(-1), day(5), ''],
+  tk.getRange(tk.getLastRow() + 1, 1, 3, 8).setValues([
+    ['', '国語', '漢字ノート 第3回', '', day(-10), day(-3), '遅れとして記録', ''],
+    ['', '数学', 'ワーク p.20〜25', '1-1', day(-5), day(-1), '3日まで期限内', ''],
+    ['', '英語', 'Unit 2 ワークシート', '1-1,1-2', day(-1), day(5), '遅れとして記録', ''],
   ]);
   getStudents_();
   getTasks_();
@@ -726,7 +752,8 @@ function getTasks_() {
   const sh = sheet_(SHEET.TASKS);
   const last = sh.getLastRow();
   if (last < 2) return [];
-  const vals = sh.getRange(2, 1, last - 1, 7).getValues();
+  const vals = sh.getRange(2, 1, last - 1, 8).getValues();
+  const defaultLate = getSettings_()[SETTING.LATE];
   let maxNo = 0;
   vals.forEach(function (r) {
     const m = norm_(r[0]).match(/^K(\d+)$/);
@@ -738,7 +765,7 @@ function getTasks_() {
     const name = String(r[2]).trim();
     let id = norm_(r[0]);
     // 教科・課題名は空欄でもよい（締切日や対象クラスだけでも1つの課題として扱う）
-    const filled = [r[1], r[2], r[3], r[4], r[5], r[6]].some(function (v) { return String(v).trim() !== ''; });
+    const filled = [r[1], r[2], r[3], r[4], r[5], r[7]].some(function (v) { return String(v).trim() !== ''; });
     if (!filled && !id) return;
     if (!id || seen[id]) { // 空欄、または行をコピーして ID が重なったときは新しい ID
       maxNo += 1;
@@ -748,7 +775,8 @@ function getTasks_() {
     seen[id] = true;
     tasks.push({
       id: id, subject: String(r[1]).trim(), name: name,
-      classes: splitList_(r[3]), given: dateKey_(r[4]), due: dateKey_(r[5]), memo: String(r[6]), row: i + 2,
+      classes: splitList_(r[3]), given: dateKey_(r[4]), due: dateKey_(r[5]), late: latePolicy_(String(r[6]).trim() || defaultLate),
+      memo: String(r[7]), row: i + 2,
     });
   });
   return tasks;
@@ -844,23 +872,34 @@ function isExempt_(task, sid) {
   return excuses_().task[task.id + '|' + sid] === '免除';
 }
 
-// その生徒にとっての締切。{ due: 'yyyy-MM-dd'（空＝締切なし）, ext: 延ばした日数, excused: 配慮 }
+// その生徒にとっての締切
+//  due：これを過ぎて出したら「遅れ」（空＝遅れにしない）
+//  deadline：これを過ぎて出していなければ「未提出（赤）」（空＝赤にしない）
+//  shown：生徒に見せる締切（欠席で延ばしたときだけ変わる）
+//  ext：欠席で延ばした日数　grace：課題の「◯日まで期限内」　excused：配慮
 function dueFor_(task, sid) {
-  if (!task.due) return { due: '', ext: 0, excused: false };
+  if (!task.due) return { due: '', deadline: '', shown: '', ext: 0, grace: 0, excused: false };
   const ex = excuses_();
-  if (ex.task[task.id + '|' + sid] === '配慮') return { due: '', ext: 0, excused: true };
+  if (ex.task[task.id + '|' + sid] === '配慮') return { due: '', deadline: '', shown: task.due, ext: 0, grace: 0, excused: true };
+  let ext = 0;
   const days = ex.absent[sid];
-  if (!days) return { due: task.due, ext: 0, excused: false };
-  // 課題を出した日から締切日までに休んだ日（平日）を数える。出した日が空欄なら締切の1週間前から
-  const start = task.given && task.given <= task.due ? task.given : addDaysKey_(task.due, -6);
-  let n = 0;
-  Object.keys(days).forEach(function (k) { if (k >= start && k <= task.due && isWeekday_(k)) n++; });
-  return n ? { due: addSchoolDays_(task.due, n), ext: n, excused: false } : { due: task.due, ext: 0, excused: false };
+  if (days) {
+    // 課題を出した日から締切日までに休んだ日（平日）を数える。出した日が空欄なら締切の1週間前から
+    const start = task.given && task.given <= task.due ? task.given : addDaysKey_(task.due, -6);
+    Object.keys(days).forEach(function (k) { if (k >= start && k <= task.due && isWeekday_(k)) ext++; });
+  }
+  const pol = task.late || latePolicy_('');
+  const grace = pol.mode === 'grace' ? pol.days : 0;
+  const deadline = ext + grace ? addSchoolDays_(task.due, ext + grace) : task.due;
+  return {
+    due: pol.mode === 'none' ? '' : deadline, deadline: deadline,
+    shown: ext ? addSchoolDays_(task.due, ext) : task.due, ext: ext, grace: grace, excused: false,
+  };
 }
 
 function isOverdue_(task, sid, today) {
   const d = dueFor_(task, sid);
-  return !!d.due && today > d.due;
+  return !!d.deadline && today > d.deadline;
 }
 
 function readLog_() {
@@ -901,7 +940,8 @@ function submissionsOf_(task, logs) {
     if (cur && !(cur.incomplete && !r.incomplete)) return;
     const late = isLate_(task, r.time, r.studentId);
     const afterDue = !!task.due && r.time instanceof Date && dateKey_(r.time) > task.due;
-    map[r.studentId] = { time: r.time, late: late, excused: afterDue && !late, incomplete: r.incomplete, resubmitted: !!cur };
+    const none = task.late && task.late.mode === 'none';
+    map[r.studentId] = { time: r.time, late: late, excused: afterDue && !late && !none, incomplete: r.incomplete, resubmitted: !!cur };
   });
   return map;
 }
@@ -920,7 +960,7 @@ function taskStats_(task, students, logs) {
       if (sub.late) late++;
     } else {
       const d = dueFor_(task, s.id);
-      missing.push({ gakuseki: s.gakuseki, cls: s.cls, no: s.no, name: s.name, note: sub ? '未完成' : (d.excused ? '配慮' : (d.ext ? '〆' + shortDate_(d.due) : '')) });
+      missing.push({ gakuseki: s.gakuseki, cls: s.cls, no: s.no, name: s.name, note: sub ? '未完成' : (d.excused ? '配慮' : (d.ext ? '〆' + shortDate_(d.shown) : '')) });
     }
   });
   return {
@@ -1029,7 +1069,7 @@ function recordScan(taskId, raw, mode) {
       result = {
         kind: !target ? 'notarget' : (exempt ? 'ok' : (late ? 'late' : 'ok')),
         message: (resubmit ? '再提出（完成）・' : '') + (!target ? '対象外のクラスですが記録しました：' : (exempt ? '提出（この課題は免除の生徒）：' : (late ? '締切後の提出：' : '提出：'))) + who +
-          (saved ? (d.excused ? '（配慮：期限内あつかい）' : '（欠席のため ' + shortDate_(d.due) + ' まで延長：期限内）') : ''),
+          (saved && target && !(task.late && task.late.mode === 'none') ? (d.excused ? '（配慮：期限内あつかい）' : (d.ext ? '（欠席のため締切を延長：期限内）' : '（' + d.grace + '日の猶予：期限内）')) : ''),
         studentId: st.id,
       };
     }
@@ -1104,9 +1144,9 @@ function refreshAll() {
   const tkSheet = sheet_(SHEET.TASKS);
   allTasks.forEach(function (t) {
     const st = taskStats_(t, active, logs);
-    tkSheet.getRange(t.row, 8, 1, 5).setValues([[st.target, st.submitted, st.late, st.target - st.submitted, st.target ? st.rate : '']]);
+    tkSheet.getRange(t.row, TASK_STAT_COL, 1, 5).setValues([[st.target, st.submitted, st.late, st.target - st.submitted, st.target ? st.rate : '']]);
   });
-  tkSheet.getRange('L2:L').setNumberFormat('0%');
+  tkSheet.getRange('M2:M').setNumberFormat('0%');
 
   const view = statusView_(allTasks, allStudents);
   writeStatusSheet_(ss, view.tasks, view.students, subsByTask, today);
@@ -1142,7 +1182,7 @@ function statusCell_(s, t, subsByTask, today, mark) {
     // 未完成：△。数え方は設定しだい（ふつうは未提出あつかい）
     const counted = incompleteCounts_();
     const dd = dueFor_(t, s.id);
-    const over = !!dd.due && today > dd.due;
+    const over = !!dd.deadline && today > dd.deadline;
     return { v: '△', bg: COLOR.incomplete, considered: counted || over || (!t.due && !dd.excused), done: counted, onTime: false, overdue: !counted && over };
   }
   if (sub) {
@@ -1150,7 +1190,7 @@ function statusCell_(s, t, subsByTask, today, mark) {
     return { v: v, bg: sub.late ? COLOR.late : (sub.excused ? COLOR.excused : COLOR.ok), considered: true, done: true, onTime: !sub.late };
   }
   const d = dueFor_(t, s.id);
-  const overdue = !!d.due && today > d.due;
+  const overdue = !!d.deadline && today > d.deadline;
   return { v: '', bg: overdue ? COLOR.overdue : COLOR.notYet, considered: overdue || (!t.due && !d.excused), overdue: overdue };
 }
 
@@ -1414,7 +1454,7 @@ function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, mess
     }
     const vals = missing.map(function (t) {
       const d = dueFor_(t, s.id);
-      return ['□', t.subject, displayName_(t) + (incompleteOf(t, s) ? '（未完成・出し直し）' : ''), d.due ? '締切 ' + shortDate_(d.due) + (d.ext ? '（延長）' : '') : ''];
+      return ['□', t.subject, displayName_(t) + (incompleteOf(t, s) ? '（未完成・出し直し）' : ''), d.shown ? '締切 ' + shortDate_(d.shown) + (d.ext ? '（延長）' : '') : ''];
     });
     sh.getRange(row, 1, vals.length, 4).setValues(vals);
     sh.getRange(row, 1, vals.length, 1).setHorizontalAlignment('center');
@@ -1431,7 +1471,7 @@ function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, mess
 function dueNote_(t, sid) {
   const d = dueFor_(t, sid);
   if (d.excused) return '配慮（期限内あつかい）';
-  if (d.ext) return '欠席' + d.ext + '日 → 締切 ' + shortDate_(d.due) + ' に延長';
+  if (d.ext) return '欠席' + d.ext + '日 → 締切 ' + shortDate_(d.shown) + ' に延長';
   return '';
 }
 

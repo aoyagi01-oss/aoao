@@ -29,6 +29,8 @@
   .tools button { padding: 10px 6px; border: 1px solid #dadce0; border-radius: 8px; background: #fff; cursor: pointer; font-size: 12px; }
   .tools button:hover { background: #f1f3f4; }
   .tools .ic { display: block; font-size: 20px; }
+  .links { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .links a { color: #1a73e8; cursor: pointer; font-size: 12px; }
   .stat { display: flex; gap: 6px; }
   .stat div { flex: 1; background: #f1f3f4; border-radius: 8px; padding: 6px; text-align: center; font-size: 11px; color: #5f6368; }
   .stat b { display: block; font-size: 18px; color: #202124; }
@@ -57,10 +59,12 @@
   <div class="tools">
     <button id="bStatus"><span class="ic">📒</span>提出状況<br>（業務手帳）</button>
     <button id="bList"><span class="ic">📝</span>未提出者・<br>提出のお願い</button>
-    <button id="bExcuse"><span class="ic">🤒</span>欠席・配慮・<br>免除</button>
     <button id="bSummary"><span class="ic">📊</span>集計<br>（提出率）</button>
     <button id="bPrint"><span class="ic">🏷</span>バーコード<br>印刷</button>
-    <button id="bRoster"><span class="ic">👥</span>名簿の<br>貼り付け</button>
+  </div>
+  <div class="links">
+    <a id="bRoster">👥 名簿の貼り付け・進級</a>
+    <a id="bExcuse">🤒 1人ずつの欠席・配慮・免除（必要なときだけ）</a>
   </div>
 
   <div class="stat" style="margin-top:10px">

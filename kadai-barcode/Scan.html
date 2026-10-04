@@ -38,12 +38,8 @@
   #history { list-style: none; padding: 0; margin: 4px 0 0; font-size: 12px; max-height: 180px; overflow: auto; }
   #history li { padding: 2px 4px; border-bottom: 1px solid #eee; }
   .small { color: #666; font-size: 11px; }
-  #lateBox { display: none; margin-top: 6px; padding: 8px; border: 2px solid #f9ab00; border-radius: 8px; background: #fffbea; }
-  #lateBox div { font-size: 12px; margin-bottom: 6px; }
-  #lateBox button { display: block; width: 100%; margin-top: 4px; padding: 7px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-  #lateOk { background: #1a73e8; color: #fff; border: none; font-weight: bold; }
-  #lateOk small { display: block; font-weight: normal; font-size: 11px; }
-  #lateNo { background: #fff; border: 1px solid #dadce0; }
+  #lateBox { display: none; margin-top: 4px; font-size: 11px; }
+  #lateBox a { color: #1a73e8; cursor: pointer; text-decoration: underline; }
   .nav { display: flex; justify-content: space-between; margin-bottom: 8px; }
   .nav a { color: #1a73e8; cursor: pointer; font-size: 12px; }
 </style>
@@ -64,11 +60,7 @@
   <input type="text" id="code" placeholder="ここをクリックして読み取る（学籍番号を打ってもOK）" autocomplete="off" spellcheck="false">
   <div id="focusWarn">⚠ 読み取り欄からカーソルが外れています。ここを押してから読み取ってください</div>
   <div id="msg" class="idle">課題を選んで、バーコードを読み取ってください</div>
-  <div id="lateBox">
-    <div id="lateWho"></div>
-    <button id="lateOk">🤒 欠席などのため配慮する<small>期限内あつかいにする</small></button>
-    <button id="lateNo">遅れのままにする</button>
-  </div>
+  <div id="lateBox"><a id="lateOk">この生徒だけ期限内あつかいにする（欠席などの事情があるとき）</a></div>
 
   <div class="row">
     <div class="modes" id="modes">
@@ -176,7 +168,6 @@
       // 遅れて出した生徒：その場で「配慮」にできる
       if (r.kind === 'late') {
         lateFor = { taskId: $('task').value, studentId: r.studentId };
-        $('lateWho').textContent = r.message.replace('締切後の提出：', '') + ' は締切後の提出です。欠席などの事情がありますか？';
         $('lateBox').style.display = 'block';
       } else if (my >= shownSeq) {
         $('lateBox').style.display = 'none';
@@ -212,7 +203,7 @@
   });
 
   // ボタンを押しても読み取り欄からカーソルが外れないようにする
-  document.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+  document.addEventListener('mousedown', (e) => { if (e.target.closest('button, a')) e.preventDefault(); });
   $('code').addEventListener('blur', () => document.body.classList.add('blurred'));
   $('code').addEventListener('focus', () => document.body.classList.remove('blurred'));
   $('focusWarn').addEventListener('click', () => $('code').focus());
@@ -251,15 +242,14 @@
   let lateFor = null;
   $('lateOk').onclick = () => {
     if (!lateFor) return;
-    $('lateOk').disabled = true;
+    const lf = lateFor;
+    lateFor = null;
     google.script.run.withSuccessHandler((r) => {
-      $('lateOk').disabled = false;
       $('lateBox').style.display = 'none';
       beep(r.kind); showMsg(r.kind, r.message); addHistory(r.message); if (r.stats) showStats(r.stats);
       $('code').focus();
-    }).withFailureHandler((e) => { $('lateOk').disabled = false; fail(e); }).excuseLate(lateFor.taskId, lateFor.studentId);
+    }).withFailureHandler(fail).excuseLate(lf.taskId, lf.studentId);
   };
-  $('lateNo').onclick = () => { $('lateBox').style.display = 'none'; $('code').focus(); };
   $('home').onclick = () => google.script.run.openHome();
   $('newTask').onclick = () => google.script.run.openTaskForm();
 

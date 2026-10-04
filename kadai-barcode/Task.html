@@ -19,6 +19,15 @@
   #msg.ok { display: block; background: #e6f4ea; color: #137333; }
   #msg.err { display: block; background: #fce8e6; color: #c5221f; }
   .hint { color: #5f6368; font-size: 11px; margin-top: 3px; }
+  .late { margin-top: 12px; border-radius: 10px; padding: 8px; background: #f8f9fa; }
+  .late.ask { background: #fef7e0; border: 2px solid #f9ab00; }
+  .first { display: none; color: #b06000; font-weight: bold; font-size: 12px; margin-bottom: 6px; }
+  .late.ask .first { display: block; }
+  .opts label { display: block; padding: 6px 4px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .opts label.on { background: #e8f0fe; }
+  .opts small { display: block; color: #5f6368; font-size: 11px; margin-left: 20px; }
+  .days { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0 20px; }
+  .days .chip { padding: 2px 9px; }
 </style>
 </head>
 <body>
@@ -39,6 +48,18 @@
   <label class="f">締切日</label>
   <input type="date" id="due">
   <div class="chips" id="dueChips"></div>
+
+  <div class="late" id="lateBox">
+    <div class="first" id="lateFirst">はじめに決めてください（次からは同じ選び方が最初から入ります）</div>
+    <label class="f" style="margin-top:0">締切を過ぎて出したら？</label>
+    <div class="opts" id="lateOpts">
+      <label data-v="strict"><input type="radio" name="late"> 遅れとして記録する<small>業務手帳で黄色。期限内提出率に入らない</small></label>
+      <label data-v="grace"><input type="radio" name="late"> 少しの遅れは期限内あつかい
+        <small>欠席・体調不良などへの配慮。1人ずつ登録しなくても、この日数までは期限内になります（土日はとばす）</small>
+        <span class="days" id="graceDays"></span></label>
+      <label data-v="none"><input type="radio" name="late"> 遅れを区別しない<small>締切後に出しても、ふつうの提出</small></label>
+    </div>
+  </div>
 
   <label class="f">出した日 <small>（ふつうは今日のまま）</small></label>
   <input type="date" id="given">
@@ -88,11 +109,40 @@
       document.querySelectorAll('#dueChips .chip').forEach((c) => c.classList.remove('on'));
       x.classList.add('on');
     })));
+    [1, 2, 3, 5, 7].forEach((n) => {
+      const c = chip(n + '日', (x) => { graceDays = n; setLate(n + '日まで期限内'); $('lateBox').classList.remove('ask'); });
+      c.dataset.d = n;
+      $('graceDays').appendChild(c);
+    });
+    document.querySelectorAll('#lateOpts label').forEach((l) => l.addEventListener('click', () => {
+      setLate(l.dataset.v === 'grace' ? graceDays + '日まで期限内' : (l.dataset.v === 'none' ? '区別しない' : '遅れとして記録'));
+      $('lateBox').classList.remove('ask');
+    }));
+    setLate(d.lastLate || d.defaultLate);
+    if (!d.lastLate) $('lateBox').classList.add('ask'); // はじめての先生には、目立たせて聞く
     $('subject').focus();
+  }
+
+  // 締切後の扱い：'遅れとして記録' / '3日まで期限内' / '区別しない'
+  let lateMode = 'strict', graceDays = 3;
+  function setLate(text) {
+    const t = String(text || '');
+    if (/区別しない/.test(t)) lateMode = 'none';
+    else if (/(\d+)日/.test(t)) { lateMode = 'grace'; graceDays = Number(t.match(/(\d+)日/)[1]); }
+    else lateMode = 'strict';
+    document.querySelectorAll('#lateOpts label').forEach((l) => {
+      l.classList.toggle('on', l.dataset.v === lateMode);
+      l.querySelector('input').checked = l.dataset.v === lateMode;
+    });
+    document.querySelectorAll('#graceDays .chip').forEach((c) => c.classList.toggle('on', lateMode === 'grace' && Number(c.dataset.d) === graceDays));
+  }
+  function lateText() {
+    return lateMode === 'none' ? '区別しない' : (lateMode === 'grace' ? graceDays + '日まで期限内' : '遅れとして記録');
   }
 
   function collect() {
     return {
+      late: lateText(),
       subject: $('subject').value,
       name: $('name').value,
       classes: [...document.querySelectorAll('#classes .chip.on')].map((c) => c.dataset.cls),
@@ -102,6 +152,8 @@
   }
 
   function save(thenScan) {
+    if ($('lateBox').classList.contains('ask') && !confirm('「締切を過ぎて出したら？」は「' + lateText() + '」でよいですか？\n（次からはこの選び方が最初から入ります）')) return;
+    $('lateBox').classList.remove('ask');
     const btns = [$('goScan'), $('goSave')];
     btns.forEach((b) => { b.disabled = true; });
     run('addTask', collect()).then((r) => {
