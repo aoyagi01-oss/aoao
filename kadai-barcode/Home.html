@@ -86,7 +86,9 @@
   </details>
 
   <details>
-    <summary>表示の設定</summary>
+    <summary>設定（担当の先生・表示）</summary>
+    <label class="f">担当の先生の名前（「課題提出について」の紙に出ます）</label>
+    <input type="text" id="vTeacher" placeholder="例：青柳">
     <label class="f">提出状況に出す教科（空欄＝すべて）</label>
     <input type="text" id="vSubject" list="subjects" placeholder="例：数学">
     <datalist id="subjects"></datalist>
@@ -153,6 +155,7 @@
     $('subjects').innerHTML = '';
     d.subjects.forEach((s) => $('subjects').appendChild(new Option(s, s)));
     if (!settingsDirty) {
+      $('vTeacher').value = d.view.teacher;
       $('vSubject').value = d.view.subject;
       $('vClass').value = d.view.cls;
       $('vMark').value = d.view.mark;
@@ -163,7 +166,7 @@
 
   // 「表示の設定」を書きかけのときは、画面を新しくしても上書きしない
   let settingsDirty = false;
-  ['vSubject', 'vClass', 'vMark', 'vInc'].forEach((id) => $(id).addEventListener('input', () => { settingsDirty = true; }));
+  ['vTeacher', 'vSubject', 'vClass', 'vMark', 'vInc'].forEach((id) => $(id).addEventListener('input', () => { settingsDirty = true; }));
   const load = () => run('getHomeData').then(render).catch((e) => { $('loading').textContent = 'エラー：' + (e && e.message || e); });
 
   $('bScan').onclick = () => busy($('bScan'), run('openScanner'));
@@ -178,7 +181,7 @@
   $('st2').onclick = () => $('bPrint').click();
   $('st3').onclick = () => $('bTask').click();
   $('st4').onclick = () => $('bScan').click();
-  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value, incomplete: $('vInc').value }).then((d) => { settingsDirty = false; render(d); }));
+  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { teacher: $('vTeacher').value, subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value, incomplete: $('vInc').value }).then((d) => { settingsDirty = false; render(d); }));
 
   // 名簿の貼り付けなど、ダイアログを閉じて戻ってきたときに数字を新しくする
   let lastLoad = 0;

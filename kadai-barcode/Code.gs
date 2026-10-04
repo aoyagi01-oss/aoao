@@ -43,6 +43,7 @@ const SETTING = {
   MARK: '提出状況（教務手帳）の書き方（「日付」または「○」）',
   INCOMPLETE: '未完成の数え方（「未提出」または「提出」）',
   LATE: '締切後の扱い（課題一覧で空欄のとき）',
+  TEACHER: '担当の先生の名前（「課題提出について」に出る）',
 };
 const SETTING_DEFAULTS = [
   [SETTING.TITLE, ''],
@@ -52,6 +53,7 @@ const SETTING_DEFAULTS = [
   [SETTING.MARK, '日付'],
   [SETTING.INCOMPLETE, '未提出'],
   [SETTING.LATE, '遅れとして記録'],
+  [SETTING.TEACHER, ''],
 ];
 
 const COLOR = { header: '#cfe2f3', ok: '#d9ead3', late: '#fff2cc', overdue: '#f4cccc', notYet: '#ffffff', none: '#eeeeee', excused: '#c9daf8', incomplete: '#fce5cd' };
@@ -133,7 +135,7 @@ function getHomeData() {
     printed: docProps_().getProperty('barcodePrinted') === '1',
     recent: recent,
     subjects: subjectList_(tasks),
-    view: { subject: String(settings[SETTING.SUBJECT] || ''), cls: String(settings[SETTING.CLASS] || ''), mark: /○|〇|丸/.test(String(settings[SETTING.MARK] || '')) ? '○' : '日付', incomplete: incompleteCounts_() ? '提出' : '未提出' },
+    view: { teacher: String(settings[SETTING.TEACHER] || ''), subject: String(settings[SETTING.SUBJECT] || ''), cls: String(settings[SETTING.CLASS] || ''), mark: /○|〇|丸/.test(String(settings[SETTING.MARK] || '')) ? '○' : '日付', incomplete: incompleteCounts_() ? '提出' : '未提出' },
   };
 }
 
@@ -152,6 +154,7 @@ function saveViewSettings(v) {
     sh.appendRow([key, '']);
     sh.getRange(sh.getLastRow(), 2).setNumberFormat('@').setValue(value);
   }
+  if (v.teacher !== undefined) put(SETTING.TEACHER, String(v.teacher || '').trim());
   put(SETTING.SUBJECT, v.subject || '');
   put(SETTING.CLASS, v.cls || '');
   put(SETTING.MARK, v.mark === '○' ? '○' : '日付');
@@ -1492,8 +1495,8 @@ function makePrintList(opts) {
   };
   const incompleteOf = function (t, s) { return !!subs[t.id][s.id]; }; // 未提出の中で、未完成で出したもの
   const count = opts.type === 'notice'
-    ? writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, String(settings[SETTING.NOTICE] || ''))
-    : writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title);
+    ? writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, String(settings[SETTING.NOTICE] || ''), teacherLabel_(settings))
+    : writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title + (teacherLabel_(settings) ? '　' + teacherLabel_(settings) : ''));
 
   ss.setActiveSheet(sh);
   SpreadsheetApp.flush();
@@ -1530,8 +1533,16 @@ function writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title) 
   return total;
 }
 
-function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, message) {
-  [70, 220, 260, 100].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+// 「担当：青柳 先生」（名前に「先生」が入っていなければ付ける）
+function teacherLabel_(settings) {
+  const name = String(settings[SETTING.TEACHER] || '').trim();
+  if (!name) return '';
+  return '担当：' + name + (/先生$/.test(name) ? '' : ' 先生');
+}
+
+function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, message, teacher) {
+  // A4 の横いっぱい（PDF の余白をのぞいて約 700px）に広げ、文字も大きくする
+  [56, 140, 360, 150].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
   let row = 1;
   let count = 0;
   students.forEach(function (s) {
@@ -1540,23 +1551,29 @@ function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, mess
     count++;
     ensureSize_(sh, row + missing.length + 6, 4);
     const start = row;
-    sh.getRange(row, 1, 1, 4).merge().setValue('課題提出について' + (title ? '　　' + title : '')).setFontWeight('bold').setFontSize(13);
+    sh.getRange(row, 1, 1, 3).merge().setValue('課題提出について' + (title ? '　　' + title : '')).setFontWeight('bold').setFontSize(16).setVerticalAlignment('middle');
+    sh.getRange(row, 4).setValue(teacher || '').setFontSize(13).setHorizontalAlignment('right').setVerticalAlignment('middle');
+    sh.setRowHeight(row, 36);
     row++;
-    sh.getRange(row, 1, 1, 4).merge().setValue((s.gakuseki ? s.gakuseki + '　' : '') + s.cls + '　' + s.no + '番　' + s.name + '　さん').setFontSize(13);
+    sh.getRange(row, 1, 1, 4).merge().setValue((s.gakuseki ? s.gakuseki + '　' : '') + s.cls + '　' + s.no + '番　' + s.name + '　さん').setFontSize(20).setFontWeight('bold').setVerticalAlignment('middle');
+    sh.setRowHeight(row, 42);
     row++;
     if (message) {
-      sh.getRange(row, 1, 1, 4).merge().setValue(message).setWrap(true);
+      sh.getRange(row, 1, 1, 4).merge().setValue(message).setWrap(true).setFontSize(13).setVerticalAlignment('middle');
+      sh.setRowHeight(row, 40);
       row++;
     }
     const vals = missing.map(function (t) {
       const d = dueFor_(t, s.id);
       return ['□', t.subject, displayName_(t) + (incompleteOf(t, s) ? '（未完成・出し直し）' : ''), d.shown ? '締切 ' + shortDate_(d.shown) + (d.ext ? '（延長）' : '') : ''];
     });
-    sh.getRange(row, 1, vals.length, 4).setValues(vals);
-    sh.getRange(row, 1, vals.length, 1).setHorizontalAlignment('center');
+    sh.getRange(row, 1, vals.length, 4).setValues(vals).setFontSize(15).setVerticalAlignment('middle').setWrap(true);
+    sh.getRange(row, 1, vals.length, 1).setHorizontalAlignment('center').setFontSize(18);
+    for (let k = 0; k < vals.length; k++) sh.setRowHeight(row + k, 34);
     row += vals.length;
     sh.getRange(start, 1, row - start, 4).setBorder(true, true, true, true, false, false, '#888888', SpreadsheetApp.BorderStyle.SOLID);
-    sh.getRange(row, 1, 1, 4).merge().setValue('✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -').setFontColor('#999999').setHorizontalAlignment('center');
+    sh.getRange(row, 1, 1, 4).merge().setValue('✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -').setFontColor('#999999').setHorizontalAlignment('center').setFontSize(11);
+    sh.setRowHeight(row, 30);
     row++;
   });
   if (!count) sh.getRange(1, 1).setValue('選んだ課題・クラスでは、未提出の生徒はいません。');
