@@ -1417,6 +1417,11 @@ function refreshAll() {
   const view = statusView_(allTasks, allStudents);
   writeStatusSheet_(ss, view.tasks, view.students, subsByTask, today, view.cfg.statusName);
   writeSummarySheet_(ss, view.tasks, view.students, subsByTask, today, view.cfg);
+  if (view.cfg.personal) {
+    // 自分専用の表を使っている先生が押しても、全員共通の「提出状況」も新しくする（ほかのクラス・課題も見られるように）
+    const common = statusView_(allTasks, allStudents, sharedConfig_());
+    writeStatusSheet_(ss, common.tasks, common.students, subsByTask, today, common.cfg.statusName);
+  }
 
   ss.toast('提出状況・集計を更新しました' + (warnings.length ? '\n⚠ ' + warnings.join('\n⚠ ') : ''), '課題バーコード', warnings.length ? 15 : 5);
   return { ok: true, warnings: warnings };
@@ -1752,8 +1757,14 @@ function viewConfig_() {
       mine: p.getProperty(userKey_('pMine')) === '1',
     };
   }
+  return sharedConfig_(name);
+}
+
+// 全員共通の「提出状況」「集計」シートの見せ方（「設定」シートのしぼりこみ）
+function sharedConfig_(name) {
+  const settings = getSettings_();
   return {
-    personal: false, teacher: name, statusName: SHEET.STATUS, summaryName: SHEET.SUMMARY,
+    personal: false, teacher: name || teacherName_(), statusName: SHEET.STATUS, summaryName: SHEET.SUMMARY,
     subject: String(settings[SETTING.SUBJECT] || ''), cls: String(settings[SETTING.CLASS] || ''), mine: false,
   };
 }
