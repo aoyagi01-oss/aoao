@@ -42,6 +42,9 @@
   .save { margin-top: 8px; padding: 6px 12px; }
   .share { margin-top: 8px; padding: 8px; background: #f8f9fa; border-radius: 8px; }
   .share label { display: block; font-size: 13px; margin: 2px 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .chip { padding: 3px 10px; border: 1px solid #dadce0; border-radius: 14px; background: #fff; font-size: 12px; cursor: pointer; user-select: none; }
+  .chip.on { background: #e8f0fe; border-color: #1a73e8; color: #1967d2; font-weight: bold; }
   #loading { color: #5f6368; padding: 20px 0; text-align: center; }
   .empty { color: #5f6368; font-size: 12px; padding: 6px 0; }
 </style>
@@ -92,16 +95,21 @@
     <summary>設定（担当の先生・表示）</summary>
     <label class="f">あなたの名前（課題の担当・「課題提出について」の紙に出ます）</label>
     <input type="text" id="vTeacher" placeholder="例：青柳">
+    <label class="f">担当クラス（あなたがチェックするクラス。選ばなければ全クラス）</label>
+    <div class="chips" id="vMyClasses"></div>
+    <div class="empty">読み取り画面の未提出者・ホームの人数・未提出者リストや成績用の表のクラスが、最初からここに合わせて出ます。</div>
     <div class="share">
       <label><input type="checkbox" id="vPersonal"> 自分専用の教務手帳を使う</label>
-      <div class="empty">ほかの先生と共有して使うときにオン。「提出状況（あなたの名前）」のシートができ、下のしぼりこみはあなただけのものになります。1人で使うときはオフのままでOK。</div>
+      <div class="empty">ほかの先生と共有して使うときにオン。「提出状況（あなたの名前）」のシートができ、担当クラスの生徒だけが並びます。下の教科のしぼりこみもあなただけのものになります。1人で使うときはオフのままでOK。</div>
       <label id="mineWrap"><input type="checkbox" id="vMine"> 自分が担当の課題だけ出す</label>
     </div>
     <label class="f">提出状況に出す教科（空欄＝すべて）</label>
     <input type="text" id="vSubject" list="subjects" placeholder="例：数学">
     <datalist id="subjects"></datalist>
-    <label class="f">提出状況に出すクラス（空欄＝すべて）</label>
+    <div id="classWrap">
+    <label class="f">「提出状況」シートに出すクラス（空欄＝すべて・全員共通）</label>
     <input type="text" id="vClass" placeholder="例：1-1,1-2">
+    </div>
     <div class="empty" id="classHint"></div>
     <div class="empty" style="margin-top:10px">ここから下は、共有しているときは全員共通です。</div>
     <label class="f">教務手帳のマスに書くもの</label>
@@ -152,7 +160,7 @@
       bar.innerHTML = '<span style="width:' + (t.target ? Math.round(t.submitted / t.target * 100) : 0) + '%"></span>';
       const num = document.createElement('span');
       num.className = 'n' + (t.overdue && t.missing ? ' over' : '');
-      num.textContent = t.submitted + '/' + t.target + '人' + (t.missing ? '（未' + t.missing + '）' : ' ✓');
+      num.textContent = (t.scoped ? '担当 ' : '') + t.submitted + '/' + t.target + '人' + (t.missing ? '（未' + t.missing + '）' : ' ✓');
       const btn = document.createElement('button');
       btn.textContent = '📷 読む';
       btn.onclick = () => busy(btn, run('startScanFor', t.id));
@@ -168,6 +176,17 @@
       $('vPersonal').checked = d.view.personal;
       $('vMine').checked = d.view.mine;
       $('mineWrap').style.display = d.view.personal ? '' : 'none';
+      $('classWrap').style.display = d.view.personal ? 'none' : '';
+      const box = $('vMyClasses');
+      box.innerHTML = '';
+      d.classes.forEach((c) => {
+        const chip = document.createElement('span');
+        chip.className = 'chip' + (d.view.myClasses.includes(c) ? ' on' : '');
+        chip.textContent = c; chip.dataset.cls = c;
+        chip.onclick = () => { chip.classList.toggle('on'); settingsDirty = true; };
+        box.appendChild(chip);
+      });
+      if (!d.classes.length) box.innerHTML = '<span class="empty">名簿を入れるとクラスが出ます</span>';
       $('vSubject').value = d.view.subject;
       $('vClass').value = d.view.cls;
       $('vMark').value = d.view.mark;
@@ -182,6 +201,7 @@
   $('vPersonal').addEventListener('change', () => {
     settingsDirty = true;
     $('mineWrap').style.display = $('vPersonal').checked ? '' : 'none';
+    $('classWrap').style.display = $('vPersonal').checked ? 'none' : '';
     if ($('vPersonal').checked && !$('vTeacher').value.trim()) { alert('自分専用の教務手帳を使うには、先に「あなたの名前」を入れてください。'); $('vPersonal').checked = false; $('mineWrap').style.display = 'none'; $('vTeacher').focus(); }
   });
   const load = () => run('getHomeData').then(render).catch((e) => { $('loading').textContent = 'エラー：' + (e && e.message || e); });
@@ -199,7 +219,7 @@
   $('st2').onclick = () => $('bPrint').click();
   $('st3').onclick = () => $('bTask').click();
   $('st4').onclick = () => $('bScan').click();
-  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { teacher: $('vTeacher').value, personal: $('vPersonal').checked, mine: $('vMine').checked, subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value, incomplete: $('vInc').value }).then((d) => { settingsDirty = false; render(d); }));
+  $('bSave').onclick = () => busy($('bSave'), run('saveViewSettings', { teacher: $('vTeacher').value, myClasses: [...document.querySelectorAll('#vMyClasses .chip.on')].map((c) => c.dataset.cls), personal: $('vPersonal').checked, mine: $('vMine').checked, subject: $('vSubject').value, cls: $('vClass').value, mark: $('vMark').value, incomplete: $('vInc').value }).then((d) => { settingsDirty = false; render(d); }));
 
   // 名簿の貼り付けなど、ダイアログを閉じて戻ってきたときに数字を新しくする
   let lastLoad = 0;

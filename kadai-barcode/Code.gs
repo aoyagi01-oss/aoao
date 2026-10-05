@@ -130,9 +130,14 @@ function getHomeData() {
   const logs = readLog_();
   const today = todayKey_();
   const mine = tasks.filter(function (t) { return !cfg.mine || t.teacher === cfg.teacher; });
+  const myCls = myClasses_();
+  const myStudents = myCls.length ? students.filter(function (s) { return myCls.indexOf(s.cls) >= 0; }) : students;
   const recent = mine.slice(-6).reverse().map(function (t) {
-    const st = taskStats_(t, students, logs);
-    return { id: t.id, label: taskLabelT_(t), submitted: st.submitted, target: st.target, overdue: st.overdue, missing: st.missing.length };
+    // 担当クラスがあれば、担当クラスの数（その課題が担当クラスに出ていなければ全体の数）
+    let st = taskStats_(t, myStudents, logs);
+    const scoped = myCls.length && st.target > 0;
+    if (!scoped) st = taskStats_(t, students, logs);
+    return { id: t.id, label: taskLabelT_(t), submitted: st.submitted, target: st.target, overdue: st.overdue, missing: st.missing.length, scoped: !!scoped };
   });
   return {
     students: students.length,
@@ -145,7 +150,8 @@ function getHomeData() {
     recent: recent,
     subjects: subjectList_(tasks),
     view: {
-      teacher: cfg.teacher, personal: cfg.personal || props.getProperty(userKey_('personal')) === '1', subject: cfg.subject, cls: cfg.cls, mine: cfg.mine,
+      teacher: cfg.teacher, personal: cfg.personal || props.getProperty(userKey_('personal')) === '1', subject: cfg.subject,
+      cls: cfg.personal ? String(getSettings_()[SETTING.CLASS] || '') : cfg.cls, mine: cfg.mine, myClasses: myCls,
       mark: markMode_() === 'circle' ? '○' : '日付', incomplete: incompleteCounts_() ? '提出' : '未提出',
     },
   };
@@ -171,11 +177,12 @@ function putSetting_(key, value) {
 function saveViewSettings(v) {
   const p = PropertiesService.getUserProperties();
   if (v.teacher !== undefined) p.setProperty(userKey_('teacher'), String(v.teacher || '').trim());
+  if (v.myClasses) p.setProperty(userKey_('myClasses'), v.myClasses.map(normClass_).filter(String).join(','));
   const personal = !!v.personal && !!teacherName_();
   p.setProperty(userKey_('personal'), personal ? '1' : '0');
   if (personal) {
     p.setProperty(userKey_('pSubject'), String(v.subject || ''));
-    p.setProperty(userKey_('pClass'), String(v.cls || ''));
+    // 自分専用の教務手帳のクラスは「担当クラス」を使う
     p.setProperty(userKey_('pMine'), v.mine ? '1' : '0');
   } else {
     putSetting_(SETTING.SUBJECT, v.subject || '');
@@ -209,7 +216,7 @@ function getTaskFormData() {
     classes: classList_(students),
     subjects: subjectList_(getTasks_()),
     lastSubject: props.getProperty(userKey_('lastSubject')) || '',
-    lastClasses: props.getProperty(userKey_('lastClasses')) || '',
+    lastClasses: props.getProperty(userKey_('lastClasses')) || myClasses_().join(','),
     // 締切後の扱い：前に選んだもの（はじめてのときは空 → 画面で「はじめに決めてください」）
     lastLate: props.getProperty(userKey_('lastLate')) || '',
     teacher: teacherName_(),
@@ -559,6 +566,7 @@ function openReportDialog() {
     subjects: subjectList_(tasks).concat(tasks.some(function (k) { return !k.subject; }) ? ['（教科なし）'] : []),
     classes: classList_(getStudents_()),
     me: teacherName_(),
+    myClasses: myClasses_(),
     shared: tasks.some(function (k) { return k.teacher && k.teacher !== teacherName_(); }),
   });
   SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(720).setHeight(640), '成績用の提出率');
@@ -658,6 +666,7 @@ function openListDialog() {
     tasks: tasks.map(function (k) { return { id: k.id, subject: k.subject, name: displayName_(k), due: k.due, classes: k.classes.join(','), teacher: k.teacher }; }),
     classes: classList_(getStudents_()),
     me: teacherName_(),
+    myClasses: myClasses_(),
   });
   SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(720).setHeight(640), '未提出者リスト・課題提出について');
 }
@@ -1200,14 +1209,18 @@ function taskStats_(task, students, logs) {
   const subs = submissionsOf_(task, logs);
   let target = 0, submitted = 0, late = 0, incomplete = 0;
   const missing = [];
+  const byClass = {}; // クラスごとの数（読み取り画面で「担当クラスだけ」を出すため）
   sortStudents_(students).forEach(function (s) {
     if (!isTarget_(task, s)) return;
     target++;
+    const bc = byClass[s.cls] || (byClass[s.cls] = { target: 0, submitted: 0, late: 0 });
+    bc.target++;
     const sub = subs[s.id];
     if (sub && sub.incomplete) incomplete++;
     if (counts_(sub)) {
       submitted++;
-      if (sub.late) late++;
+      bc.submitted++;
+      if (sub.late) { late++; bc.late++; }
     } else {
       const d = dueFor_(task, s.id);
       missing.push({ gakuseki: s.gakuseki, cls: s.cls, no: s.no, name: s.name, note: sub ? '未完成' : (d.excused ? '配慮' : (d.ext ? '〆' + shortDate_(d.shown) : '')) });
@@ -1215,7 +1228,7 @@ function taskStats_(task, students, logs) {
   });
   return {
     taskId: task.id, label: taskLabel_(task), target: target, submitted: submitted, late: late, incomplete: incomplete,
-    rate: target ? submitted / target : 0, missing: missing,
+    rate: target ? submitted / target : 0, missing: missing, byClass: byClass,
     overdue: !!task.due && todayKey_() > task.due,
   };
 }
@@ -1231,6 +1244,7 @@ function getScanInit() {
     tasks: tasks.map(function (t) { return { id: t.id, label: t.id + ' ' + taskLabelT_(t) }; }),
     taskId: lastTask,
     stats: lastTask ? getTaskStats(lastTask) : null,
+    myClasses: myClasses_(),
   };
 }
 
@@ -1734,7 +1748,7 @@ function viewConfig_() {
     return {
       personal: true, teacher: name,
       statusName: SHEET.STATUS + '（' + safe + '）', summaryName: SHEET.SUMMARY + '（' + safe + '）',
-      subject: p.getProperty(userKey_('pSubject')) || '', cls: p.getProperty(userKey_('pClass')) || '',
+      subject: p.getProperty(userKey_('pSubject')) || '', cls: myClasses_().join(','),
       mine: p.getProperty(userKey_('pMine')) === '1',
     };
   }
@@ -1742,6 +1756,11 @@ function viewConfig_() {
     personal: false, teacher: name, statusName: SHEET.STATUS, summaryName: SHEET.SUMMARY,
     subject: String(settings[SETTING.SUBJECT] || ''), cls: String(settings[SETTING.CLASS] || ''), mine: false,
   };
+}
+
+// この先生の担当クラス（先生ごと。空＝全クラス）
+function myClasses_() {
+  return splitList_(PropertiesService.getUserProperties().getProperty(userKey_('myClasses')) || '').map(normClass_);
 }
 
 function isStatusSheet_(name) {

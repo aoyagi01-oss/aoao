@@ -38,6 +38,8 @@
   #history { list-style: none; padding: 0; margin: 4px 0 0; font-size: 12px; max-height: 180px; overflow: auto; }
   #history li { padding: 2px 4px; border-bottom: 1px solid #eee; }
   .small { color: #666; font-size: 11px; }
+  .scope { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11px; color: #5f6368; gap: 6px; }
+  .scope label { white-space: nowrap; }
   .warnline { margin-top: 6px; padding: 8px; border-radius: 6px; background: #fce8e6; color: #c5221f; font-size: 12px; }
   #lateBox { display: none; margin-top: 4px; font-size: 11px; }
   #lateBox a { color: #1a73e8; cursor: pointer; text-decoration: underline; }
@@ -51,6 +53,8 @@
   <select id="task"><option>読み込み中…</option></select>
   <div class="small">課題のバーコードを読んでも切りかわります</div>
 
+  <div class="scope" id="scopeRow"><span id="scopeNote"></span>
+    <label id="scopeWrap"><input type="checkbox" id="onlyMine" checked> 担当クラスだけ</label></div>
   <div class="stat">
     <div>提出<b id="sSub">-</b><span class="small" id="sLate"></span></div>
     <div>対象<b id="sTarget">-</b></div>
@@ -105,17 +109,29 @@
     } catch (e) {}
   }
 
+  // 担当クラスだけ／全クラス（担当クラスを登録した先生だけ切りかえが出る）
+  let myClasses = [], onlyMine = true, lastStats = null;
   function showStats(st) {
     if (!st) return;
-    $('sSub').textContent = st.submitted;
-    $('sLate').textContent = st.late ? 'うち遅れ ' + st.late : '';
-    $('sTarget').textContent = st.target;
-    $('sRate').textContent = st.target ? Math.round(st.rate * 100) + '%' : '-';
-    $('sBar').style.width = (st.rate * 100) + '%';
-    $('mCount').textContent = st.missing.length;
+    lastStats = st;
+    let sub = st.submitted, late = st.late, target = st.target, missing = st.missing;
+    const scoped = onlyMine && myClasses.length && st.byClass && myClasses.some((c) => st.byClass[c]);
+    if (scoped) {
+      sub = 0; late = 0; target = 0;
+      myClasses.forEach((c) => { const b = st.byClass[c]; if (b) { sub += b.submitted; late += b.late; target += b.target; } });
+      missing = st.missing.filter((m) => myClasses.includes(m.cls));
+    }
+    $('scopeNote').textContent = scoped ? '担当クラス（' + myClasses.join('・') + '）の数' : (myClasses.length && onlyMine ? 'この課題は担当クラスに出ていないので全体の数' : '全クラスの数');
+    $('sSub').textContent = sub;
+    $('sLate').textContent = late ? 'うち遅れ ' + late : '';
+    $('sTarget').textContent = target;
+    const rate = target ? sub / target : 0;
+    $('sRate').textContent = target ? Math.round(rate * 100) + '%' : '-';
+    $('sBar').style.width = (rate * 100) + '%';
+    $('mCount').textContent = missing.length;
     const ul = $('missing');
     ul.innerHTML = '';
-    st.missing.forEach((m) => {
+    missing.forEach((m) => {
       const li = document.createElement('li');
       li.textContent = (m.gakuseki || (m.cls + ' ' + m.no)) + ' ' + m.name + (m.note ? '（' + m.note + '）' : '');
       ul.appendChild(li);
@@ -256,6 +272,7 @@
       $('code').focus();
     }).withFailureHandler(fail).excuseLate(lf.taskId, lf.studentId);
   };
+  $('onlyMine').addEventListener('change', () => { onlyMine = $('onlyMine').checked; showStats(lastStats); $('code').focus(); });
   $('home').onclick = () => google.script.run.openHome();
   $('newTask').onclick = () => google.script.run.openTaskForm();
 
@@ -273,6 +290,8 @@
       sel.appendChild(o);
     });
     sel.value = init.taskId;
+    myClasses = init.myClasses || [];
+    if (!myClasses.length) $('scopeWrap').style.display = 'none';
     showStats(init.stats);
     showMsg('idle', '読み取ってください');
     $('code').focus();

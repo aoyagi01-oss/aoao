@@ -76,7 +76,7 @@
   DATA.classes.forEach((c) => {
     const lab = document.createElement('label');
     const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.value = c;
+    cb.type = 'checkbox'; cb.value = c; cb.checked = (DATA.myClasses || []).includes(c); // 担当クラスに最初からチェック
     lab.appendChild(cb);
     lab.appendChild(document.createTextNode(' ' + c));
     $('classes').appendChild(lab);

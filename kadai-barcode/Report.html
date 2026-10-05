@@ -79,6 +79,7 @@
   };
   checks($('subjects'), DATA.subjects);
   checks($('classes'), DATA.classes);
+  $('classes').querySelectorAll('input').forEach((i) => { i.checked = (DATA.myClasses || []).includes(i.value); }); // 担当クラスに最初からチェック
   $('meName').textContent = DATA.me || '';
   if (!DATA.me || !DATA.shared) $('mineWrap').style.display = 'none';
 
