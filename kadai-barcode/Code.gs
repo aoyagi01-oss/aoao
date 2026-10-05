@@ -80,6 +80,7 @@ function onOpen() {
       .addItem('👥 名簿を貼り付ける', 'openRosterDialog')
       .addItem('🖨 バーコードを印刷する', 'openBarcodePrint')
       .addItem('🖨 未提出者リスト・課題提出について', 'openListDialog')
+      .addItem('📊 成績用の提出率', 'openReportDialog')
       .addItem('🔄 提出状況・集計を更新', 'refreshAll')
       .addSeparator()
       .addItem('バーコードをシートに作る（印刷画面が出ないとき）', 'makeBarcodeSheet')
@@ -545,6 +546,107 @@ function openBarcodePrint() {
     tasks: tasks.map(function (k) { return { id: k.id, subject: k.subject, name: displayName_(k), due: k.due }; }),
   });
   SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(1000).setHeight(720), 'バーコードの印刷');
+}
+
+// ───────── 成績用の提出率（Report.html） ─────────
+
+function openReportDialog() {
+  setup_(false);
+  const tasks = getTasks_();
+  const t = HtmlService.createTemplateFromFile('Report');
+  t.payload = toScriptJson_({
+    today: todayKey_(),
+    subjects: subjectList_(tasks).concat(tasks.some(function (k) { return !k.subject; }) ? ['（教科なし）'] : []),
+    classes: classList_(getStudents_()),
+    me: teacherName_(),
+    shared: tasks.some(function (k) { return k.teacher && k.teacher !== teacherName_(); }),
+  });
+  SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(720).setHeight(640), '成績用の提出率');
+}
+
+// opts: { from, to: 'yyyy-MM-dd', subjects: [...]（空＝すべて）, classes: [...], mine: bool, split: bool }
+//  数える課題：締切日（なければ出した日）が期間内で、締切が過ぎたもの。免除は数えない。
+//  期限内：遅れでない提出（欠席の延長・配慮・猶予の日数をふくむ）。未完成は設定の数え方に合わせる。
+function makeGradeReport(opts) {
+  const ss = SpreadsheetApp.getActive();
+  const today = todayKey_();
+  const from = opts.from || '0000-01-01';
+  const to = opts.to || '9999-12-31';
+  if (from > to) throw new Error('期間の「から」と「まで」が逆です');
+  const me = teacherName_();
+  const subjSel = opts.subjects || [];
+  const subjOf = function (t) { return t.subject || '（教科なし）'; };
+  const tasks = getTasks_().filter(function (t) {
+    const key = t.due || t.given;
+    if (!key || key < from || key > to) return false;
+    if (t.due && today <= t.due) return false; // まだ締切が来ていない
+    if (subjSel.length && subjSel.indexOf(subjOf(t)) < 0) return false;
+    if (opts.mine && t.teacher !== me) return false;
+    return true;
+  });
+  if (!tasks.length) throw new Error('この期間・条件で、締切が過ぎた課題はありません');
+  const classes = (opts.classes || []).map(normClass_);
+  const students = sortStudents_(getStudents_().filter(function (s) { return !s.excluded && (!classes.length || classes.indexOf(s.cls) >= 0); }));
+  const logs = readLog_();
+  const subs = {};
+  tasks.forEach(function (t) { subs[t.id] = submissionsOf_(t, logs); });
+
+  const subjects = [];
+  tasks.forEach(function (t) { if (subjects.indexOf(subjOf(t)) < 0) subjects.push(subjOf(t)); });
+  const groups = opts.split && subjects.length > 1 ? subjects.concat(['合計']) : [subjSel.length ? subjects.join('・') : 'すべての教科'];
+  const inGroup = function (g, t) { return g === '合計' || g === 'すべての教科' || !opts.split || subjects.length < 2 ? true : subjOf(t) === g; };
+
+  const rows = students.map(function (s) {
+    const row = [s.gakuseki, s.cls, s.no, s.name];
+    const missingNames = [];
+    groups.forEach(function (g) {
+      let n = 0, done = 0, onTime = 0;
+      tasks.forEach(function (t) {
+        if (!inGroup(g, t) || !isTarget_(t, s)) return;
+        n++;
+        const sub = subs[t.id][s.id];
+        if (counts_(sub)) { done++; if (!sub.late && !sub.incomplete) onTime++; }
+        else if (g === groups[groups.length - 1]) missingNames.push((t.subject ? t.subject + ' ' : '') + displayName_(t) + (sub ? '（未完成）' : ''));
+      });
+      row.push(n, done, onTime, n ? done / n : '', n ? onTime / n : '');
+    });
+    row.push(missingNames.join('、'));
+    return row;
+  });
+
+  const label = me ? '（' + me.replace(/[\[\]\/\\?*:'']/g, '') + '）' : '';
+  const sh = freshSheet_(ss, '成績用_提出率' + label);
+  const width = 4 + groups.length * 5 + 1;
+  ensureSize_(sh, rows.length + 6, width);
+  const period = (opts.from ? shortDate_(from) : '') + '〜' + (opts.to ? shortDate_(to) : '');
+  sh.getRange(1, 1).setValue('提出率（成績用）　' + period + (opts.mine && me ? '　担当：' + me + 'の課題' : '') + (me ? '　作成：' + me : '') + '　（' + Utilities.formatDate(new Date(), tz_(), 'M/d HH:mm') + ' 作成）').setFontWeight('bold').setFontSize(13);
+  sh.getRange(2, 1).setValue('数えた課題：締切日がこの期間にあり、締切が過ぎた ' + tasks.length + ' 件（免除は除く）。期限内には欠席・配慮・猶予の日数のうちの提出をふくむ。未完成は「' + (incompleteCounts_() ? '提出として数える' : '未提出あつかい') + '」。').setFontColor('#555555').setFontSize(9);
+  const head1 = ['', '', '', ''], head2 = ['学籍番号', 'クラス', '番号', '氏名'];
+  groups.forEach(function (g) { head1.push(g, '', '', '', ''); head2.push('課題数', '提出', '期限内', '提出率', '期限内\n提出率'); });
+  head1.push(''); head2.push('未提出の課題');
+  sh.getRange(3, 1, 2, width).setValues([head1, head2]).setFontWeight('bold').setBackground(COLOR.header).setHorizontalAlignment('center').setVerticalAlignment('middle').setWrap(true);
+  groups.forEach(function (g, i) { sh.getRange(3, 5 + i * 5, 1, 5).merge(); });
+  if (rows.length) {
+    sh.getRange(5, 1, rows.length, 2).setNumberFormat('@'); // 学籍番号・クラス（「1-1」が日付にならないように）
+    sh.getRange(5, 1, rows.length, width).setValues(rows).setVerticalAlignment('middle');
+    groups.forEach(function (g, i) {
+      sh.getRange(5, 5 + i * 5, rows.length, 3).setHorizontalAlignment('center');
+      sh.getRange(5, 8 + i * 5, rows.length, 2).setNumberFormat('0%').setHorizontalAlignment('center');
+    });
+    sh.getRange(5, width, rows.length, 1).setWrap(true).setFontSize(9);
+    sh.getRange(3, 1, rows.length + 2, width).setBorder(true, true, true, true, true, true, '#bbbbbb', SpreadsheetApp.BorderStyle.SOLID);
+    for (let i = 1; i < students.length; i++) {
+      if (students[i].cls !== students[i - 1].cls) sh.getRange(5 + i, 1, 1, width).setBorder(true, null, null, null, null, null, '#000000', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    }
+  }
+  [70, 50, 40, 110].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+  for (let c = 5; c < width; c++) sh.setColumnWidth(c, 52);
+  sh.setColumnWidth(width, 260);
+  sh.setFrozenRows(4);
+  sh.setFrozenColumns(4);
+  ss.setActiveSheet(sh);
+  SpreadsheetApp.flush();
+  return { sheetName: sh.getName(), tasks: tasks.length, students: rows.length, pdfUrl: pdfUrl_(ss, sh).replace('portrait=true', 'portrait=' + (groups.length > 2 ? 'false' : 'true')) };
 }
 
 function openListDialog() {
@@ -1396,6 +1498,7 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today, sheetName) {
   });
 
   ensureSize_(sh, values.length, width);
+  sh.getRange(1, 1, values.length, 2).setNumberFormat('@'); // 生徒ID・学籍番号（「1-1-3」などが日付にならないように）
   const rng = sh.getRange(1, 1, values.length, width);
   rng.setValues(values).setBackgrounds(colors).setVerticalAlignment('middle').setFontSize(10);
   sh.getRange(2, 1, 3, width).setFontWeight('bold').setHorizontalAlignment('center').setWrap(true);
@@ -1598,7 +1701,7 @@ function writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title) 
     sh.getRange(row, 1, 1, 6).setValues([['学籍番号', 'クラス', '番号', '氏名', '確認', 'メモ']]).setFontWeight('bold').setFontColor('#555555');
     row++;
     const vals = missing.map(function (s) { return [s.gakuseki, s.cls, s.no, s.name, '□', [incompleteOf(t, s) ? '未完成（再提出）' : '', dueNote_(t, s.id)].filter(String).join('／')]; });
-    sh.getRange(row, 1, vals.length, 1).setNumberFormat('@');
+    sh.getRange(row, 1, vals.length, 2).setNumberFormat('@'); // 学籍番号・クラス（「1-1」が日付にならないように）
     sh.getRange(row, 1, vals.length, 6).setValues(vals).setBorder(null, null, true, null, false, true, '#cccccc', SpreadsheetApp.BorderStyle.SOLID);
     row += vals.length + 1;
     total += missing.length;

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; padding: 10px 16px; font-size: 13px; color: #202124; }
+  h3 { margin: 12px 0 6px; font-size: 14px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input[type=date] { padding: 5px; font-size: 14px; border: 1px solid #dadce0; border-radius: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .chip { padding: 4px 11px; border: 1px solid #dadce0; border-radius: 14px; background: #fff; font-size: 12px; cursor: pointer; user-select: none; }
+  .chip.on { background: #e8f0fe; border-color: #1a73e8; color: #1967d2; font-weight: bold; }
+  .box { border: 1px solid #dadce0; border-radius: 8px; padding: 6px 8px; }
+  .box label { display: inline-block; margin: 2px 12px 2px 0; }
+  .opt { display: block; margin: 6px 0; }
+  .go { margin-top: 14px; padding: 10px 22px; border: none; border-radius: 8px; background: #1a73e8; color: #fff; font-size: 15px; font-weight: bold; cursor: pointer; }
+  .go:disabled { opacity: .5; }
+  .small { color: #5f6368; font-size: 12px; }
+  #result { margin-top: 12px; padding: 10px; border-radius: 8px; display: none; }
+  #result.ok { display: block; background: #e6f4ea; }
+  #result.err { display: block; background: #fce8e6; color: #c5221f; }
+  #result a { font-weight: bold; font-size: 15px; }
+</style>
+</head>
+<body>
+  <h3>1. 期間 <span class="small">（締切日がこの期間にある課題を数えます）</span></h3>
+  <div class="row"><input type="date" id="from"> 〜 <input type="date" id="to"></div>
+  <div class="chips" id="periods"></div>
+
+  <h3>2. 教科 <span class="small">（選ばなければ、すべての教科）</span></h3>
+  <div class="box" id="subjects"></div>
+  <label class="opt"><input type="checkbox" id="split" checked> 教科ごとに分けて出す（最後に合計も出ます）</label>
+
+  <h3>3. クラス <span class="small">（選ばなければ全員）</span></h3>
+  <div class="box" id="classes"></div>
+  <label class="opt" id="mineWrap"><input type="checkbox" id="mine"> 自分（<span id="meName"></span>）が担当の課題だけ</label>
+
+  <button class="go" id="go">成績用の表を作る</button>
+  <div class="small" style="margin-top:6px">生徒1人1行で、課題数・提出・期限内・提出率・期限内提出率・未提出の課題が並びます。免除の課題は数えません。欠席の延長・配慮・猶予の日数のうちの提出は期限内です。</div>
+  <div id="result"></div>
+
+<script>
+  const DATA = <?!= payload ?>;
+  const $ = (id) => document.getElementById(id);
+  const pad = (n) => String(n).padStart(2, '0');
+  const key = (y, m, d) => y + '-' + pad(m) + '-' + pad(d);
+
+  // 年度（4月はじまり）の学期
+  const [ty, tm] = DATA.today.split('-').map(Number);
+  const fy = tm >= 4 ? ty : ty - 1;
+  const lastDay = (y, m) => new Date(y, m, 0).getDate();
+  const periods = [
+    ['1学期', key(fy, 4, 1), key(fy, 8, 31)],
+    ['2学期', key(fy, 9, 1), key(fy, 12, 31)],
+    ['3学期', key(fy + 1, 1, 1), key(fy + 1, 3, 31)],
+    ['年間', key(fy, 4, 1), key(fy + 1, 3, 31)],
+    ['今月', key(ty, tm, 1), key(ty, tm, lastDay(ty, tm))],
+  ];
+  periods.forEach(([label, f, t]) => {
+    const c = document.createElement('span');
+    c.className = 'chip'; c.textContent = label;
+    c.onclick = () => { $('from').value = f; $('to').value = t; document.querySelectorAll('#periods .chip').forEach((x) => x.classList.toggle('on', x === c)); };
+    $('periods').appendChild(c);
+  });
+  // はじめは、今いる学期
+  const cur = periods.slice(0, 3).find(([, f, t]) => DATA.today >= f && DATA.today <= t) || periods[3];
+  [...$('periods').children][periods.indexOf(cur)].click();
+
+  const checks = (box, items) => {
+    if (!items.length) { box.innerHTML = '<span class="small">まだありません</span>'; return; }
+    items.forEach((v) => {
+      const l = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = v;
+      l.append(cb, document.createTextNode(' ' + v));
+      box.appendChild(l);
+    });
+  };
+  checks($('subjects'), DATA.subjects);
+  checks($('classes'), DATA.classes);
+  $('meName').textContent = DATA.me || '';
+  if (!DATA.me || !DATA.shared) $('mineWrap').style.display = 'none';
+
+  const picked = (box) => [...box.querySelectorAll('input:checked')].map((i) => i.value);
+
+  $('go').onclick = () => {
+    const r = $('result');
+    $('go').disabled = true;
+    r.className = 'ok'; r.textContent = '作成中…';
+    google.script.run.withSuccessHandler((res) => {
+      $('go').disabled = false;
+      r.className = 'ok'; r.innerHTML = '';
+      const p = document.createElement('div');
+      p.textContent = '「' + res.sheetName + '」シートに作りました（課題 ' + res.tasks + '件・生徒 ' + res.students + '人）。';
+      const a = document.createElement('a');
+      a.href = res.pdfUrl; a.target = '_blank'; a.textContent = '📄 PDFで開いて印刷する';
+      r.append(p, a);
+    }).withFailureHandler((e) => {
+      $('go').disabled = false;
+      r.className = 'err'; r.textContent = 'エラー：' + (e && e.message || e);
+    }).makeGradeReport({
+      from: $('from').value, to: $('to').value,
+      subjects: picked($('subjects')), classes: picked($('classes')),
+      split: $('split').checked, mine: $('mine').checked,
+    });
+  };
+</script>
+</body>
+</html>

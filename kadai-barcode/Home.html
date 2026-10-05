@@ -62,9 +62,10 @@
     <button id="bStatus"><span class="ic">📒</span>提出状況<br>（教務手帳）</button>
     <button id="bList"><span class="ic">📝</span>未提出者・<br>課題提出について</button>
     <button id="bSummary"><span class="ic">📊</span>集計<br>（提出率）</button>
-    <button id="bPrint"><span class="ic">🏷</span>バーコード<br>印刷</button>
+    <button id="bReport"><span class="ic">🎓</span>成績用の<br>提出率</button>
   </div>
   <div class="links">
+    <a id="bPrint">🏷 バーコードの印刷</a>
     <a id="bRoster">👥 名簿の貼り付け・進級</a>
     <a id="bExcuse">🤒 1人ずつの欠席・配慮・免除（必要なときだけ）</a>
   </div>
@@ -193,6 +194,7 @@
   $('bRoster').onclick = () => busy($('bRoster'), run('openRosterDialog'));
   $('bExcuse').onclick = () => busy($('bExcuse'), run('openExcuseDialog'));
   $('bSummary').onclick = () => busy($('bSummary'), run('showSummarySheet'));
+  $('bReport').onclick = () => busy($('bReport'), run('openReportDialog'));
   $('st1').onclick = () => $('bRoster').click();
   $('st2').onclick = () => $('bPrint').click();
   $('st3').onclick = () => $('bTask').click();
