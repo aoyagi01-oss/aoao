@@ -638,7 +638,7 @@ function makeGradeReport(opts) {
     sh.getRange(5, 1, rows.length, 2).setNumberFormat('@'); // 学籍番号・クラス（「1-1」が日付にならないように）
     sh.getRange(5, 1, rows.length, width).setValues(rows).setVerticalAlignment('middle');
     groups.forEach(function (g, i) {
-      sh.getRange(5, 5 + i * 5, rows.length, 3).setHorizontalAlignment('center');
+      sh.getRange(5, 5 + i * 5, rows.length, 3).setNumberFormat('0').setHorizontalAlignment('center');
       sh.getRange(5, 8 + i * 5, rows.length, 2).setNumberFormat('0%').setHorizontalAlignment('center');
     });
     sh.getRange(5, width, rows.length, 1).setWrap(true).setFontSize(9);
@@ -1412,6 +1412,7 @@ function refreshAll() {
     const st = taskStats_(t, active, logs);
     tkSheet.getRange(t.row, TASK_STAT_COL, 1, 5).setValues([[st.target, st.submitted, st.late, st.target - st.submitted, st.target ? st.rate : '']]);
   });
+  tkSheet.getRange('J2:M').setNumberFormat('0');
   tkSheet.getRange('N2:N').setNumberFormat('0%');
 
   const view = statusView_(allTasks, allStudents);
@@ -1487,6 +1488,9 @@ function statusRow_(s, tasks, subsByTask, today, mark) {
   return { vals: vals, bgs: bgs };
 }
 
+// 教務手帳の右はし4列の表示：提出数（数）・提出率・期限内提出率（％）・未提出（数）
+const TAIL_FORMATS = ['0', '0%', '0%', '0'];
+
 function writeStatusSheet_(ss, tasks, students, subsByTask, today, sheetName) {
   const mark = markMode_();
   const sh = sheetOrNew_(ss, sheetName || SHEET.STATUS);
@@ -1528,7 +1532,7 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today, sheetName) {
     body.setBorder(true, true, true, true, true, true, '#bbbbbb', SpreadsheetApp.BorderStyle.SOLID);
     if (n) sh.getRange(STATUS_TOP, STATUS_FIXED + 1, students.length, n).setNumberFormat('m/d').setHorizontalAlignment('center');
     sh.getRange(STATUS_TOP, STATUS_FIXED + n + 1, students.length, 4).setHorizontalAlignment('center');
-    sh.getRange(STATUS_TOP, STATUS_FIXED + n + 2, students.length, 2).setNumberFormat('0%');
+    sh.getRange(STATUS_TOP, STATUS_FIXED + n + 1, students.length, 4).setNumberFormats(students.map(function () { return TAIL_FORMATS; }));
     // クラスの切れ目に太線（教務手帳のページの区切りのように）
     for (let i = 1; i < students.length; i++) {
       if (students[i].cls !== students[i - 1].cls) {
@@ -1597,6 +1601,7 @@ function updateStatusRow_(st, allTasks, logs) {
       sh.getRange(STATUS_TOP + idx, 1, 1, r.vals.length).setValues([r.vals]).setBackgrounds([r.bgs]);
       // マスに日付を打つと表示が「2026/10/06」に変わってしまうので、月/日に戻す
       if (tasks.length) sh.getRange(STATUS_TOP + idx, STATUS_FIXED + 1, 1, tasks.length).setNumberFormat('m/d');
+      sh.getRange(STATUS_TOP + idx, STATUS_FIXED + tasks.length + 1, 1, 4).setNumberFormats([TAIL_FORMATS]); // 提出数が％にならないように
     });
   } catch (err) {
     console.warn('提出状況の書きかえに失敗：' + (err && err.stack || err));
@@ -1641,6 +1646,7 @@ function writeSummarySheet_(ss, tasks, students, subsByTask, today, cfg) {
   sh.getRange(2, 1, 1, header.length).setValues([header]).setFontWeight('bold').setBackground(COLOR.header).setWrap(true);
   if (rows.length) {
     sh.getRange(3, 1, rows.length, header.length).setValues(rows);
+    sh.getRange(3, 5, rows.length, 6).setNumberFormat('0');
     sh.getRange(3, 11, rows.length, header.length - 10).setNumberFormat('0%');
   }
 
@@ -1654,6 +1660,7 @@ function writeSummarySheet_(ss, tasks, students, subsByTask, today, cfg) {
   sh.getRange(top + 1, 1, 1, subjHeader.length).setValues([subjHeader]).setFontWeight('bold').setBackground(COLOR.header);
   if (subjRows.length) {
     sh.getRange(top + 2, 1, subjRows.length, subjHeader.length).setValues(subjRows);
+    sh.getRange(top + 2, 2, subjRows.length, 4).setNumberFormat('0');
     sh.getRange(top + 2, 6, subjRows.length, 2).setNumberFormat('0%');
   }
   sh.setColumnWidth(3, 220);
