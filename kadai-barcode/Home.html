@@ -120,6 +120,7 @@
   </details>
 </div>
 
+<div id="ver" style="color:#9aa0a6;font-size:10px;text-align:right;margin:10px 4px 0"></div>
 <script>
   const $ = (id) => document.getElementById(id);
   const run = (name, ...args) => new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[name](...args));
@@ -128,6 +129,7 @@
   function render(d) {
     $('loading').style.display = 'none';
     $('main').style.display = '';
+    $('ver').textContent = '版 ' + (d.version || '（古い版）');
     $('sStu').textContent = d.students;
     $('sTask').textContent = d.tasks;
     $('sToday').textContent = d.todayCount;

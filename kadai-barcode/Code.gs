@@ -21,6 +21,8 @@ const SHEET = {
 // 生徒IDはバーコードの中身（ずっと変えない）。学籍番号は毎年変わってよい（1101＝1年1組1番）
 const STUDENT_HEADERS = ['生徒ID（バーコード・変えない）', '学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const TASK_HEADERS = ['課題ID', '教科', '課題名', '対象クラス（空欄＝全員）', '出した日', '締切日', '締切後の扱い', 'メモ', '担当', '対象', '提出', 'うち遅れ', '未提出', '提出率'];
+// このプログラムの版（ホーム画面のいちばん下に出ます。貼り直しが反映されたかの確認用）
+const VERSION = '10/8-3';
 const TASK_STAT_COL = 10; // J列から右は自動で書きこむ
 
 // 締切後に出したときの扱い（課題ごと。課題を登録するときに選ぶ）
@@ -140,6 +142,7 @@ function getHomeData() {
     return { id: t.id, label: taskLabelT_(t), submitted: st.submitted, target: st.target, overdue: st.overdue, missing: st.missing.length, scoped: !!scoped };
   });
   return {
+    version: VERSION,
     students: students.length,
     noGakuseki: students.filter(function (s) { return !s.gakuseki; }).length,
     classes: classList_(students),
@@ -1497,6 +1500,7 @@ function writeStatusSheet_(ss, tasks, students, subsByTask, today, sheetName) {
   if (sh.getFilter()) sh.getFilter().remove();
   sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).breakApart();
   sh.clear();
+  sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).setNumberFormat('General'); // 前の表の「％」などが残らないように
   sh.setFrozenRows(0);
   sh.setFrozenColumns(0);
   if (sh.getMaxColumns() > 1) sh.showColumns(1, sh.getMaxColumns());
