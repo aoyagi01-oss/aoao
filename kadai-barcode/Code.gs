@@ -1689,13 +1689,15 @@ function makePrintList(opts) {
     return isTarget_(t, s) && !counts_(subs[t.id][s.id]) && (!opts.overdueOnly || isOverdue_(t, s.id, today));
   };
   const incompleteOf = function (t, s) { return !!subs[t.id][s.id]; }; // 未提出の中で、未完成で出したもの
+  const slips = [];
   const count = opts.type === 'notice'
-    ? writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, String(settings[SETTING.NOTICE] || ''), teacherLabel_())
+    ? writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, String(settings[SETTING.NOTICE] || ''), teacherLabel_(), slips)
     : writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title + (teacherLabel_() ? '　' + teacherLabel_() : ''));
 
   ss.setActiveSheet(sh);
   SpreadsheetApp.flush();
-  return { ok: true, count: count, sheetName: name, pdfUrl: pdfUrl_(ss, sh) };
+  // 「課題提出について」は、短冊がページの境目で切れないように、印刷画面（ブラウザ）で印刷する
+  return { ok: true, count: count, sheetName: name, pdfUrl: pdfUrl_(ss, sh), slips: opts.type === 'notice' ? slips : null };
 }
 
 function writeMissingList_(sh, tasks, students, isMissing, incompleteOf, title) {
@@ -1786,7 +1788,7 @@ function sheetOrNew_(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name, ss.getSheets().length);
 }
 
-function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, message, teacher) {
+function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, message, teacher, slips) {
   // A4 の横いっぱい（PDF の余白をのぞいて約 700px）に広げ、文字も大きくする
   [56, 140, 360, 150].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
   let row = 1;
@@ -1813,6 +1815,13 @@ function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, mess
       const d = dueFor_(t, s.id);
       return ['□', t.subject, displayName_(t) + (incompleteOf(t, s) ? '（未完成・出し直し）' : ''), d.shown ? '締切 ' + shortDate_(d.shown) + (d.ext ? '（延長）' : '') : ''];
     });
+    if (slips) {
+      slips.push({
+        head: '課題提出について' + (title ? '　　' + title : ''), teacher: teacher || '',
+        who: (s.gakuseki ? s.gakuseki + '　' : '') + s.cls + '　' + s.no + '番　' + s.name + '　さん',
+        message: message || '', items: vals.map(function (v) { return v.slice(1); }),
+      });
+    }
     sh.getRange(row, 1, vals.length, 4).setValues(vals).setFontSize(15).setVerticalAlignment('middle').setWrap(true);
     sh.getRange(row, 1, vals.length, 1).setHorizontalAlignment('center').setFontSize(18);
     for (let k = 0; k < vals.length; k++) sh.setRowHeight(row + k, 34);
