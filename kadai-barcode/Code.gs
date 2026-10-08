@@ -1818,7 +1818,7 @@ function writeNotices_(sh, tasks, students, isMissing, incompleteOf, title, mess
     if (slips) {
       slips.push({
         head: '課題提出について' + (title ? '　　' + title : ''), teacher: teacher || '',
-        who: (s.gakuseki ? s.gakuseki + '　' : '') + s.cls + '　' + s.no + '番　' + s.name + '　さん',
+        pre: (s.gakuseki ? s.gakuseki + '　' : '') + s.cls + '　' + s.no + '番', name: s.name,
         message: message || '', items: vals.map(function (v) { return v.slice(1); }),
       });
     }

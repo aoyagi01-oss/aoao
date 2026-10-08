@@ -112,7 +112,7 @@
       if (res.slips && res.slips.length) {
         // 課題提出について：ページの境目で短冊が切れないよう、ブラウザの印刷を使う（PDFにするときは、印刷先で「PDFに保存」）
         const b = document.createElement('button');
-        b.className = 'printBtn'; b.textContent = '🖨 印刷する（短冊がページで切れません）';
+        b.className = 'printBtn'; b.textContent = '🖨 印刷する（A4を半分に切ると1人分）';
         b.onclick = () => printSlips(res.slips);
         const h = document.createElement('div');
         h.className = 'small'; h.textContent = 'PDFがほしいときは、印刷の画面で送信先（プリンタ）を「PDFに保存」にしてください。';
@@ -131,29 +131,49 @@
   function printSlips(slips) {
     const w = window.open('', '_blank');
     if (!w) { alert('ポップアップがブロックされました。アドレスバー右のマークから許可してください。'); return; }
-    const css = '@page{size:A4;margin:10mm}' +
+    // A4縦を半分に切ると1人分の個票（1ページに2人。まん中に切り取り線）
+    const css = '@page{size:A4 portrait;margin:0}*{box-sizing:border-box}' +
       'body{margin:0;font-family:"Noto Sans JP",sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
       '.bar{padding:10px;background:#f1f3f4;text-align:center}.bar button{font-size:16px;padding:8px 18px}' +
       '@media print{.bar{display:none}}' +
-      '.slip{break-inside:avoid;page-break-inside:avoid;padding-bottom:2mm}' +
-      '.box{border:1px solid #888;padding:2mm 3mm}' +
-      '.head{display:flex;justify-content:space-between;align-items:center;font-size:16pt;font-weight:bold}' +
-      '.head .t{font-size:13pt;font-weight:normal}' +
-      '.who{font-size:20pt;font-weight:bold;margin:1.5mm 0}' +
-      '.msg{font-size:13pt;margin:1mm 0 1.5mm;white-space:pre-wrap}' +
-      'table{width:100%;border-collapse:collapse;font-size:15pt}td{padding:1mm 1.5mm;vertical-align:middle}' +
-      'td.c{width:10mm;text-align:center;font-size:18pt}td.s{width:28mm}td.d{width:32mm;white-space:nowrap}' +
-      '.cut{text-align:center;color:#999;font-size:11pt;letter-spacing:2px;margin-top:2mm;overflow:hidden;white-space:nowrap}';
-    const body = slips.map((s) => '<div class="slip"><div class="box">' +
-      '<div class="head"><span>' + esc(s.head) + '</span><span class="t">' + esc(s.teacher) + '</span></div>' +
-      '<div class="who">' + esc(s.who) + '</div>' +
+      '.page{width:210mm;height:297mm;overflow:hidden;break-after:page;page-break-after:always}.page:last-child{break-after:auto;page-break-after:auto}' +
+      '@media screen{.page{margin:0 auto 8px;background:#fff;box-shadow:0 0 6px #aaa}body{background:#e8eaed}}' +
+      '.slip{position:relative;height:148.5mm;padding:12mm 15mm 10mm;overflow:hidden}.slip.full{height:297mm}' +
+      '.slip.top::after{content:"";position:absolute;left:0;right:0;bottom:0;border-top:1px dashed #999}' +
+      '.slip.top::before{content:"✂";position:absolute;left:4mm;bottom:-2.2mm;font-size:12pt;color:#999;background:#fff;z-index:1}' +
+      '.head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #000;padding-bottom:2mm}' +
+      '.head b{font-size:24pt}.head .ti{font-size:16pt;margin-left:4mm}.head .t{font-size:16pt}' +
+      '.who{margin:5mm 0 3mm;font-size:18pt}.who .nm{font-size:32pt;font-weight:bold;margin-left:3mm}' +
+      '.msg{font-size:15pt;margin:0 0 4mm;white-space:pre-wrap}' +
+      'table{width:100%;border-collapse:collapse;font-size:20pt}td{padding:.25em .3em;border-bottom:1px solid #bbb;vertical-align:middle;line-height:1.25}' +
+      'td.c{width:10mm;text-align:center;font-size:1.2em}td.s{width:5.5em}td.d{width:6.5em;white-space:nowrap;text-align:right}';
+    const slipHtml = (s) => '<div class="slip">' +
+      '<div class="head"><span><b>課題提出について</b><span class="ti">' + esc(s.head.replace(/^課題提出について\s*/, '')) + '</span></span><span class="t">' + esc(s.teacher) + '</span></div>' +
+      '<div class="who">' + esc(s.pre) + '<span class="nm">' + esc(s.name + '　さん') + '</span></div>' +
       (s.message ? '<div class="msg">' + esc(s.message) + '</div>' : '') +
       '<table>' + s.items.map((it) => '<tr><td class="c">□</td><td class="s">' + esc(it[0]) + '</td><td>' + esc(it[1]) + '</td><td class="d">' + esc(it[2]) + '</td></tr>').join('') + '</table>' +
-      '</div><div class="cut">✂ ' + '- '.repeat(60) + '</div></div>').join('');
+      '</div>';
+    // 印刷画面の中で実際に測って並べる：半分に入るよう文字を小さくし（12ptまで）、それでも入らない生徒は1ページまるごと使う
+    const layout = function () {
+      const fits = (el) => el.scrollHeight <= el.clientHeight + 1;
+      const fit = (el, min) => { const t = el.querySelector('table'); for (let f = 20; f >= min; f--) { t.style.fontSize = f + 'pt'; if (fits(el)) return true; } return false; };
+      const stage = document.getElementById('stage');
+      const slips = [...stage.children];
+      slips.forEach((el) => { if (!fit(el, 12)) { el.classList.add('full'); fit(el, 8); } });
+      let page = null; // 半分だけ使ったページ（1ページまるごとの生徒をはさんでも、次の生徒で下半分を埋める）
+      slips.forEach((el) => {
+        if (el.classList.contains('full')) { const p = document.createElement('div'); p.className = 'page'; p.appendChild(el); document.body.appendChild(p); return; }
+        if (page) { page.appendChild(el); page = null; return; }
+        page = document.createElement('div'); page.className = 'page'; el.classList.add('top'); page.appendChild(el); document.body.appendChild(page);
+      });
+      stage.remove();
+      setTimeout(() => print(), 300);
+    };
+    const body = '<div id="stage" style="width:210mm">' + slips.map(slipHtml).join('') + '</div>' +
+      '<script>(document.fonts ? document.fonts.ready : Promise.resolve()).then(' + layout.toString() + ');<\/script>';
     w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>課題提出について</title><style>' + css + '</style></head><body>' +
-      '<div class="bar"><button onclick="print()">🖨 印刷する</button></div>' + body + '</body></html>');
+      '<div class="bar"><button onclick="print()">🖨 印刷する</button>　A4縦・1枚に2人分（まん中で切る）</div>' + body + '</body></html>');
     w.document.close();
-    setTimeout(() => w.print(), 500);
   }
   $('missing').addEventListener('click', () => make('missing'));
   $('notice').addEventListener('click', () => make('notice'));
