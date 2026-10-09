@@ -136,6 +136,8 @@
   const seats = {};   // 対象 → getSeat の結果
   let mode = 'take';  // 'take'：出欠をとる／'seat'：座席表を登録・直す
   let E = null;       // 座席表を直しているときの状態
+  let busy = '';      // 'pick'：講座・日付を読み込み中／'save'：書きこみ中（そのあいだは押しても変えない）
+  let pickSeq = 0;    // 講座を続けて押したとき、最後に押したものだけ使う
 
   function el(tag, attrs, ...kids) {
     const e = document.createElement(tag);
@@ -171,7 +173,7 @@
     if (!I.students || !I.courses.length) {
       $('left').innerHTML = '';
       $('left').append(el('div', { class: 'msg warn' }, !I.students ? 'はじめに「⚙ 初期設定」で名簿を登録してください。' : 'はじめに「⚙ 初期設定」で講座を登録してください。'),
-        el('button', { class: 'btn primary', onclick: () => run('openSetup', '') }, '⚙ 初期設定を開く'));
+        el('button', { class: 'btn primary', onclick: () => run('openSetup', '').catch((e) => alert(errText(e))) }, '⚙ 初期設定を開く'));
       $('right').innerHTML = '';
       $('foot').style.display = 'none';
       return;
@@ -190,11 +192,29 @@
   }
 
   async function pick(name, keepCol) {
+    if (busy === 'save') return;
     if (mode === 'seat' && !confirm('座席表を保存せずに講座を変えますか？')) return;
-    if (dirty && D && D.course !== name && !confirm('書きこんでいない変更があります。捨てて講座を変えますか？')) return;
+    if (dirty && D && !confirm(D.course !== name ? '書きこんでいない変更があります。捨てて講座を変えますか？' : '書きこんでいない変更があります。捨てて読みなおしますか？')) return;
+    const wasSeat = mode === 'seat';
     stopCamera();
-    mode = 'take';
-    try { D = await run('getCourseDay', name, date); } catch (e) { alert(errText(e)); return; }
+    mode = 'take'; E = null;
+    if (wasSeat) draw();
+    const my = ++pickSeq;
+    busy = 'pick';
+    $('save').disabled = true;
+    let d;
+    try { d = await run('getCourseDay', name, date); } catch (e) {
+      if (my !== pickSeq) return;
+      busy = '';
+      if (D && D.date) date = D.date; // 日付を変えて読めなかったら、もとの日付にもどす
+      alert(errText(e));
+      draw();
+      return;
+    }
+    if (my !== pickSeq) return; // あとから別の講座・日付を押した
+    busy = '';
+    D = d;
+    note = '';
     startEdit(keepCol);
     loadSeat(D.target);
   }
@@ -211,9 +231,14 @@
     dirty = false;
   }
   function toggle(key) {
+    if (busy) return; // 書きこみ中・読み込み中は変えない
+    // キーボードで押したときも、かき直したあと同じ生徒にフォーカスをもどす
+    const a = document.activeElement;
+    const side = a && a.getAttribute && a.getAttribute('data-k') === key ? (a.closest('#left') ? 'left' : 'right') : '';
     absent.has(key) ? absent.delete(key) : absent.add(key);
     dirty = true; note = '';
     drawSeat(); drawList(); drawFoot();
+    if (side) { const b = Array.from($(side).querySelectorAll('[data-k]')).find((x) => x.getAttribute('data-k') === key); if (b) b.focus({ preventScroll: true }); }
   }
 
   // 生徒ごとの欠課時数（今つけている分もふくむ）
@@ -252,7 +277,7 @@
       const st = statOf(s);
       const other = col && s.day[col] && s.day[col] !== '欠' ? s.day[col] : '';
       list.append(el('button', {
-        class: 'stu' + (on ? ' abs' : ''),
+        class: 'stu' + (on ? ' abs' : ''), 'data-k': s.key,
         title: '欠課時数 ' + st.total + '（それ以前 ' + s.before + '）' + (D.hours ? ' ・ ' + pct(st.rate) : ''),
         onclick: () => toggle(s.key),
       },
@@ -271,12 +296,12 @@
     $('cnt').innerHTML = '';
     $('cnt').append('欠席 ', el('b', null, absent.size), ' 人 ・ 出席 ' + (D.students.length - absent.size) + ' 人' + (!col && double ? '（2コマ分）' : ''));
     $('save').textContent = col ? '教務手帳を直す（上書き）' : '教務手帳に書きこむ';
-    $('save').disabled = false;
+    $('save').disabled = !!busy;
   }
 
   // ───────── 左：座席表（出欠をとるとき） ─────────
   async function loadSeat(target) {
-    if (seats[target]) { if (mode === 'take') drawSeat(); return; }
+    if (seats[target] && !seats[target].error) { if (mode === 'take') drawSeat(); return; } // 読めなかったときは読み直す
     seats[target] = { loading: true };
     drawSeat();
     try { seats[target] = await run('getSeat', target); }
@@ -310,11 +335,13 @@
       seat.view !== 'photo' ? el('button', { class: 'btn', title: '上下・左右をさかさまにする（教卓から見た向き／生徒から見た向き）', onclick: () => setView({ flip: !seat.flip }) }, '↕ 向きを変える') : null,
       el('button', { class: 'btn', onclick: () => startSeatEdit() }, '✏ 直す・撮り直す')));
     if (seat.view === 'photo') {
-      const box = el('div', { class: 'seatbox' }, el('img', { src: seat.image, alt: '座席表', draggable: false }));
+      // 写真は1回だけ作って使いまわす（押すたびに大きな写真を読み直さない）
+      if (!seat.imgEl) seat.imgEl = el('img', { src: seat.image, alt: '座席表', draggable: false });
+      const box = el('div', { class: 'seatbox' }, seat.imgEl);
       placed.forEach((p) => {
         const s = byKey[p.key];
         box.append(el('button', {
-          class: 'spot' + (absent.has(s.key) ? ' abs' : ''),
+          class: 'spot' + (absent.has(s.key) ? ' abs' : ''), 'data-k': s.key,
           style: 'left:' + (p.x * 100) + '%;top:' + (p.y * 100) + '%',
           title: s.name, onclick: () => toggle(s.key),
         }, (absent.has(s.key) ? '欠 ' : '') + shortName(s.name)));
@@ -346,7 +373,7 @@
         if (keys.length > 1) {
           // 同じマスに2人（ボタンの位置が近すぎる）：両方出す
           grid.append(el('div', { class: 'seat multi', title: '同じ席に2人います。「直す・撮り直す」で位置を直してください' }, keys.map((k) => el('button', {
-            class: absent.has(k) ? 'abs' : '', disabled: small, onclick: () => toggle(k),
+            class: !small && absent.has(k) ? 'abs' : '', disabled: small, 'data-k': small ? null : k, onclick: () => toggle(k),
           }, shortName(byKey[k].name)))));
           continue;
         }
@@ -354,7 +381,7 @@
         const on = !small && absent.has(s.key);
         const st = small ? null : statOf(s);
         grid.append(el(small ? 'div' : 'button', {
-          class: 'seat' + (on ? ' abs' : ''), title: s.name, onclick: small ? null : () => toggle(s.key),
+          class: 'seat' + (on ? ' abs' : ''), title: s.name, 'data-k': small ? null : s.key, onclick: small ? null : () => toggle(s.key),
         },
           el('span', { class: 'sno' }, s.no !== '' ? String(s.no).padStart(2, '0') : ''),
           el('span', { class: 'snm' }, on ? '欠 ' + shortName(s.name) : s.name),
@@ -368,7 +395,8 @@
 
   // ───────── 座席表を登録・直す ─────────
   function startSeatEdit() {
-    if (dirty && !confirm('書きこんでいない出欠があります。座席表を直すと、いま押した出欠は消えます。よろしいですか？')) return;
+    if (busy) return;
+    if (dirty &&!confirm('書きこんでいない出欠があります。座席表を直すと、いま押した出欠は消えます。よろしいですか？')) return;
     const seat = seats[D.target] || {};
     E = { image: seat.image || '', newImage: '', spots: new Map((seat.spots || []).map((p) => [p.key, { x: p.x, y: p.y }])), desk: seat.desk || '', sel: '', status: '', progress: -1, stream: null, camera: false };
     mode = 'seat';
@@ -380,6 +408,8 @@
   function drawSeatEdit() {
     const L = $('left');
     L.innerHTML = '';
+    E.ui = null;
+    const reading = E.progress >= 0; // 自動で読み取っている最中（写真は変えられない）
     L.append(el('h3', null, '座席表を登録・直す', el('small', null, D.target + '（同じクラスの講座で共通）')));
     if (E.camera) {
       const v = el('video', { autoplay: true, playsInline: true, muted: true });
@@ -397,22 +427,33 @@
         el('small', null, '名前を書いた座席表を撮ると、名前を自動で読み取ってボタンを置きます。')));
     } else {
       L.append(el('div', { class: 'tools' },
-        el('button', { class: 'btn primary', onclick: autoRead, disabled: E.progress >= 0 }, '🔤 名前を自動で読み取る'),
-        el('button', { class: 'btn', onclick: startCamera }, '📷 撮り直す'),
-        el('button', { class: 'btn', onclick: pickFile }, '🖼 ほかの写真'),
-        el('button', { class: 'btn', onclick: rotate, title: '写真を右に90度まわす' }, '↻ 回転'),
-        E.spots.size ? el('button', { class: 'btn', onclick: () => { if (confirm('置いたボタンをすべて外しますか？')) { E.spots.clear(); E.sel = (D.students[0] || {}).key || ''; drawSeatEdit(); } } }, 'ボタンを全部外す') : null));
-      if (E.status) L.append(el('div', { class: 'msg ' + (E.progress >= 0 ? 'warn' : 'ok') }, E.status, E.progress >= 0 ? el('div', { class: 'bar' }, el('span', { style: 'width:' + Math.round(E.progress * 100) + '%' })) : null));
-      const img = el('img', { src: E.image, alt: '座席表', draggable: false });
+        el('button', { class: 'btn primary', onclick: autoRead, disabled: reading }, '🔤 名前を自動で読み取る'),
+        el('button', { class: 'btn', onclick: startCamera, disabled: reading }, '📷 撮り直す'),
+        el('button', { class: 'btn', onclick: pickFile, disabled: reading }, '🖼 ほかの写真'),
+        el('button', { class: 'btn', onclick: rotate, disabled: reading, title: '写真を右に90度まわす' }, '↻ 回転'),
+        E.spots.size ? el('button', { class: 'btn', disabled: reading, onclick: () => { if (confirm('置いたボタンをすべて外しますか？')) { E.spots.clear(); E.sel = (D.students[0] || {}).key || ''; drawSeatEdit(); } } }, 'ボタンを全部外す') : null));
+      if (E.status) {
+        const txt = el('span', null, E.status);
+        const bar = reading ? el('span', { style: 'width:' + Math.round(E.progress * 100) + '%' }) : null;
+        L.append(el('div', { class: 'msg ' + (reading ? 'warn' : 'ok') }, txt, bar ? el('div', { class: 'bar' }, bar) : null));
+        if (bar) E.ui = { txt, bar };
+      }
+      // 写真は1回だけ作って使いまわす（かき直すたびに大きな写真を読み直さない）
+      if (!E.img || E.imgSrc !== E.image) {
+        const img = el('img', { src: E.image, alt: '座席表', draggable: false });
+        img.addEventListener('click', (e) => {
+          if (!E || E.img !== img) return;
+          if (!E.sel) { E.status = '右の名列で、置く生徒を選んでください。'; drawSeatEdit(); return; }
+          const r = img.getBoundingClientRect();
+          E.spots.set(E.sel, { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
+          E.sel = nextUnplaced(E.sel);
+          if (E.progress < 0) E.status = ''; // 読み取り中は進みぐあいを消さない
+          drawSeatEdit();
+        });
+        E.img = img; E.imgSrc = E.image;
+      }
+      const img = E.img;
       const box = el('div', { class: 'seatbox edit' }, img);
-      img.addEventListener('click', (e) => {
-        if (!E.sel) { E.status = '右の名列で、置く生徒を選んでください。'; drawSeatEdit(); return; }
-        const r = img.getBoundingClientRect();
-        E.spots.set(E.sel, { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
-        E.sel = nextUnplaced(E.sel);
-        E.status = '';
-        drawSeatEdit();
-      });
       const byKey = Object.fromEntries(D.students.map((s) => [s.key, s]));
       E.spots.forEach((p, key) => {
         const s = byKey[key];
@@ -438,7 +479,15 @@
     $('cnt').innerHTML = '';
     $('cnt').append('座席表に置いた生徒 ', el('b', { style: 'color:#1a73e8' }, Array.from(E.spots.keys()).filter((k) => D.students.some((s) => s.key === k)).length), ' / ' + D.students.length + ' 人');
     $('save').textContent = '座席表を保存する';
-    $('save').disabled = !E.image;
+    $('save').disabled = !E.image || reading || !!busy;
+  }
+  // 読み取りの進みぐあいだけを書きかえる（写真や名列はかき直さない）
+  function showProgress(me) {
+    if (E !== me || mode !== 'seat') return;
+    if (me.ui && me.ui.txt.isConnected) {
+      me.ui.txt.textContent = me.status;
+      me.ui.bar.style.width = Math.round(me.progress * 100) + '%';
+    } else drawSeatEdit();
   }
 
   // 右：座席に置く生徒を選ぶ
@@ -472,11 +521,13 @@
   function dragSpot(b, key, img) {
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      const me = E;
       b.setPointerCapture(e.pointerId);
       const r = img.getBoundingClientRect();
       const sx = e.clientX, sy = e.clientY;
       let moved = false;
       const move = (ev) => {
+        if (E !== me) return;
         if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 3) moved = true;
         if (!moved) return;
         const x = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
@@ -487,24 +538,37 @@
       const up = () => {
         b.removeEventListener('pointermove', move);
         b.removeEventListener('pointerup', up);
+        b.removeEventListener('pointercancel', up);
+        if (E !== me || mode !== 'seat') return; // ドラッグ中に座席表の画面を閉じた
         E.sel = key;
         drawSeatEdit();
       };
       b.addEventListener('pointermove', move);
       b.addEventListener('pointerup', up);
+      b.addEventListener('pointercancel', up);
     });
   }
 
   // ───────── 写真：カメラ・ファイル・貼り付け ─────────
   async function startCamera() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('このブラウザではカメラを使えません。「写真のファイルを選ぶ」を使ってください。'); return; }
+    const me = E;
+    if (me.camera || me.starting) return; // 2回押したとき、カメラを2つ開かない
+    me.starting = true;
+    let stream;
     try {
-      E.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'environment' }, audio: false });
-      E.camera = true;
-      drawSeatEdit();
+      stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'environment' }, audio: false });
     } catch (e) {
-      alert('カメラを起動できませんでした。\n・アドレスバー右のカメラのマークで「許可」にしてから、もう一度押してください。\n・それでもだめなときは、カメラのアプリで撮って「写真のファイルを選ぶ」から選んでください。\n\n（' + (e.name || '') + ' ' + (e.message || '') + '）');
+      me.starting = false;
+      if (E === me) alert('カメラを起動できませんでした。\n・アドレスバー右のカメラのマークで「許可」にしてから、もう一度押してください。\n・それでもだめなときは、カメラのアプリで撮って「写真のファイルを選ぶ」から選んでください。\n\n（' + (e.name || '') + ' ' + (e.message || '') + '）');
+      return;
     }
+    me.starting = false;
+    // 許可を待っているあいだに、座席表の画面を閉じた・読み取りを始めた
+    if (E !== me || mode !== 'seat' || me.progress >= 0) { stream.getTracks().forEach((t) => t.stop()); return; }
+    me.stream = stream;
+    me.camera = true;
+    drawSeatEdit();
   }
   function stopCamera() {
     if (E && E.stream) { E.stream.getTracks().forEach((t) => t.stop()); E.stream = null; }
@@ -512,8 +576,9 @@
   }
   function shoot(video) {
     if (!video.videoWidth) { alert('まだカメラの準備ができていません。少し待ってから押してください。'); return; }
-    setImage(toJpeg(video, video.videoWidth, video.videoHeight));
-    stopCamera();
+    const url = toJpeg(video, video.videoWidth, video.videoHeight);
+    stopCamera(); // 先に止める（あとだと、撮ったあともカメラの画面のままになる）
+    setImage(url);
   }
   function pickFile() {
     const inp = el('input', { type: 'file', accept: 'image/*' });
@@ -521,10 +586,16 @@
     inp.click();
   }
   function readFile(file) {
+    const me = E;
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => { setImage(toJpeg(img, img.naturalWidth, img.naturalHeight)); URL.revokeObjectURL(url); };
-    img.onerror = () => alert('この写真は読めませんでした（JPEG・PNG の写真を選んでください）');
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      if (E !== me || mode !== 'seat' || me.progress >= 0) return; // 読みこむあいだに画面を変えた・読み取りを始めた
+      stopCamera();
+      setImage(toJpeg(img, img.naturalWidth, img.naturalHeight));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); alert('この写真は読めませんでした（JPEG・PNG の写真を選んでください）'); };
     img.src = url;
   }
   // 長い辺 1600px までに小さくして JPEG にする（保存とやりとりを軽くするため）
@@ -543,30 +614,41 @@
     drawSeatEdit();
   }
   function rotate() {
+    const me = E, src = E.image;
+    if (me.rotating || me.progress >= 0) return; // 続けて押したとき、ボタンだけ2回まわさない
+    me.rotating = true;
     const img = new Image();
     img.onload = () => {
+      me.rotating = false;
+      if (E !== me || me.image !== src) return;
       const c = document.createElement('canvas');
       c.width = img.naturalHeight; c.height = img.naturalWidth;
       const g = c.getContext('2d');
       g.translate(c.width, 0); g.rotate(Math.PI / 2);
       g.drawImage(img, 0, 0);
-      E.image = E.newImage = c.toDataURL('image/jpeg', 0.85);
-      E.spots.forEach((p, k) => E.spots.set(k, { x: 1 - p.y, y: p.x }));
+      me.image = me.newImage = c.toDataURL('image/jpeg', 0.85);
+      me.spots.forEach((p, k) => me.spots.set(k, { x: 1 - p.y, y: p.x }));
+      me.desk = ''; // 90度まわすと教卓の「上・下」が合わなくなるので、選び直してもらう
       drawSeatEdit();
     };
-    img.src = E.image;
+    img.onerror = () => { me.rotating = false; };
+    img.src = src;
   }
   document.addEventListener('paste', (e) => {
-    if (mode !== 'seat') return;
+    if (mode !== 'seat' || !E || !e.clipboardData) return;
     const item = Array.from(e.clipboardData.items || []).find((i) => i.type.startsWith('image/'));
-    if (item) { e.preventDefault(); stopCamera(); readFile(item.getAsFile()); }
-  });
-  document.addEventListener('dragover', (e) => { if (mode === 'seat') e.preventDefault(); });
-  document.addEventListener('drop', (e) => {
-    if (mode !== 'seat') return;
+    if (!item) return;
     e.preventDefault();
+    if (E.progress >= 0) return; // 読み取り中は写真を変えない
+    readFile(item.getAsFile());
+  });
+  // 座席表の画面でなくても、写真を落としたときに画面が写真に変わってしまわないようにする
+  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (mode !== 'seat' || !E || E.progress >= 0) return;
     const f = Array.from(e.dataTransfer.files || []).find((x) => x.type.startsWith('image/'));
-    if (f) { stopCamera(); readFile(f); }
+    if (f) readFile(f);
   });
 
   // ───────── 名前の自動読み取り（Tesseract.js） ─────────
@@ -585,46 +667,55 @@
   }
 
   async function autoRead() {
-    const already = E.spots.size;
+    if (E.progress >= 0 || E.camera) return;
+    const me = E, d0 = D, src = E.image;
+    // 読み取り中に講座を変えた・座席表の画面を閉じた・写真を変えたら、結果は使わない
+    const alive = () => E === me && D === d0 && mode === 'seat' && me.image === src;
+    const already = me.spots.size;
     let keep = false;
     if (already) keep = !confirm('いま置いてあるボタンも、読み取った位置に置き直しますか？\n「OK」＝置き直す ／「キャンセル」＝まだ置いていない生徒だけ置く');
-    E.progress = 0; E.status = '読み取りの準備をしています…（はじめての時は少しかかります）';
+    me.progress = 0; me.status = '読み取りの準備をしています…（はじめての時は少しかかります）';
     drawSeatEdit();
+    let worker = null;
     try {
       await loadTesseract();
       const img = new Image();
-      await new Promise((ok) => { img.onload = ok; img.src = E.image; });
+      await new Promise((ok, ng) => { img.onload = ok; img.onerror = () => ng(new Error('写真を読めませんでした')); img.src = src; });
       // 小さい写真だけ大きくしてから読む
       const k = Math.max(1, 1200 / Math.max(img.naturalWidth, img.naturalHeight));
       const c = document.createElement('canvas');
       c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       // 読み方を2通り（表の中のばらばらの文字向き・ふつうの文章向き）ためして、見つかった行を合わせる
+      // （'12' は向きの判定用のデータ osd がないと警告が出るが、そのまま '11'（ばらばらの文字）として読む。'11' より少しよく読める）
       const passes = ['12', '6'];
       let pass = 0;
-      const worker = await Tesseract.createWorker('jpn', 1, {
+      worker = await Tesseract.createWorker('jpn', 1, {
         logger: (m) => {
-          if (!E || mode !== 'seat') return;
+          if (!alive() || pass >= passes.length) return; // マスの読み直しの進みぐあいは下で出す
           if (m.status === 'recognizing text') {
-            E.progress = 0.3 + (pass + m.progress) / passes.length * 0.7;
-            E.status = '名前を読み取っています… ' + Math.round((pass + m.progress) / passes.length * 100) + '%';
-          } else if (m.progress != null && pass === 0) { E.progress = Math.min(0.3, m.progress * 0.3); E.status = '読み取りの準備をしています…'; }
-          drawSeatEdit();
+            me.progress = 0.3 + (pass + m.progress) / passes.length * 0.55;
+            me.status = '名前を読み取っています… ' + Math.round((pass + m.progress) / passes.length * 100) + '%';
+          } else if (m.progress != null && pass === 0) { me.progress = Math.min(0.3, m.progress * 0.3); me.status = '読み取りの準備をしています…'; }
+          else return;
+          showProgress(me);
         },
       });
       let lines = [];
       for (pass = 0; pass < passes.length; pass++) {
+        if (!alive()) return;
         await worker.setParameters({ tessedit_pageseg_mode: passes[pass] });
         const res = await worker.recognize(c, {}, { blocks: true });
         lines = lines.concat(res.data.lines || []);
       }
-      if (!E || mode !== 'seat') { await worker.terminate(); return; } // 読み取り中に画面を変えた
+      if (!alive()) return;
       // 「教卓」「黒板」「教壇」が写真の上と下のどちらにあるか
       const deskLine = lines.find((l) => /教卓|黒板|教壇/.test(String(l.text || '').replace(/\s/g, '')));
-      if (deskLine && deskLine.bbox) E.desk = (deskLine.bbox.y0 + deskLine.bbox.y1) / 2 < c.height / 2 ? 'top' : 'bottom';
+      let desk = '';
+      if (deskLine && deskLine.bbox) desk = (deskLine.bbox.y0 + deskLine.bbox.y1) / 2 < c.height / 2 ? 'top' : 'bottom';
       // 1クラスだけの講座なら、出席番号でも照合する（合同授業は番号が重なるので名前だけ）
-      const oneClass = new Set(D.students.map((s) => s.cls)).size === 1;
-      const all = D.students.map((s) => ({ key: s.key, name: s.name, no: s.no }));
+      const oneClass = new Set(d0.students.map((s) => s.cls)).size === 1;
+      const all = d0.students.map((s) => ({ key: s.key, name: s.name, no: s.no }));
       const found = matchNames(lines, all, { numbers: oneClass, size: Math.max(c.width, c.height) });
       // 読めなかった生徒は、表の空いているマスを1マスずつ読み直す（1マスだけのほうが正しく読める）
       // （番号だけで置いた席は名前より少し上にあるので、表の形は名前で置いた席から見つける）
@@ -633,12 +724,12 @@
       if (grid && grid.cells.length) {
         await worker.setParameters({ tessedit_pageseg_mode: '6' });
         for (let i = 0; i < grid.cells.length; i++) {
-          if (!E || mode !== 'seat') { await worker.terminate(); return; }
+          if (!alive()) return;
           const rest = all.filter((s) => !found.some((f) => f.key === s.key));
           if (!rest.length) break;
-          E.progress = 0.85 + 0.15 * i / grid.cells.length;
-          E.status = '空いているマスを1つずつ読み直しています… ' + (i + 1) + '/' + grid.cells.length;
-          drawSeatEdit();
+          me.progress = 0.85 + 0.15 * i / grid.cells.length;
+          me.status = '空いているマスを1つずつ読み直しています… ' + (i + 1) + '/' + grid.cells.length;
+          showProgress(me);
           const cell = grid.cells[i];
           const left = Math.max(0, Math.round(cell.x - grid.dx * 0.55)), top = Math.max(0, Math.round(cell.y - grid.dy * 0.55));
           const rect = { left, top, width: Math.min(c.width - left, Math.round(grid.dx * 1.1)), height: Math.min(c.height - top, Math.round(grid.dy * 1.1)) };
@@ -651,26 +742,31 @@
         found.length = 0;
         kept.forEach((f) => found.push(f));
       }
-      await worker.terminate();
+      if (!alive()) return;
+      if (desk) me.desk = desk;
       let put = 0;
       found.forEach((f) => {
-        if (keep && E.spots.has(f.key)) return;
-        E.spots.set(f.key, { x: f.x / c.width, y: f.y / c.height });
+        if (keep && me.spots.has(f.key)) return;
+        me.spots.set(f.key, { x: f.x / c.width, y: f.y / c.height });
         put++;
       });
-      const rest = D.students.filter((s) => !E.spots.has(s.key));
-      E.progress = -1;
+      const rest = d0.students.filter((s) => !me.spots.has(s.key));
+      me.progress = -1;
       const byNo = found.filter((f) => f.by !== 'name').length;
-      E.status = '✓ ' + found.length + '人を読み取り（出席番号で ' + byNo + '人）、' + put + '人のボタンを置きました。' +
+      me.status = '✓ ' + found.length + '人を読み取り（出席番号で ' + byNo + '人）、' + put + '人のボタンを置きました。' +
         (rest.length ? 'のこり ' + rest.length + '人は、右で選んでから写真の上の席を押して置いてください。' : '全員置けました。') +
         ' 位置がずれているボタンはドラッグで直せます。';
-      E.sel = rest.length ? rest[0].key : '';
+      me.sel = rest.length ? rest[0].key : '';
     } catch (e) {
-      if (!E) return;
-      E.progress = -1;
-      E.status = '自動で読み取れませんでした：' + errText(e) + '　右で生徒を選んでから、写真の上の席を押して置いてください。';
+      if (!alive()) return;
+      me.progress = -1;
+      me.status = '自動で読み取れませんでした：' + errText(e) + '　右で生徒を選んでから、写真の上の席を押して置いてください。';
+    } finally {
+      if (worker) worker.terminate().catch(() => {}); // 読み取りの部品（大きなメモリ）を必ず閉じる
+      // とちゅうでやめたとき（写真を変えたなど）、ボタンを押せるようにもどす
+      if (E === me && me.progress >= 0) { me.progress = -1; me.status = '読み取りをやめました。'; if (mode === 'seat') drawSeatEdit(); }
     }
-    drawSeatEdit();
+    if (E === me && mode === 'seat') drawSeatEdit();
   }
 
   // <match>
@@ -885,32 +981,47 @@
 
   // ───────── 保存 ─────────
   $('save').onclick = async () => {
-    if (!D) return;
+    if (!D || busy) return; // 2回押したとき・読み込み中は書きこまない
+    busy = 'save';
     $('save').disabled = true;
     if (mode === 'seat') {
+      const me = E, target = D.target;
       try {
-        const spots = Array.from(E.spots.entries()).map(([key, p]) => ({ key, x: p.x, y: p.y }));
-        seats[D.target] = await run('saveSeat', { target: D.target, image: E.newImage, spots, desk: E.desk });
-        stopCamera();
-        mode = 'take'; E = null;
-        note = '✓ 座席表を保存しました。座席表の名前を押すと欠席になります。';
+        const spots = Array.from(me.spots.entries()).map(([key, p]) => ({ key, x: p.x, y: p.y }));
+        const r = await run('saveSeat', { target, image: me.newImage, spots, desk: me.desk });
+        seats[target] = r;
+        busy = '';
+        if (E === me) {
+          stopCamera();
+          mode = 'take'; E = null;
+          note = '✓ 座席表を保存しました。座席表の名前を押すと欠席になります。';
+        }
         draw();
-      } catch (e) { alert('座席表を保存できませんでした：' + errText(e)); $('save').disabled = false; }
+      } catch (e) {
+        busy = '';
+        alert('座席表を保存できませんでした：' + errText(e));
+        if (E === me && mode === 'seat') drawSeatEdit(); else if (D) draw();
+      }
       return;
     }
+    const d0 = D;
+    const n = absent.size;
     try {
       const r = await run('saveDay', { course: D.course, date, col, double: !col && double, absent: Array.from(absent) });
+      busy = '';
+      if (D !== d0) { draw(); return; }
       const wasNew = !col;
       D = r;
-      note = '✓ 教務手帳に' + (wasNew ? '書きこみました' : '上書きしました') + '（' + dayLabel(date) + '・欠席 ' + absent.size + '人' + (r.saved.length > 1 ? '・2コマ分' : '') + '）';
+      note = '✓ 教務手帳に' + (wasNew ? '書きこみました' : '上書きしました') + '（' + dayLabel(r.date || date) + '・欠席 ' + n + '人' + (r.saved.length > 1 ? '・2コマ分' : '') + '）';
       startEdit(r.saved[r.saved.length - 1]);
     } catch (e) {
+      busy = '';
       alert('書きこめませんでした：' + errText(e));
-      $('save').disabled = false;
+      if (D) drawFoot();
     }
   };
   $('cancelSeat').onclick = () => {
-    if (!confirm('座席表の変更を保存せずにやめますか？')) return;
+    if (busy || !confirm('座席表の変更を保存せずにやめますか？')) return;
     stopCamera();
     mode = 'take'; E = null;
     draw();
@@ -918,12 +1029,12 @@
 
   // 日付を変える（後日、休んだ日の分を入れるとき）。教務手帳には日付の順に列が入る
   function setDate(k) {
-    if (!k || k === date) return;
+    if (!k || k === date || busy === 'save') { $('dateInput').value = date; return; }
     if (mode === 'seat') { alert('座席表を保存するか「やめる」を押してから、日付を変えてください。'); $('dateInput').value = date; return; }
     if (dirty && !confirm('書きこんでいない変更を捨てて、日付を変えますか？')) { $('dateInput').value = date; return; }
     date = k;
     dirty = false; note = '';
-    if (D) pick(D.course); else draw();
+    if (D) { drawTop(); pick(D.course); } else draw(); // 読めなかったときは pick がもとの日付にもどす
   }
   function shift(n) {
     const p = date.split('-').map(Number);
@@ -934,17 +1045,24 @@
   $('prev').onclick = () => shift(-1);
   $('next').onclick = () => shift(1);
   $('today').onclick = () => setDate(I.today);
-  const leaving = (fn) => () => { if ((dirty || mode === 'seat') && !confirm('保存していない変更は消えます。よろしいですか？')) return; stopCamera(); fn(); };
-  $('lPeriod').onclick = leaving(() => run('openPeriod'));
-  $('lBulk').onclick = leaving(() => run('openBulk'));
-  $('lSetup').onclick = leaving(() => run('openSetup', ''));
+  const leaving = (fn) => () => {
+    if (busy === 'save') return;
+    if ((dirty || mode === 'seat') && !confirm('保存していない変更は消えます。よろしいですか？')) return;
+    if (E && E.camera) { stopCamera(); if (mode === 'seat') drawSeatEdit(); }
+    fn();
+  };
+  const openOther = (name, ...args) => run(name, ...args).catch((e) => alert(errText(e)));
+  $('lPeriod').onclick = leaving(() => openOther('openPeriod'));
+  $('lBulk').onclick = leaving(() => openOther('openBulk'));
+  $('lSetup').onclick = leaving(() => openOther('openSetup', ''));
   $('lReload').onclick = leaving(() => {
     run('getTakeInit').then((d) => {
-      I = d; const name = D && D.course; D = null; mode = 'take'; dirty = false;
+      I = d; const name = D && D.course; D = null; mode = 'take'; E = null; dirty = false; note = '';
+      pickSeq++; busy = ''; // 読み込み中の講座は使わない
       Object.keys(seats).forEach((k) => delete seats[k]);
       draw();
       if (name && I.courses.some((c) => c.name === name)) pick(name);
-    });
+    }).catch((e) => alert('読み込めませんでした：' + errText(e)));
   });
 
   run('getTakeInit').then((d) => {
