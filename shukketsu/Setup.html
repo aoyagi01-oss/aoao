@@ -323,11 +323,11 @@
   function settingsPane(p) {
     const hours = el('input', { type: 'number', min: 1, value: S.hoursPerUnit, style: 'width:80px' });
     const lines = el('input', { type: 'text', value: S.lines, style: 'width:240px' });
-    const terms = el('input', { type: 'text', class: 'wide', value: S.terms });
+    const cuts = el('input', { type: 'text', class: 'wide', value: S.cuts });
     const save = el('button', { class: 'primary', onclick: async () => {
       save.disabled = true;
       try {
-        S = await run('saveSettings', { hoursPerUnit: hours.value, lines: lines.value, terms: terms.value });
+        S = await run('saveSettings', { hoursPerUnit: hours.value, lines: lines.value, cuts: cuts.value });
         draw();
         $('pane').prepend(el('div', { class: 'ok' }, '✓ 保存しました。教務手帳の色・年間時数も新しい設定にしました。'));
       } catch (e) { alert(errText(e)); save.disabled = false; }
@@ -337,9 +337,27 @@
       el('div', { class: 'note' }, '講座ごとに年間時数を変えたいときは、教務手帳のシートの G1（年間時数）に数を直接入れてください。'),
       el('label', { class: 'f' }, '色を変える割合（%・「,」区切り）'), lines,
       el('div', { class: 'note' }, '低い順に 黄・橙・赤・濃い赤。例：20, 25, 30, 50'),
-      el('label', { class: 'f' }, '学期の区切り（期間集計のボタンになります）'), terms,
-      el('div', { class: 'note' }, '例：1学期 4/1-7/31, 2学期 8/1-12/31, 3学期 1/1-3/31（前期・後期でも可）'),
+      el('label', { class: 'f' }, '欠課時数を出す日（成績処理・報告などで欠課時数を出す日。その日までで区切ります）'), cuts,
+      el('div', { class: 'note' }, '例：7/20, 12/24, 3/24　→「期間集計」で 4/1〜7/20・7/21〜12/24・12/25〜3/24 ごとの欠課時数と総計が出ます'),
       el('div', { class: 'bar', style: 'margin-top:14px' }, save));
+    // リセット（ほかの先生に配るとき・新しい年度に使い直すとき）
+    const word = el('input', { type: 'text', placeholder: 'リセット', style: 'width:120px' });
+    const reset = el('button', { class: 'danger', onclick: async () => {
+      if (word.value.trim() !== 'リセット') { alert('消してよければ、左の欄に「リセット」と入力してから押してください。'); word.focus(); return; }
+      if (!confirm('名簿・講座・教務手帳（出欠の記録）・座席表・設定を全部消します。もとにはもどせません。よろしいですか？')) return;
+      reset.disabled = true;
+      try {
+        await run('resetAll', word.value);
+        S = await run('getSetupData');
+        tab = 'roster';
+        draw();
+        $('pane').prepend(el('div', { class: 'ok' }, '✓ リセットしました。①名簿 から始めてください。'));
+      } catch (e) { alert(errText(e)); reset.disabled = false; }
+    } }, '🧹 全部消してリセット');
+    p.append(el('div', { class: 'warn', style: 'margin-top:24px' },
+      el('b', null, 'リセット（ほかの先生に配るとき・新しい年度に使い直すとき）'), el('br'),
+      '名簿・講座・教務手帳（出欠の記録）・座席表（写真はごみ箱へ）・設定を全部消して、はじめの状態にもどします。もとにはもどせません。', el('br'),
+      el('div', { class: 'bar' }, '消してよければ「リセット」と入力 →', word, reset)));
   }
 
   run('getSetupData').then((d) => {

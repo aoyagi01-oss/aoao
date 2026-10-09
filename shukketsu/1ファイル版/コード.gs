@@ -17,12 +17,13 @@ const SHEET = {
   COURSES: '講座',
   SETTINGS: '設定',
   PERIOD: '期間集計',
+  CUTS: '区切り集計',
   SEATS: '座席表',
 };
-const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.SEATS];
+const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.CUTS, SHEET.SEATS];
 
 // このプログラムの版（サイドバーのいちばん下に出ます。貼り直しが反映されたかの確認用）
-const VERSION = '10/9-4';
+const VERSION = '10/9-5';
 
 const STUDENT_HEADERS = ['学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const COURSE_HEADERS = ['講座名（＝教務手帳のシート名）', '対象（クラス・学籍番号を「,」区切り）', '単位数', 'メモ'];
@@ -43,12 +44,12 @@ const DOUBLE = '続き';
 const SETTING = {
   HOURS: '1単位あたりの年間授業時数',
   LINES: '色を変える欠課時数の割合（%・「,」区切り）',
-  TERMS: '学期の区切り（期間集計のボタンになります）',
+  CUTS: '欠課時数を出す日（区切り。「,」区切り）',
 };
 const SETTING_DEFAULTS = [
   [SETTING.HOURS, 35],
   [SETTING.LINES, '20, 25, 30, 50'],
-  [SETTING.TERMS, '1学期 4/1-7/31, 2学期 8/1-12/31, 3学期 1/1-3/31'],
+  [SETTING.CUTS, '7/20, 12/24, 3/24'],
 ];
 
 // 割合のラインの色（低い順）。ラインが5つ以上なら、いちばん濃い色をくり返す
@@ -74,7 +75,9 @@ function onOpen() {
       .addItem('開いたらすぐ出欠をとる画面を出す（オン／オフ）', 'toggleAutoOpen')
       .addItem('教務手帳の色・数式を整える', 'refreshNotebooks')
       .addItem('お試しデータを入れる', 'insertSampleData')
-      .addItem('シートを作り直す（消したシートを戻す）', 'setup'))
+      .addItem('シートを作り直す（消したシートを戻す）', 'setup')
+      .addSeparator()
+      .addItem('🧹 リセット（全部消す・配布用）', 'resetAllMenu'))
     .addToUi();
 }
 
@@ -503,7 +506,7 @@ function getSetupData() {
     }),
     hoursPerUnit: hoursPerUnit_(st),
     lines: String(st[SETTING.LINES] || ''),
-    terms: String(st[SETTING.TERMS] || ''),
+    cuts: String(st[SETTING.CUTS] || ''),
   };
 }
 
@@ -582,11 +585,11 @@ function saveSettings(o) {
   if (!(hours > 0 && hours <= 100)) throw new Error('1単位あたりの時数を入れてください（ふつうは 35）');
   const lines = parseLines_(o.lines);
   if (!lines.length) throw new Error('色を変える割合を入れてください（例：20, 25, 30, 50）');
-  const terms = String(o.terms || '').trim();
-  terms_(terms, fiscalYear_(todayKey_()), true); // 読めない書き方ならここでエラー
+  const cuts = String(o.cuts || '').trim();
+  const parsed = parseCuts_(cuts, fiscalYear_(todayKey_()), true); // 読めない書き方ならここでエラー
   putSetting_(SETTING.HOURS, hours);
   putSetting_(SETTING.LINES, lines.map(function (v) { return Math.round(v * 1000) / 10; }).join(', '));
-  putSetting_(SETTING.TERMS, terms);
+  putSetting_(SETTING.CUTS, parsed.map(function (k) { return shortDate_(k); }).join(', '));
   refreshNotebooks_();
   return getSetupData();
 }
@@ -713,7 +716,7 @@ function getPeriodInit() {
   return {
     today: today,
     fy: fy,
-    terms: terms_(getSettings_()[SETTING.TERMS], fy),
+    cuts: cutRanges_(fy),
     courses: getCourses_().map(function (c) { return c.name; }),
   };
 }
@@ -795,6 +798,153 @@ function exportPeriod(o) {
   SpreadsheetApp.flush();
   ss.setActiveSheet(sh);
   return true;
+}
+
+// ───────── 欠課時数を出す日ごとの集計（総計つき） ─────────
+
+// o: { course（空欄＝すべての講座） }
+// 講座ごとに、区切りごとの「欠」の数・まとめて入力した分・総計（教務手帳の欠課時数と同じ）・割合
+function runCuts(o) {
+  const fy = fiscalYear_(todayKey_());
+  const ranges = cutRanges_(fy);
+  const courses = getCourses_().filter(function (c) { return !o.course || c.name === o.course; });
+  if (!courses.length) throw new Error('講座がありません');
+  const students = getStudents_().filter(function (s) { return !s.excluded; });
+  const out = [];
+  courses.forEach(function (c) {
+    const sh = SpreadsheetApp.getActive().getSheetByName(c.name);
+    if (!sh) return;
+    const lastCol = lastDateCol_(sh);
+    const last = sh.getLastRow();
+    const members = {};
+    members_(c, students).forEach(function (s) { members[s.key] = s; });
+    const grid = last >= NB.HEAD ? sh.getRange(NB.HEAD, 1, last - NB.HEAD + 1, Math.max(lastCol, NB.FIRST)).getValues() : [];
+    const head = grid[0] || [];
+    // 列ごとに、どの区切りに入るか（-1＝どれにも入らない：日付なし・年度の外）
+    const colRange = {};
+    const lessons = ranges.map(function () { return 0; });
+    for (let col = NB.FIRST; col <= lastCol; col++) {
+      const k = dateKey_(head[col - 1]);
+      let idx = -1;
+      ranges.forEach(function (r, i) { if (k && k >= r.from && k <= r.to) idx = i; });
+      colRange[col] = idx;
+      if (idx >= 0) lessons[idx]++;
+    }
+    const hours = hoursOf_(sh);
+    const rows = [];
+    for (let i = NB.TOP - NB.HEAD; i < grid.length; i++) {
+      const r = grid[i];
+      const key = rowKey_(r);
+      if (!key || !members[key]) continue;
+      const counts = ranges.map(function () { return 0; });
+      let all = 0;
+      for (let col = NB.FIRST; col <= lastCol; col++) {
+        if (String(r[col - 1]).trim() !== MARK) continue;
+        all++;
+        if (colRange[col] >= 0) counts[colRange[col]]++;
+      }
+      const before = Number(r[NB.BEFORE - 1]) || 0;
+      const total = before + all; // 教務手帳の「欠課時数」（E列）と同じ数え方
+      const s = members[key];
+      rows.push({ key: key, cls: s.cls, no: s.no, name: s.name, counts: counts, before: before, other: all - counts.reduce(function (a, b) { return a + b; }, 0), total: total, rate: hours ? total / hours : 0 });
+    }
+    out.push({ name: c.name, hours: hours, lessons: lessons, until: dateKey_(sh.getRange(NB.SUB, NB.BEFORE).getValue()), rows: sortStudents_(rows) });
+  });
+  return { fy: fy, today: todayKey_(), ranges: ranges, lines: lines_(), courses: out };
+}
+
+// 区切りごとの集計をシートに書き出す（成績処理・報告用）
+function exportCuts(o) {
+  const r = runCuts(o);
+  const ss = SpreadsheetApp.getActive();
+  const sh = freshSheet_(ss, SHEET.CUTS);
+  sh.getRange(1, 1).setValue(r.fy + '年度　欠課時数（欠課時数を出す日ごとの区切り・総計つき）').setFontSize(14).setFontWeight('bold');
+  let row = 3;
+  r.courses.forEach(function (c) {
+    const head = ['クラス', '番号', '学籍番号', '氏名'].concat(r.ranges.map(function (x, i) { return x.name + '\n' + c.lessons[i] + 'コマ'; }))
+      .concat(['使い始める前（まとめて入力）', '総計', '割合（年間' + c.hours + '時間）']);
+    sh.getRange(row, 1).setValue(c.name).setFontWeight('bold');
+    sh.getRange(row + 1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground(COLOR.header).setWrap(true).setVerticalAlignment('middle');
+    if (c.rows.length) {
+      const vals = c.rows.map(function (s) { return [s.cls, s.no, s.key, s.name].concat(s.counts).concat([s.before || '', s.total, s.rate]); });
+      sh.getRange(row + 2, 1, vals.length, 1).setNumberFormat('@');
+      sh.getRange(row + 2, 3, vals.length, 1).setNumberFormat('@');
+      sh.getRange(row + 2, 1, vals.length, head.length).setValues(vals);
+      sh.getRange(row + 2, head.length, vals.length, 1).setNumberFormat('0.0%');
+      sh.getRange(row + 2, head.length - 1, vals.length, 1).setFontWeight('bold');
+      c.rows.forEach(function (s, i) {
+        let li = -1;
+        r.lines.forEach(function (v, j) { if (s.rate >= v - 1e-9) li = j; });
+        if (li >= 0) {
+          const col = LINE_COLORS[Math.min(li, LINE_COLORS.length - 1)];
+          sh.getRange(row + 2 + i, head.length - 1, 1, 2).setBackground(col.bg).setFontColor(col.fg);
+        }
+      });
+    }
+    row += c.rows.length + 4;
+  });
+  sh.setColumnWidth(4, 140);
+  SpreadsheetApp.flush();
+  ss.setActiveSheet(sh);
+  return true;
+}
+
+// ───────── リセット（ほかの先生に配るとき・新しい年度に使い直すとき） ─────────
+// 名簿・講座・教務手帳・座席表（写真はごみ箱へ）・集計のシート・設定・「授業なし」を全部消して、はじめの状態にもどす
+
+function resetAllMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const res = ui.prompt('リセット（全部消す）',
+    '名簿・講座・教務手帳（出欠の記録）・座席表・設定を全部消して、はじめの状態にもどします。もとにはもどせません。\n' +
+    'ほかの先生に配るときや、新しい年度に使い直すときに使います。\n\n消してよければ「リセット」と入力して OK を押してください。',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  resetAll(res.getResponseText());
+  ui.alert('リセットしました。メニュー「📋 出欠」→「⚙ 初期設定」から始めてください。');
+}
+
+function resetAll(word) {
+  if (String(word || '').trim() !== 'リセット') throw new Error('「リセット」と入力されていないので、消しませんでした');
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+  try {
+    const ss = SpreadsheetApp.getActive();
+    const courses = getCourses_();
+    // 座席表の写真（ドライブ）をごみ箱へ
+    const seats = ss.getSheetByName(SHEET.SEATS);
+    if (seats && seats.getLastRow() >= 2) {
+      seats.getRange(2, 2, seats.getLastRow() - 1, 1).getValues().forEach(function (r) {
+        const id = String(r[0] || '').trim();
+        if (id) { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) { /* もうない */ } }
+      });
+    }
+    // 教務手帳と集計のシートを消す（シートが1枚だけにならないよう、使い方シートを先に用意しておく）
+    setup_();
+    ss.setActiveSheet(sheet_(SHEET.HOWTO));
+    const drop = {};
+    courses.forEach(function (c) { drop[c.name] = true; });
+    [SHEET.PERIOD, SHEET.CUTS].forEach(function (n) { drop[n] = true; });
+    ss.getSheets().slice().forEach(function (sh) {
+      if (drop[sh.getName()] && ss.getSheets().length > 1) ss.deleteSheet(sh);
+    });
+    // 名簿・講座・座席表は見出しだけ残す。設定ははじめの値にもどす
+    [SHEET.STUDENTS, SHEET.COURSES, SHEET.SEATS].forEach(function (n) {
+      const sh = ss.getSheetByName(n);
+      if (sh && sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, sh.getMaxColumns()).clearContent().clearDataValidations();
+    });
+    const st = ss.getSheetByName(SHEET.SETTINGS);
+    if (st) {
+      if (st.getLastRow() >= 2) st.getRange(2, 1, st.getLastRow() - 1, 2).clearContent();
+      st.getRange(2, 1, SETTING_DEFAULTS.length, 2).setValues(SETTING_DEFAULTS);
+    }
+    const props = PropertiesService.getDocumentProperties();
+    props.deleteProperty('skippedLessons');
+    studentsCache_ = null;
+    SpreadsheetApp.flush();
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ───────── 教務手帳のシート ─────────
@@ -998,7 +1148,7 @@ function writeHowTo_(sh) {
     ['・割合が 20%・25%・30%・50% 以上になると、名前と割合のマスの色が変わります（「設定」シートで変えられます）'],
     ['・マスを直接直してかまいません。あとから欠席扱いでなかったとわかったら、そのマスの「欠」を消すだけで合計と割合が直ります'],
     [''],
-    ['期間を指定して集計：メニュー「📋 出欠」→「🔎 期間を指定して集計」で、その期間に何コマ休んだかを出せます'],
+    ['集計：メニュー「📋 出欠」→「🔎 期間を指定して集計」で、欠課時数を出す日ごとの区切りの欠課時数と総計、または指定した期間に何コマ休んだかを出せます'],
     [''],
     ['座席表：出欠をとる画面の「📷 座席表を登録する」で座席表を撮る（または写真を選ぶ）と、出席番号と名前を読み取って、席ごとのボタンを並べた見やすい座席表ができます'],
     ['・押すと欠席になります。「写真」に切りかえると写真の上でも押せます。「↕ 向きを変える」で教卓から見た向きにできます'],
@@ -1146,24 +1296,37 @@ function lines_() {
   return l.length ? l : [0.2, 0.25, 0.3, 0.5];
 }
 
-// 「1学期 4/1-7/31, 2学期 8/1-12/31, 3学期 1/1-3/31」→ その年度の日付の範囲（1〜3月は次の年）
-function terms_(text, fy, strict) {
-  const t = String(text || '').normalize('NFKC').replace(/(\d{1,2})月(\d{1,2})日/g, '$1/$2');
-  const out = [];
-  t.split(/[,、;\n]+/).forEach(function (part) {
+// 「7/20, 12/24, 3/24」→ その年度の日付（'yyyy-MM-dd'、古い順。1〜3月は次の年）
+function parseCuts_(text, fy, strict) {
+  const t = String(text || '').normalize('NFKC').replace(/(\d{1,2})月(\d{1,2})日?/g, '$1/$2');
+  const seen = {};
+  t.split(/[,、;\s]+/).forEach(function (part) {
     const p = part.trim();
     if (!p) return;
-    const m = p.match(/^(.*?)\s*(?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})\s*[-〜~ー]\s*(?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})$/);
-    if (!m) {
-      if (strict) throw new Error('学期の区切りが読めません：「' + p + '」（例：1学期 4/1-7/31）');
+    const m = p.match(/^(?:(\d{4})[\/.-])?(\d{1,2})[\/.-](\d{1,2})$/);
+    const mo = m ? Number(m[2]) : 0, d = m ? Number(m[3]) : 0;
+    if (!m || mo < 1 || mo > 12 || d < 1 || d > 31) {
+      if (strict) throw new Error('欠課時数を出す日が読めません：「' + p + '」（例：7/20, 12/24, 3/24）');
       return;
     }
-    const day = function (y, mo, d) {
-      const year = y ? Number(y) : (Number(mo) >= 4 ? fy : fy + 1);
-      return year + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
-    };
-    out.push({ name: m[1].trim() || ('期間' + (out.length + 1)), from: day(m[2], m[3], m[4]), to: day(m[5], m[6], m[7]) });
+    const year = m[1] ? Number(m[1]) : (mo >= 4 ? fy : fy + 1);
+    seen[year + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2)] = true;
   });
+  return Object.keys(seen).sort();
+}
+
+// 欠課時数を出す日で区切った、その年度の期間。最後の日のあとも年度末まであれば「〜」として足す
+//  [{ name: '〜7/20', from: '2026-04-01', to: '2026-07-20', cut: '2026-07-20' }, …]
+function cutRanges_(fy) {
+  const start = fy + '-04-01', end = (fy + 1) + '-03-31';
+  const cuts = parseCuts_(getSettings_()[SETTING.CUTS], fy).filter(function (k) { return k >= start && k <= end; });
+  const out = [];
+  let from = start;
+  cuts.forEach(function (k, i) {
+    out.push({ name: (i + 1) + '回目（' + shortDate_(from) + '〜' + shortDate_(k) + '）', from: from, to: k, cut: k });
+    from = addDaysKey_(k, 1);
+  });
+  if (from <= end) out.push({ name: (cuts.length ? 'そのあと（' + shortDate_(from) + '〜）' : '年度（' + shortDate_(from) + '〜）'), from: from, to: end, cut: '' });
   return out;
 }
 
@@ -2743,11 +2906,11 @@ HTML_FILES["Setup"] = [
   "  function settingsPane(p) {",
   "    const hours = el('input', { type: 'number', min: 1, value: S.hoursPerUnit, style: 'width:80px' });",
   "    const lines = el('input', { type: 'text', value: S.lines, style: 'width:240px' });",
-  "    const terms = el('input', { type: 'text', class: 'wide', value: S.terms });",
+  "    const cuts = el('input', { type: 'text', class: 'wide', value: S.cuts });",
   "    const save = el('button', { class: 'primary', onclick: async () => {",
   "      save.disabled = true;",
   "      try {",
-  "        S = await run('saveSettings', { hoursPerUnit: hours.value, lines: lines.value, terms: terms.value });",
+  "        S = await run('saveSettings', { hoursPerUnit: hours.value, lines: lines.value, cuts: cuts.value });",
   "        draw();",
   "        $('pane').prepend(el('div', { class: 'ok' }, '✓ 保存しました。教務手帳の色・年間時数も新しい設定にしました。'));",
   "      } catch (e) { alert(errText(e)); save.disabled = false; }",
@@ -2757,9 +2920,27 @@ HTML_FILES["Setup"] = [
   "      el('div', { class: 'note' }, '講座ごとに年間時数を変えたいときは、教務手帳のシートの G1（年間時数）に数を直接入れてください。'),",
   "      el('label', { class: 'f' }, '色を変える割合（%・「,」区切り）'), lines,",
   "      el('div', { class: 'note' }, '低い順に 黄・橙・赤・濃い赤。例：20, 25, 30, 50'),",
-  "      el('label', { class: 'f' }, '学期の区切り（期間集計のボタンになります）'), terms,",
-  "      el('div', { class: 'note' }, '例：1学期 4/1-7/31, 2学期 8/1-12/31, 3学期 1/1-3/31（前期・後期でも可）'),",
+  "      el('label', { class: 'f' }, '欠課時数を出す日（成績処理・報告などで欠課時数を出す日。その日までで区切ります）'), cuts,",
+  "      el('div', { class: 'note' }, '例：7/20, 12/24, 3/24　→「期間集計」で 4/1〜7/20・7/21〜12/24・12/25〜3/24 ごとの欠課時数と総計が出ます'),",
   "      el('div', { class: 'bar', style: 'margin-top:14px' }, save));",
+  "    // リセット（ほかの先生に配るとき・新しい年度に使い直すとき）",
+  "    const word = el('input', { type: 'text', placeholder: 'リセット', style: 'width:120px' });",
+  "    const reset = el('button', { class: 'danger', onclick: async () => {",
+  "      if (word.value.trim() !== 'リセット') { alert('消してよければ、左の欄に「リセット」と入力してから押してください。'); word.focus(); return; }",
+  "      if (!confirm('名簿・講座・教務手帳（出欠の記録）・座席表・設定を全部消します。もとにはもどせません。よろしいですか？')) return;",
+  "      reset.disabled = true;",
+  "      try {",
+  "        await run('resetAll', word.value);",
+  "        S = await run('getSetupData');",
+  "        tab = 'roster';",
+  "        draw();",
+  "        $('pane').prepend(el('div', { class: 'ok' }, '✓ リセットしました。①名簿 から始めてください。'));",
+  "      } catch (e) { alert(errText(e)); reset.disabled = false; }",
+  "    } }, '🧹 全部消してリセット');",
+  "    p.append(el('div', { class: 'warn', style: 'margin-top:24px' },",
+  "      el('b', null, 'リセット（ほかの先生に配るとき・新しい年度に使い直すとき）'), el('br'),",
+  "      '名簿・講座・教務手帳（出欠の記録）・座席表（写真はごみ箱へ）・設定を全部消して、はじめの状態にもどします。もとにはもどせません。', el('br'),",
+  "      el('div', { class: 'bar' }, '消してよければ「リセット」と入力 →', word, reset)));",
   "  }",
   "",
   "  run('getSetupData').then((d) => {",
@@ -2785,7 +2966,7 @@ HTML_FILES["Period"] = [
   "  .chip.on { background: #e8f0fe; border-color: #1a73e8; color: #1967d2; font-weight: bold; }",
   "  .range { display: flex; gap: 8px; align-items: center; margin-top: 8px; }",
   "  .range input { font-family: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid #dadce0; border-radius: 6px; }",
-  "  .tbl { max-height: calc(100vh - 290px); min-height: 160px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; margin-top: 8px; }",
+  "  .tbl { max-height: calc(100vh - 370px); min-height: 160px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; margin-top: 8px; }",
   "  table { border-collapse: collapse; width: 100%; }",
   "  th, td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 13px; text-align: right; white-space: nowrap; }",
   "  th { position: sticky; top: 0; background: #f8f9fa; }",
@@ -2798,14 +2979,24 @@ HTML_FILES["Period"] = [
   "  .ok { background: #e6f4ea; color: #137333; padding: 8px; border-radius: 8px; }",
   "  .warn { background: #fef7e0; color: #b06000; padding: 8px; border-radius: 8px; margin-top: 8px; }",
   "  label { font-size: 13px; }",
+  "  .modes { display: flex; gap: 0; border: 1px solid #1a73e8; border-radius: 8px; overflow: hidden; width: fit-content; }",
+  "  .modes button { border: none; background: #fff; color: #1a73e8; padding: 7px 16px; font-size: 13px; font-family: inherit; cursor: pointer; }",
+  "  .modes button.on { background: #1a73e8; color: #fff; font-weight: bold; }",
+  "  th.now, td.now { background: #f1f8ff; }",
+  "  td.tot { font-weight: bold; color: #202124; }",
+  "  #out th, #out td { padding: 5px 6px; }",
+  "  h3 { font-size: 14px; margin: 14px 0 0; }",
   "</style>",
   "</head>",
   "<body>",
+  "<div class=\"modes\" id=\"modes\"></div>",
   "<h2>講座</h2>",
   "<div class=\"chips\" id=\"courses\"></div>",
+  "<div id=\"rangeBox\">",
   "<h2>期間</h2>",
   "<div class=\"chips\" id=\"ranges\"></div>",
   "<div class=\"range\"><input type=\"date\" id=\"from\"> 〜 <input type=\"date\" id=\"to\"></div>",
+  "</div>",
   "<div id=\"out\"></div>",
   "",
   "<script>",
@@ -2817,6 +3008,7 @@ HTML_FILES["Period"] = [
   "  let onlyAbsent = false;",
   "  let last = null;",
   "  let seq = 0; // 集計を続けて押したとき、前の結果があとから届いても使わないため",
+  "  let mode = 'cuts'; // 'cuts'：欠課時数を出す日ごとの区切り（総計つき）／'range'：期間を指定",
   "",
   "  function el(tag, attrs, ...kids) {",
   "    const e = document.createElement(tag);",
@@ -2839,10 +3031,14 @@ HTML_FILES["Period"] = [
   "    const p0 = new Date(t.getFullYear(), t.getMonth() - 1, 1), p1 = new Date(t.getFullYear(), t.getMonth(), 0);",
   "    const w0 = new Date(t); w0.setDate(t.getDate() - ((t.getDay() + 6) % 7));",
   "    return [{ name: '今週', from: key(w0), to: P.today }, { name: '今月', from: key(m0), to: key(m1) }, { name: '先月', from: key(p0), to: key(p1) }]",
-  "      .concat(P.terms).concat([{ name: P.fy + '年度', from: P.fy + '-04-01', to: (P.fy + 1) + '-03-31' }]);",
+  "      .concat(P.cuts).concat([{ name: P.fy + '年度', from: P.fy + '-04-01', to: (P.fy + 1) + '-03-31' }]);",
   "  }",
   "",
   "  function drawChips() {",
+  "    $('modes').innerHTML = '';",
+  "    [['cuts', '欠課時数を出す日ごとの区切り（総計つき）'], ['range', '期間を指定して数える']].forEach(([m, label]) => $('modes').append(",
+  "      el('button', { class: mode === m ? 'on' : '', onclick: () => { mode = m; drawChips(); load(); } }, label)));",
+  "    $('rangeBox').style.display = mode === 'range' ? '' : 'none';",
   "    $('courses').innerHTML = '';",
   "    [['', 'すべての講座']].concat(P.courses.map((c) => [c, c])).forEach(([v, label]) => $('courses').append(",
   "      el('button', { class: 'chip' + (st.course === v ? ' on' : ''), onclick: () => { st.course = v; drawChips(); load(); } }, label)));",
@@ -2853,6 +3049,7 @@ HTML_FILES["Period"] = [
   "  }",
   "",
   "  async function load() {",
+  "    if (mode === 'cuts') { loadCuts(); return; }",
   "    const out = $('out');",
   "    const my = ++seq;",
   "    out.innerHTML = '';",
@@ -2901,6 +3098,50 @@ HTML_FILES["Period"] = [
   "      e.target.disabled = false;",
   "    } }, '📄 シートに書き出す（印刷用）'), done));",
   "  }",
+  "",
+  "  // ───────── 欠課時数を出す日ごとの区切り（総計つき） ─────────",
+  "  async function loadCuts() {",
+  "    const out = $('out');",
+  "    const my = ++seq;",
+  "    out.innerHTML = '';",
+  "    out.append(el('div', { class: 'note' }, '集計しています…'));",
+  "    let r;",
+  "    try { r = await run('runCuts', { course: st.course }); }",
+  "    catch (e) { if (my !== seq) return; out.innerHTML = ''; out.append(el('div', { class: 'warn' }, errText(e))); return; }",
+  "    if (my !== seq || mode !== 'cuts') return;",
+  "    out.innerHTML = '';",
+  "    const nowIdx = r.ranges.findIndex((x) => x.from <= r.today && r.today <= x.to);",
+  "    const colorOf = (rate) => { let li = -1; r.lines.forEach((v, i) => { if (rate >= v - 1e-9) li = i; }); return li >= 0 ? COLORS[Math.min(li, COLORS.length - 1)] : null; };",
+  "    const pct = (v) => (Math.round(v * 1000) / 10).toFixed(1) + '%';",
+  "    const box = el('div', { class: 'tbl', style: 'max-height:calc(100vh - 230px)' });",
+  "    r.courses.forEach((c) => {",
+  "      const head = el('tr', null, el('th', { class: 'l' }, 'クラス'), el('th', { class: 'l' }, '番号'), el('th', { class: 'l' }, '氏名'),",
+  "        r.ranges.map((x, i) => el('th', { class: i === nowIdx ? 'now' : '' }, x.name.replace(/（.*$/, ''), el('br'), el('small', null, x.name.replace(/^[^（]*（|）$/g, '') + '・' + c.lessons[i] + 'コマ'))),",
+  "        el('th', null, '使い始める前', el('br'), el('small', null, 'まとめて入力')), el('th', null, '総計'), el('th', null, '割合', el('br'), el('small', null, '年間' + c.hours + '時間')));",
+  "      const body = el('tbody');",
+  "      c.rows.forEach((s) => {",
+  "        const col = colorOf(s.rate);",
+  "        const sty = col ? 'background:' + col.bg + ';color:' + col.fg : '';",
+  "        body.append(el('tr', null, el('td', { class: 'l' }, s.cls), el('td', { class: 'l' }, s.no), el('td', { class: 'l', style: sty }, s.name),",
+  "          s.counts.map((n, i) => el('td', { class: (n ? 'hit' : 'z') + (i === nowIdx ? ' now' : '') }, n)),",
+  "          el('td', { class: s.before ? '' : 'z' }, s.before || '－'),",
+  "          el('td', { class: 'tot', style: sty }, s.total), el('td', { style: sty }, c.hours ? pct(s.rate) : '－')));",
+  "      });",
+  "      if (r.courses.length > 1) box.append(el('h3', { style: 'margin:10px 8px 4px' }, c.name));",
+  "      box.append(el('table', null, el('thead', null, head), body));",
+  "      if (!c.rows.length) box.append(el('div', { class: 'note', style: 'margin:6px 8px' }, '対象の生徒がいません。'));",
+  "    });",
+  "    out.append(el('div', { class: 'note' }, r.fy + '年度。区切りは「⚙ 初期設定」→「設定」の「欠課時数を出す日」で変えられます。いまの区切りは青い列です。'), box,",
+  "      el('div', { class: 'note' }, '「総計」は教務手帳の欠課時数と同じ（まとめて入力した分＋すべての「欠」）。色は割合が 20%・25%・30%・50% をこえたとき。'));",
+  "    const done = el('span');",
+  "    out.append(el('div', { class: 'bar' }, el('button', { class: 'btn', onclick: async (e) => {",
+  "      e.target.disabled = true;",
+  "      try { await run('exportCuts', { course: st.course }); done.innerHTML = ''; done.append(el('span', { class: 'ok' }, '✓ 「区切り集計」シートに書き出しました')); }",
+  "      catch (err) { alert(errText(err)); }",
+  "      e.target.disabled = false;",
+  "    } }, '📄 シートに書き出す（報告・印刷用）'), done));",
+  "  }",
+  "  const COLORS = [{ bg: '#fff2cc', fg: '#7f6000' }, { bg: '#fce5cd', fg: '#b45f06' }, { bg: '#f4cccc', fg: '#990000' }, { bg: '#cc0000', fg: '#ffffff' }];",
   "",
   "  $('from').onchange = (e) => { st.from = e.target.value; st.range = ''; drawChips(); load(); };",
   "  $('to').onchange = (e) => { st.to = e.target.value; st.range = ''; drawChips(); load(); };",

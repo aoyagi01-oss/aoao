@@ -11,7 +11,7 @@
   .chip.on { background: #e8f0fe; border-color: #1a73e8; color: #1967d2; font-weight: bold; }
   .range { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
   .range input { font-family: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid #dadce0; border-radius: 6px; }
-  .tbl { max-height: calc(100vh - 290px); min-height: 160px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; margin-top: 8px; }
+  .tbl { max-height: calc(100vh - 370px); min-height: 160px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; margin-top: 8px; }
   table { border-collapse: collapse; width: 100%; }
   th, td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 13px; text-align: right; white-space: nowrap; }
   th { position: sticky; top: 0; background: #f8f9fa; }
@@ -24,14 +24,24 @@
   .ok { background: #e6f4ea; color: #137333; padding: 8px; border-radius: 8px; }
   .warn { background: #fef7e0; color: #b06000; padding: 8px; border-radius: 8px; margin-top: 8px; }
   label { font-size: 13px; }
+  .modes { display: flex; gap: 0; border: 1px solid #1a73e8; border-radius: 8px; overflow: hidden; width: fit-content; }
+  .modes button { border: none; background: #fff; color: #1a73e8; padding: 7px 16px; font-size: 13px; font-family: inherit; cursor: pointer; }
+  .modes button.on { background: #1a73e8; color: #fff; font-weight: bold; }
+  th.now, td.now { background: #f1f8ff; }
+  td.tot { font-weight: bold; color: #202124; }
+  #out th, #out td { padding: 5px 6px; }
+  h3 { font-size: 14px; margin: 14px 0 0; }
 </style>
 </head>
 <body>
+<div class="modes" id="modes"></div>
 <h2>講座</h2>
 <div class="chips" id="courses"></div>
+<div id="rangeBox">
 <h2>期間</h2>
 <div class="chips" id="ranges"></div>
 <div class="range"><input type="date" id="from"> 〜 <input type="date" id="to"></div>
+</div>
 <div id="out"></div>
 
 <script>
@@ -43,6 +53,7 @@
   let onlyAbsent = false;
   let last = null;
   let seq = 0; // 集計を続けて押したとき、前の結果があとから届いても使わないため
+  let mode = 'cuts'; // 'cuts'：欠課時数を出す日ごとの区切り（総計つき）／'range'：期間を指定
 
   function el(tag, attrs, ...kids) {
     const e = document.createElement(tag);
@@ -65,10 +76,14 @@
     const p0 = new Date(t.getFullYear(), t.getMonth() - 1, 1), p1 = new Date(t.getFullYear(), t.getMonth(), 0);
     const w0 = new Date(t); w0.setDate(t.getDate() - ((t.getDay() + 6) % 7));
     return [{ name: '今週', from: key(w0), to: P.today }, { name: '今月', from: key(m0), to: key(m1) }, { name: '先月', from: key(p0), to: key(p1) }]
-      .concat(P.terms).concat([{ name: P.fy + '年度', from: P.fy + '-04-01', to: (P.fy + 1) + '-03-31' }]);
+      .concat(P.cuts).concat([{ name: P.fy + '年度', from: P.fy + '-04-01', to: (P.fy + 1) + '-03-31' }]);
   }
 
   function drawChips() {
+    $('modes').innerHTML = '';
+    [['cuts', '欠課時数を出す日ごとの区切り（総計つき）'], ['range', '期間を指定して数える']].forEach(([m, label]) => $('modes').append(
+      el('button', { class: mode === m ? 'on' : '', onclick: () => { mode = m; drawChips(); load(); } }, label)));
+    $('rangeBox').style.display = mode === 'range' ? '' : 'none';
     $('courses').innerHTML = '';
     [['', 'すべての講座']].concat(P.courses.map((c) => [c, c])).forEach(([v, label]) => $('courses').append(
       el('button', { class: 'chip' + (st.course === v ? ' on' : ''), onclick: () => { st.course = v; drawChips(); load(); } }, label)));
@@ -79,6 +94,7 @@
   }
 
   async function load() {
+    if (mode === 'cuts') { loadCuts(); return; }
     const out = $('out');
     const my = ++seq;
     out.innerHTML = '';
@@ -127,6 +143,50 @@
       e.target.disabled = false;
     } }, '📄 シートに書き出す（印刷用）'), done));
   }
+
+  // ───────── 欠課時数を出す日ごとの区切り（総計つき） ─────────
+  async function loadCuts() {
+    const out = $('out');
+    const my = ++seq;
+    out.innerHTML = '';
+    out.append(el('div', { class: 'note' }, '集計しています…'));
+    let r;
+    try { r = await run('runCuts', { course: st.course }); }
+    catch (e) { if (my !== seq) return; out.innerHTML = ''; out.append(el('div', { class: 'warn' }, errText(e))); return; }
+    if (my !== seq || mode !== 'cuts') return;
+    out.innerHTML = '';
+    const nowIdx = r.ranges.findIndex((x) => x.from <= r.today && r.today <= x.to);
+    const colorOf = (rate) => { let li = -1; r.lines.forEach((v, i) => { if (rate >= v - 1e-9) li = i; }); return li >= 0 ? COLORS[Math.min(li, COLORS.length - 1)] : null; };
+    const pct = (v) => (Math.round(v * 1000) / 10).toFixed(1) + '%';
+    const box = el('div', { class: 'tbl', style: 'max-height:calc(100vh - 230px)' });
+    r.courses.forEach((c) => {
+      const head = el('tr', null, el('th', { class: 'l' }, 'クラス'), el('th', { class: 'l' }, '番号'), el('th', { class: 'l' }, '氏名'),
+        r.ranges.map((x, i) => el('th', { class: i === nowIdx ? 'now' : '' }, x.name.replace(/（.*$/, ''), el('br'), el('small', null, x.name.replace(/^[^（]*（|）$/g, '') + '・' + c.lessons[i] + 'コマ'))),
+        el('th', null, '使い始める前', el('br'), el('small', null, 'まとめて入力')), el('th', null, '総計'), el('th', null, '割合', el('br'), el('small', null, '年間' + c.hours + '時間')));
+      const body = el('tbody');
+      c.rows.forEach((s) => {
+        const col = colorOf(s.rate);
+        const sty = col ? 'background:' + col.bg + ';color:' + col.fg : '';
+        body.append(el('tr', null, el('td', { class: 'l' }, s.cls), el('td', { class: 'l' }, s.no), el('td', { class: 'l', style: sty }, s.name),
+          s.counts.map((n, i) => el('td', { class: (n ? 'hit' : 'z') + (i === nowIdx ? ' now' : '') }, n)),
+          el('td', { class: s.before ? '' : 'z' }, s.before || '－'),
+          el('td', { class: 'tot', style: sty }, s.total), el('td', { style: sty }, c.hours ? pct(s.rate) : '－')));
+      });
+      if (r.courses.length > 1) box.append(el('h3', { style: 'margin:10px 8px 4px' }, c.name));
+      box.append(el('table', null, el('thead', null, head), body));
+      if (!c.rows.length) box.append(el('div', { class: 'note', style: 'margin:6px 8px' }, '対象の生徒がいません。'));
+    });
+    out.append(el('div', { class: 'note' }, r.fy + '年度。区切りは「⚙ 初期設定」→「設定」の「欠課時数を出す日」で変えられます。いまの区切りは青い列です。'), box,
+      el('div', { class: 'note' }, '「総計」は教務手帳の欠課時数と同じ（まとめて入力した分＋すべての「欠」）。色は割合が 20%・25%・30%・50% をこえたとき。'));
+    const done = el('span');
+    out.append(el('div', { class: 'bar' }, el('button', { class: 'btn', onclick: async (e) => {
+      e.target.disabled = true;
+      try { await run('exportCuts', { course: st.course }); done.innerHTML = ''; done.append(el('span', { class: 'ok' }, '✓ 「区切り集計」シートに書き出しました')); }
+      catch (err) { alert(errText(err)); }
+      e.target.disabled = false;
+    } }, '📄 シートに書き出す（報告・印刷用）'), done));
+  }
+  const COLORS = [{ bg: '#fff2cc', fg: '#7f6000' }, { bg: '#fce5cd', fg: '#b45f06' }, { bg: '#f4cccc', fg: '#990000' }, { bg: '#cc0000', fg: '#ffffff' }];
 
   $('from').onchange = (e) => { st.from = e.target.value; st.range = ''; drawChips(); load(); };
   $('to').onchange = (e) => { st.to = e.target.value; st.range = ''; drawChips(); load(); };
