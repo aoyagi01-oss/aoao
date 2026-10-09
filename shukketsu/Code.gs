@@ -107,10 +107,17 @@ function getTakeInit() {
 // 講座を選んだとき：その講座の生徒と、その日の列（すでに記録した列）を返す。教務手帳のシートも開く
 function getCourseDay(name, date) {
   const c = findCourse_(name);
-  const sh = notebook_(c);
-  syncRows_(sh, c);
-  SpreadsheetApp.getActive().setActiveSheet(sh);
-  return dayData_(sh, c, dateKey_(date) || todayKey_());
+  // 生徒の行を足すことがあるので、書きこみと重ならないようにする
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    const sh = notebook_(c);
+    syncRows_(sh, c);
+    SpreadsheetApp.getActive().setActiveSheet(sh);
+    return dayData_(sh, c, dateKey_(date) || todayKey_());
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // o: { course, date, col（直すときの列。新しく記録するときは 0）, double（2時間続き）, absent: [学籍番号] }
@@ -186,10 +193,10 @@ function dayData_(sh, c, date) {
     const day = {};
     for (let col = NB.FIRST; col <= lastCol; col++) {
       const v = String(r[col - 1]).trim();
-      if (v === MARK && dateKey_(head[col - 1])) absentAll++;
+      if (v === MARK) absentAll++; // シートの数式（E列）と同じく、日付のない列の「欠」も数える
       if (dayCols.indexOf(col) >= 0) day[col] = v;
     }
-    students.push({ key: key, cls: String(r[NB.CLS - 1]), no: r[NB.NO - 1], name: String(r[NB.NAME - 1]), before: Number(r[NB.BEFORE - 1]) || 0, absentAll: absentAll, day: day });
+    students.push({ key: key, cls: normClass_(r[NB.CLS - 1]), no: r[NB.NO - 1], name: String(r[NB.NAME - 1]), before: Number(r[NB.BEFORE - 1]) || 0, absentAll: absentAll, day: day });
   }
   return { course: c.name, target: c.target, units: c.units, hours: hoursOf_(sh), date: date, dayCols: dayCols, lessons: lessons, students: students, lines: lines_() };
 }
@@ -207,6 +214,8 @@ function insertDayColumns_(sh, date, n) {
   }
   if (pos) {
     sh.insertColumnsBefore(pos, n);
+    // 入れた列が左どなりの H 列（すき間）の灰色を引きつがないように、生徒の行の色を消す
+    sh.getRange(NB.TOP, pos, Math.max(1, sh.getMaxRows() - NB.TOP + 1), n).setBackground(null);
   } else {
     pos = Math.max(lastCol + 1, NB.FIRST);
     if (sh.getMaxColumns() < pos + n - 1) sh.insertColumnsAfter(sh.getMaxColumns(), pos + n - 1 - sh.getMaxColumns() + 50);
@@ -346,6 +355,7 @@ function saveCourse(o) {
   const name = String(o.name || '').trim();
   if (!name) throw new Error('講座名を入れてください');
   if (/[\[\]\*\?\/\\:]/.test(name)) throw new Error('講座名に [ ] * ? / \\ : は使えません（シートの名前になるため）');
+  if (name.length > 100) throw new Error('講座名が長すぎます（100文字まで）');
   if (RESERVED.indexOf(name) >= 0) throw new Error('「' + name + '」は講座名に使えません');
   const target = splitList_(o.target).join(', ');
   if (!target) throw new Error('対象のクラス（または学籍番号）を選んでください');
@@ -358,7 +368,10 @@ function saveCourse(o) {
     const courses = getCourses_();
     const old = o.oldName ? courses.filter(function (c) { return c.name === o.oldName; })[0] : null;
     if (courses.some(function (c) { return c.name === name && c !== old; })) throw new Error('「' + name + '」という講座はもうあります');
-    if ((!old || old.name !== name) && ss.getSheetByName(name)) {
+    // シートの名前は大文字・小文字を区別しないので、名前の大文字・小文字だけを直すときは自分のシートを除く
+    const same = ss.getSheetByName(name);
+    const mine = old ? ss.getSheetByName(old.name) : null;
+    if ((!old || old.name !== name) && same && !(mine && same.getSheetId() === mine.getSheetId())) {
       throw new Error('「' + name + '」という名前のシートがもうあります。ちがう講座名にしてください');
     }
     const sh = sheet_(SHEET.COURSES);
@@ -388,8 +401,19 @@ function saveCourse(o) {
 
 // 講座の一覧から外す（教務手帳のシートは残す）
 function deleteCourse(name) {
-  const c = getCourses_().filter(function (x) { return x.name === name; })[0];
-  if (c) sheet_(SHEET.COURSES).deleteRow(c.row);
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    const c = getCourses_().filter(function (x) { return x.name === name; })[0];
+    if (c) {
+      const sh = sheet_(SHEET.COURSES);
+      // 固定した行のほかに1行しかないと deleteRow はエラーになるので、そのときは中身を消す
+      if (sh.getMaxRows() - sh.getFrozenRows() <= 1) sh.getRange(c.row, 1, 1, COURSE_HEADERS.length).clearContent();
+      else sh.deleteRow(c.row);
+    }
+  } finally {
+    lock.releaseLock();
+  }
   return getSetupData();
 }
 
@@ -466,6 +490,7 @@ function rosterPlan_(rows) {
   const existing = getStudents_();
   const byGk = {};
   existing.forEach(function (s) { if (s.gakuseki) byGk[s.gakuseki] = s; });
+  const seen = {};
   return (rows || []).map(function (r) {
     const gk = norm_(r.gakuseki);
     const name = String(r.name || '').trim();
@@ -474,7 +499,12 @@ function rosterPlan_(rows) {
     let kind = 'new';
     if (m) kind = (m.name === name && !m.excluded && (!kana || m.kana === kana)) ? 'same' : 'update';
     return { gakuseki: gk, name: name, kana: kana, kind: kind, before: m ? m.name : '', row: m ? m.row : 0 };
-  }).filter(function (p) { return p.name && p.gakuseki; });
+  }).filter(function (p) {
+    // 同じ学籍番号が2回貼られていたら、はじめの行だけ使う（2人分登録されないように）
+    if (!p.name || !p.gakuseki || seen[p.gakuseki]) return false;
+    seen[p.gakuseki] = true;
+    return true;
+  });
 }
 
 function importRoster(rows) {
@@ -500,6 +530,7 @@ function importRoster(rows) {
       sh.getRange(start, 6, fresh.length, 1).insertCheckboxes();
     }
     SpreadsheetApp.flush();
+    studentsCache_ = null; // 名簿を書きかえたので読み直す
     getStudents_(); // 学籍番号からクラス・番号をここで入れる
     // 講座の教務手帳に、新しい生徒の行を足す
     getCourses_().forEach(function (c) {
@@ -595,6 +626,7 @@ function exportPeriod(o) {
     return row;
   });
   if (vals.length) {
+    sh.getRange(5, 1, vals.length, 1).setNumberFormat('@'); // クラス「1-1」が日付にならないように
     sh.getRange(5, 3, vals.length, 1).setNumberFormat('@');
     sh.getRange(5, 1, vals.length, head.length).setValues(vals);
   }
@@ -622,6 +654,7 @@ function notebook_(c) {
     sh.getRange(NB.HEAD, 1, 1, NB_HEADERS.length).setValues([NB_HEADERS]);
     sh.getRange(NB.HEAD, 1, 2, NB.SEP).setFontWeight('bold').setBackground(COLOR.header).setVerticalAlignment('middle').setWrap(true);
     sh.getRange(NB.SUB, NB.BEFORE).setNumberFormat('m/d"まで"');
+    sh.getRange('A:A').setNumberFormat('@');
     sh.getRange('C:C').setNumberFormat('@');
     sh.getRange(1, NB.SEP, sh.getMaxRows(), 1).setBackground(COLOR.sep);
     [50, 40, 70, 120, 64, 64, 70, 6].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
@@ -661,19 +694,28 @@ function syncRows_(sh, c) {
     }
     const grow = sh.getMaxRows() < start + add.length;
     ensureSize_(sh, start + add.length, NB.FIRST);
+    // クラス（1-1）は文字にしておかないと日付（1月1日）になってしまう
+    sh.getRange(start, NB.CLS, add.length, 1).setNumberFormat('@');
     sh.getRange(start, NB.KEY, add.length, 1).setNumberFormat('@');
     sh.getRange(start, 1, add.length, NB.NAME).setValues(add.map(function (s) { return [s.cls, s.no, s.key, s.name]; }));
-    sh.getRange(start, NB.TOTAL, add.length, 2).setFormulas(add.map(function (s, i) {
-      const r = start + i;
-      return ['=IF(D' + r + '="","",N(G' + r + ')+COUNTIF(H' + r + ':' + r + ',"' + MARK + '"))', '=IF(OR(E' + r + '="",N($G$1)<=0),"",E' + r + '/$G$1)'];
-    }));
-    sh.getRange(start, NB.RATE, add.length, 1).setNumberFormat('0.0%');
+    writeRowFormulas_(sh, start, add.length);
     sh.getRange(start, NB.TOTAL, add.length, 3).setHorizontalAlignment('center');
     sh.getRange(start, NB.TOTAL, add.length, 1).setFontWeight('bold');
     add.forEach(function (s, i) { rows[s.key] = start + i; });
     if (grow) applyFormats_(sh);
   }
   return rows;
+}
+
+// E 列（欠課時数）・F 列（割合）の数式を、start 行から n 行入れる
+function writeRowFormulas_(sh, start, n) {
+  if (n < 1) return;
+  const f = [];
+  for (let r = start; r < start + n; r++) {
+    f.push(['=IF(D' + r + '="","",N(G' + r + ')+COUNTIF(H' + r + ':' + r + ',"' + MARK + '"))', '=IF(OR(E' + r + '="",N($G$1)<=0),"",E' + r + '/$G$1)']);
+  }
+  sh.getRange(start, NB.TOTAL, n, 2).setFormulas(f);
+  sh.getRange(start, NB.RATE, n, 1).setNumberFormat('0.0%');
 }
 
 // 割合のマス（氏名〜割合）と「欠」のマスの色
@@ -711,6 +753,9 @@ function refreshNotebooks_() {
     if (!f || /^=E1\*[\d.]+$/.test(f)) sh.getRange(1, 7).setFormula('=E1*' + hours);
     writeLegend_(sh);
     syncRows_(sh, c);
+    // 欠課時数・割合の数式を入れ直す（手で消したり、行を動かしたりしたとき用）
+    const last = sh.getLastRow();
+    if (last >= NB.TOP) writeRowFormulas_(sh, NB.TOP, last - NB.TOP + 1);
     applyFormats_(sh);
   });
 }
@@ -840,7 +885,11 @@ function sheet_(name) {
   return sh;
 }
 
+// 1回の呼び出しの中で何度も名簿を読まないように、読んだ結果をとっておく（名簿に書きこんだら studentsCache_ = null）
+let studentsCache_ = null;
+
 function getStudents_() {
+  if (studentsCache_) return studentsCache_;
   const sh = sheet_(SHEET.STUDENTS);
   const last = sh.getLastRow();
   if (last < 2) return [];
@@ -869,7 +918,8 @@ function getStudents_() {
       row: i + 2,
     });
   });
-  return sortStudents_(list);
+  studentsCache_ = sortStudents_(list);
+  return studentsCache_;
 }
 
 function getCourses_() {
