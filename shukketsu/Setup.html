@@ -52,17 +52,18 @@
   .empty { color: #5f6368; padding: 8px 0; }
 </style>
 </head>
-<body>
+<body data-tab="<?= tab ?>">
 <div class="tabs" id="tabs"></div>
 <div class="pane" id="pane"><div class="empty">読み込み中…</div></div>
 
 <script>
-  const START_TAB = '<?= tab ?>';
+  // 最初に開くタブ（openSetup('bulk') など）。JS の文字列の中ではなく HTML の属性で受け取る（エスケープのされ方がはっきりしているため）
+  const START_TAB = document.body.dataset.tab || '';
   const $ = (id) => document.getElementById(id);
   const run = (name, ...args) => new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[name](...args));
   const errText = (e) => (e && e.message) || String(e);
   let S = null;
-  let tab = START_TAB || '';
+  let tab = '';
 
   function el(tag, attrs, ...kids) {
     const e = document.createElement(tag);
@@ -93,6 +94,7 @@
     drawTabs();
     const p = $('pane');
     p.innerHTML = '';
+    if (!TABS.some((t) => t[0] === tab)) tab = 'roster';
     ({ roster: rosterPane, course: coursePane, bulk: bulkPane, settings: settingsPane })[tab](p);
   }
 
@@ -101,25 +103,28 @@
   const hasKanji = (c) => /[一-鿿々]/.test(c);
   // 1行から 学籍番号・氏名・ふりがな を見つける（課題提出バーコード管理と同じ読み取り方）
   function parseLine(line) {
-    const n = line.normalize('NFKC').replace(/　/g, ' ').trim();
+    // 「1−1」「1ー1」のような数字の間の横線は「-」にそろえる（NFKC では「−」「ー」は変わらないため）
+    const n = line.normalize('NFKC').replace(/　/g, ' ').replace(/(\d)\s*[‐‑‒–—―−ー]\s*(?=\d)/g, '$1-').trim();
     if (!n) return null;
     let cells;
     if (n.includes('\t')) cells = n.split('\t');
     else if (n.includes(',')) cells = n.split(',');
     else cells = n.split(/\s+/);
     const byTab = n.includes('\t') || n.includes(',');
-    cells = cells.map((c) => c.trim()).filter(Boolean);
+    cells = cells.map((c) => c.trim().replace(/^"(.*)"$/, '$1').trim()).filter(Boolean); // CSV の「"」を外す
     if (!/\d/.test(n) && /氏名|名前|学籍|番号|ふりがな|フリガナ|クラス/.test(n)) return { header: true };
     let gk = '', grade = '', cls = '', no = '';
     const small = [], text = [];
     cells.forEach((c) => {
       let m;
       if (!gk && /^\d{4}$/.test(c)) gk = c;
+      else if ((m = c.match(/^(\d)\s*(?:-|年)\s*(\d{1,2})\s*(?:組|-)\s*(\d{1,2})\s*番?$/))) { grade = m[1]; cls = m[2]; small.unshift(m[3]); } // 「1年1組1番」「1-1-1」が1つのマス
       else if ((m = c.match(/^(\d)\s*(?:-|年)\s*(\d{1,2})\s*組?$/))) { grade = m[1]; cls = m[2]; }
       else if ((m = c.match(/^(\d)\s*年$/))) grade = m[1];
       else if ((m = c.match(/^(\d{1,2})\s*組$/))) cls = m[1];
-      else if ((m = c.match(/^(\d{1,2})\s*番?$/))) small.push(m[1]);
+      else if ((m = c.match(/^(\d{1,2})\s*番?$/))) { if (/番$/.test(c)) small.unshift(m[1]); else small.push(m[1]); } // 「番」が付いた数を番号に
       else if (/^[\d\-\/]+$/.test(c)) { /* 生徒ID・電話番号などの数字は使わない */ }
+      else if (/^(男|女|男子|女子)$/.test(c)) { /* 性別の列は使わない */ }
       else text.push(c.replace(/\s+/g, ' '));
     });
     if (!gk) {
@@ -129,8 +134,14 @@
     }
     let kana = '';
     if (byTab && text.length >= 2) {
-      const i = text.findIndex((c, k) => isKana(c) && (c.includes(' ') || c.length >= 5) && text.some((o, j) => j !== k && hasKanji(o)));
+      const L = text.length - 1, rest = text.slice(0, L);
+      let i = text.findIndex((c, k) => isKana(c) && (c.includes(' ') || c.length >= 5) && text.some((o, j) => j !== k && hasKanji(o)));
+      // 「原 舞｜はらまい」「原｜舞｜はらまい」：漢字の氏名のあとの短いかなもふりがな（「青木｜さくら」は名なのでそのまま）
+      // 「ユーリ ノーマン｜ゆーり のーまん」：カタカナの氏名のあとの、ひらがなの氏名
+      if (i < 0 && isKana(text[L]) && (rest.length >= 2 ? rest.every(hasKanji) : rest[0].includes(' ') && (hasKanji(rest[0]) || (text[L].includes(' ') && /^[ぁ-ん\s・ー]+$/.test(text[L]) && !/^[ぁ-ん\s・ー]+$/.test(rest[0]))))) i = L;
       if (i >= 0) kana = text.splice(i, 1)[0];
+      // 「林｜誠｜はやし｜まこと」：ふりがなが姓・名の2列
+      else if (text.length >= 3 && isKana(text[L]) && isKana(text[L - 1]) && text.slice(0, -2).some(hasKanji)) kana = text.splice(-2).join(' ');
     } else if (!byTab && text.length >= 3 && isKana(text[text.length - 1]) && isKana(text[text.length - 2]) && text.slice(0, -2).some(hasKanji)) {
       kana = text.splice(-2).join(' ');
     }
@@ -147,9 +158,10 @@
     const done = el('div');
     const save = el('button', { class: 'primary', disabled: true }, '② この内容で名簿に登録する');
     const check = el('button', { class: 'primary' }, '① 読み取って確認する');
+    const nowCount = el('b', null, S.students + '人');
     p.append(
       el('p', { class: 'lead' }, 'Excel・校務システム・名簿のファイルから、生徒の行を', el('b', null, 'まとめてコピーして、下の枠に貼り付け'), 'てください。列の順番はそのままでかまいません。', el('br'),
-        '登録ずみ：', el('b', null, S.students + '人'), S.classes.length ? '（' + S.classes.join('・') + '）' : ''),
+        '登録ずみ：', nowCount, S.classes.length ? '（' + S.classes.join('・') + '）' : ''),
       ta,
       el('div', { class: 'ex' }, '読み取れる形の例：「1101　青木 さくら」／「1　1　1　青木　さくら」（学年・組・番号が別の列）／「1年1組　1番　青木さくら　あおき さくら」', el('br'),
         '学籍番号（1101＝1年1組1番）から、クラスと番号は自動で入ります。転出した生徒は、シート「名簿」の「除外」に ✓ を付けてください。'),
@@ -157,7 +169,14 @@
     ta.addEventListener('input', () => { save.disabled = true; });
     check.onclick = async () => {
       parsed = []; bad = [];
-      ta.value.split('\n').forEach((l) => { const r = parseLine(l); if (!r || r.header) return; if (r.bad) bad.push(r.bad); else parsed.push(r); });
+      const seen = {};
+      ta.value.split('\n').forEach((l) => {
+        const r = parseLine(l);
+        if (!r || r.header) return;
+        if (r.bad) bad.push(r.bad);
+        else if (seen[r.gakuseki]) bad.push(l.trim() + '（学籍番号 ' + r.gakuseki + ' が「' + seen[r.gakuseki] + '」と重なっています）');
+        else { seen[r.gakuseki] = r.name; parsed.push(r); }
+      });
       if (!parsed.length) { alert('生徒の行が見つかりませんでした。学籍番号（1101 など）か「学年・組・番号」と、氏名が入った表を貼り付けてください。'); return; }
       check.disabled = true;
       let plan;
@@ -184,6 +203,7 @@
         S = await run('importRoster', parsed);
         const r = S.result;
         drawTabs();
+        nowCount.textContent = S.students + '人';
         done.innerHTML = '';
         done.append(el('div', { class: 'ok' }, '✓ 名簿に登録しました（追加 ' + r.added + '人・更新 ' + r.updated + '人）。',
           el('button', { class: 'primary', style: 'margin-left:10px', onclick: () => { tab = 'course'; draw(); } }, '次へ：講座を登録する')));
@@ -231,6 +251,7 @@
       try {
         S = await run('saveCourse', { oldName: c ? c.name : '', name: name.value, target, units, memo: c ? c.memo : '' });
         editing = name.value.trim();
+        if (c && bulkCourse === c.name) bulkCourse = editing; // 名前を変えたら「まとめて入力」の選択もついていく
         draw();
         $('pane').prepend(el('div', { class: 'ok' }, '✓ 「' + editing + '」を保存しました。教務手帳のシート「' + editing + '」ができています。'));
       } catch (e) { alert(errText(e)); save.disabled = false; }
@@ -265,37 +286,36 @@
     run('getBulk', bulkCourse).then((b) => {
       box.innerHTML = '';
       const until = el('input', { type: 'date', value: b.until || '' });
-      const inputs = {};
+      const inputs = []; // [学籍番号, 入力欄]（表の順。{} だと数字のキーが数の順に並びかわるので配列）
       const body = el('tbody');
       b.students.forEach((s, i) => {
         const inp = el('input', { type: 'number', min: 0, value: s.before, placeholder: '0' });
         inp.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); const n = Object.values(inputs)[i + 1]; if (n) { n.focus(); n.select(); } }
-          if (e.key === 'ArrowUp') { e.preventDefault(); const n = Object.values(inputs)[i - 1]; if (n) { n.focus(); n.select(); } }
+          if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); const n = (inputs[i + 1] || [])[1]; if (n) { n.focus(); n.select(); } }
+          if (e.key === 'ArrowUp') { e.preventDefault(); const n = (inputs[i - 1] || [])[1]; if (n) { n.focus(); n.select(); } }
         });
-        inputs[s.key] = inp;
+        inputs.push([s.key, inp]);
         body.append(el('tr', null, el('td', { class: 'n' }, s.cls), el('td', { class: 'n' }, s.no), el('td', null, s.key), el('td', null, s.name), el('td', null, inp)));
       });
       const msg = el('div');
       const save = el('button', { class: 'primary', onclick: async () => {
         const values = {};
-        Object.entries(inputs).forEach(([k, inp]) => { values[k] = inp.value; });
+        inputs.forEach(([k, inp]) => { values[k] = inp.value; });
         save.disabled = true;
         try {
-          await run('saveBulk', { course: bulkCourse, until: until.value, values });
+          await run('saveBulk', { course: b.course, until: until.value, values });
           msg.innerHTML = '';
-          msg.append(el('div', { class: 'ok' }, '✓ 「' + bulkCourse + '」の教務手帳に入れました。'));
+          msg.append(el('div', { class: 'ok' }, '✓ 「' + b.course + '」の教務手帳に入れました。'));
         } catch (e) { alert(errText(e)); }
         save.disabled = false;
       } }, 'この講座の分を保存する');
       box.append(
         el('div', { class: 'bar' }, el('span', null, 'いつまでの分か（なくてもよい）：'), until),
-        el('div', { class: 'tbl bulk', style: 'max-height:380px' }, el('table', null,
+        el('div', { class: 'tbl bulk', style: 'max-height:calc(100vh - 300px);min-height:160px' }, el('table', null,
           el('thead', null, el('tr', null, ['クラス', '番号', '学籍番号', '氏名', 'それまでの欠課時数'].map((t) => el('th', null, t)))), body)),
         el('div', { class: 'note' }, '欠課のない生徒は空欄のままでOK。Enter で次の生徒に進みます。'),
         el('div', { class: 'bar' }, save), msg);
-      const first = Object.values(inputs)[0];
-      if (first) first.focus();
+      if (inputs[0]) inputs[0][1].focus();
     }).catch((e) => { box.innerHTML = ''; box.append(el('div', { class: 'warn' }, errText(e))); });
   }
 
@@ -324,7 +344,7 @@
 
   run('getSetupData').then((d) => {
     S = d;
-    if (!tab) tab = !S.students ? 'roster' : !S.courses.length ? 'course' : 'course';
+    tab = TABS.some((t) => t[0] === START_TAB) ? START_TAB : !S.students ? 'roster' : 'course';
     draw();
   }).catch((e) => { $('pane').innerHTML = ''; $('pane').append(el('div', { class: 'warn' }, '読み込めませんでした：' + errText(e))); });
 </script>

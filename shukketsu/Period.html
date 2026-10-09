@@ -11,7 +11,7 @@
   .chip.on { background: #e8f0fe; border-color: #1a73e8; color: #1967d2; font-weight: bold; }
   .range { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
   .range input { font-family: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid #dadce0; border-radius: 6px; }
-  .tbl { max-height: 400px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; margin-top: 8px; }
+  .tbl { max-height: calc(100vh - 290px); min-height: 160px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; margin-top: 8px; }
   table { border-collapse: collapse; width: 100%; }
   th, td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 13px; text-align: right; white-space: nowrap; }
   th { position: sticky; top: 0; background: #f8f9fa; }
@@ -42,6 +42,7 @@
   const st = { course: '', range: '', from: '', to: '' };
   let onlyAbsent = false;
   let last = null;
+  let seq = 0; // 集計を続けて押したとき、前の結果があとから届いても使わないため
 
   function el(tag, attrs, ...kids) {
     const e = document.createElement(tag);
@@ -79,10 +80,15 @@
 
   async function load() {
     const out = $('out');
+    const my = ++seq;
     out.innerHTML = '';
+    if (st.from && st.to && st.from > st.to) { out.append(el('div', { class: 'warn' }, '期間の始めが終わりよりあとになっています。日付を直してください。')); return; }
     out.append(el('div', { class: 'note' }, '集計しています…'));
-    try { last = await run('runPeriod', { course: st.course, from: st.from, to: st.to }); }
-    catch (e) { out.innerHTML = ''; out.append(el('div', { class: 'warn' }, errText(e))); return; }
+    let r;
+    try { r = await run('runPeriod', { course: st.course, from: st.from, to: st.to }); }
+    catch (e) { if (my !== seq) return; out.innerHTML = ''; out.append(el('div', { class: 'warn' }, errText(e))); return; }
+    if (my !== seq) return;
+    last = r;
     draw();
   }
 
