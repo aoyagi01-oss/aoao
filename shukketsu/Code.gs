@@ -16,7 +16,7 @@ const SHEET = {
 const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.SEATS];
 
 // このプログラムの版（サイドバーのいちばん下に出ます。貼り直しが反映されたかの確認用）
-const VERSION = '10/9-2';
+const VERSION = '10/9-3';
 
 const STUDENT_HEADERS = ['学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const COURSE_HEADERS = ['講座名（＝教務手帳のシート名）', '対象（クラス・学籍番号を「,」区切り）', '単位数', 'メモ'];
@@ -71,15 +71,24 @@ function onOpen() {
     .addToUi();
 }
 
+// 画面の HTML：「Take」などの HTML ファイルがあればそれを、なければ 1ファイル版に入っている HTML（HTML_FILES）を使う
+function html_(name) {
+  return typeof HTML_FILES !== 'undefined' && HTML_FILES[name] ? HtmlService.createHtmlOutput(HTML_FILES[name]) : HtmlService.createHtmlOutputFromFile(name);
+}
+
+function template_(name) {
+  return typeof HTML_FILES !== 'undefined' && HTML_FILES[name] ? HtmlService.createTemplate(HTML_FILES[name]) : HtmlService.createTemplateFromFile(name);
+}
+
 // 出欠をとる画面は、シートを見ながら使えるように「閉じなくてもシートをさわれる」ダイアログで開く
 function openTake() {
   setup_();
-  SpreadsheetApp.getUi().showModelessDialog(HtmlService.createHtmlOutputFromFile('Take').setWidth(1120).setHeight(640), '出欠をとる');
+  SpreadsheetApp.getUi().showModelessDialog(html_('Take').setWidth(1120).setHeight(640), '出欠をとる');
 }
 
 function openSetup(tab) {
   setup_();
-  const t = HtmlService.createTemplateFromFile('Setup');
+  const t = template_('Setup');
   t.tab = typeof tab === 'string' ? tab : '';
   SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(960).setHeight(680), '初期設定');
 }
@@ -90,7 +99,7 @@ function openBulk() {
 
 function openPeriod() {
   setup_();
-  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutputFromFile('Period').setWidth(960).setHeight(680), '期間を指定して集計');
+  SpreadsheetApp.getUi().showModalDialog(html_('Period').setWidth(960).setHeight(680), '期間を指定して集計');
 }
 
 // ───────── 出欠をとる（Take.html） ─────────
