@@ -69,6 +69,26 @@
   .spot.sel { outline: 3px solid #fbbc04; }
   .seatbox.edit .spot { cursor: grab; }
   .seatbox.dim .spot { opacity: .35; }
+  .vtabs { display: inline-flex; border: 1px solid #1a73e8; border-radius: 8px; overflow: hidden; }
+  .vtabs button { border: none; background: #fff; color: #1a73e8; padding: 5px 12px; font-size: 12px; }
+  .vtabs button.on { background: #1a73e8; color: #fff; font-weight: bold; }
+  .grid { display: grid; gap: 6px; margin: 4px 0; }
+  .seat { min-height: 62px; border: 1px solid #c4c7c5; border-radius: 8px; background: #fff; padding: 4px 2px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.25; }
+  button.seat:hover { border-color: #1a73e8; background: #f8fbff; }
+  .seat .sno { font-size: 11px; color: #5f6368; }
+  .seat .snm { font-size: 14px; font-weight: bold; word-break: keep-all; }
+  .seat .sst { font-size: 10px; padding: 0 5px; border-radius: 6px; margin-top: 2px; color: #5f6368; }
+  .seat.abs, button.seat.abs:hover { background: #d93025; border-color: #d93025; color: #fff; }
+  .seat.abs .sno, .seat.abs .sst { color: #fde7e5; background: none !important; }
+  .seat.empty { background: #f8f9fa; border-style: dashed; border-color: #e0e0e0; }
+  .seat.multi { padding: 2px; gap: 2px; }
+  .seat.multi button { width: 100%; border: 1px solid #dadce0; border-radius: 6px; background: #fff; font-size: 12px; padding: 2px; }
+  .seat.multi button.abs { background: #d93025; color: #fff; border-color: #d93025; }
+  .grid.small .seat { min-height: 34px; padding: 2px; }
+  .grid.small .snm { font-size: 11px; }
+  .grid.small .sno, .grid.small .sst { display: none; }
+  .grid.dense .snm { font-size: 12px; }
+  .desk { text-align: center; margin: 6px auto; width: 30%; min-width: 120px; border: 2px solid #5f6368; border-radius: 6px; padding: 3px; font-weight: bold; color: #3c4043; background: #f1f3f4; font-size: 13px; }
   .place { border: 2px dashed #dadce0; border-radius: 10px; padding: 24px; text-align: center; color: #5f6368; line-height: 1.8; }
   .place .btn { margin: 4px; font-size: 14px; padding: 8px 18px; }
   .tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
@@ -282,26 +302,75 @@
     const byKey = Object.fromEntries(D.students.map((s) => [s.key, s]));
     const placed = seat.spots.filter((p) => byKey[p.key]);
     const notPlaced = D.students.filter((s) => !seat.spots.some((p) => p.key === s.key));
+    const setView = (o) => { Object.assign(seat, o); drawSeat(); run('saveSeatView', D.target, o).catch(() => {}); };
     L.append(el('h3', null, '座席表', el('small', null, D.target + (seat.updated ? ' ・ ' + seat.updated + ' 更新' : '')), el('span', { class: 'sp' }),
-      el('button', { class: 'btn', onclick: () => startSeatEdit() }, '✏ 座席表を直す・撮り直す')));
-    const box = el('div', { class: 'seatbox' }, el('img', { src: seat.image, alt: '座席表', draggable: false }));
-    placed.forEach((p) => {
-      const s = byKey[p.key];
-      box.append(el('button', {
-        class: 'spot' + (absent.has(s.key) ? ' abs' : ''),
-        style: 'left:' + (p.x * 100) + '%;top:' + (p.y * 100) + '%',
-        title: s.name, onclick: () => toggle(s.key),
-      }, (absent.has(s.key) ? '欠 ' : '') + shortName(s.name)));
-    });
-    L.append(box);
+      el('span', { class: 'vtabs' },
+        el('button', { class: seat.view !== 'photo' ? 'on' : '', onclick: () => setView({ view: 'grid' }) }, '見やすい表'),
+        el('button', { class: seat.view === 'photo' ? 'on' : '', onclick: () => setView({ view: 'photo' }) }, '写真')),
+      seat.view !== 'photo' ? el('button', { class: 'btn', title: '上下・左右をさかさまにする（教卓から見た向き／生徒から見た向き）', onclick: () => setView({ flip: !seat.flip }) }, '↕ 向きを変える') : null,
+      el('button', { class: 'btn', onclick: () => startSeatEdit() }, '✏ 直す・撮り直す')));
+    if (seat.view === 'photo') {
+      const box = el('div', { class: 'seatbox' }, el('img', { src: seat.image, alt: '座席表', draggable: false }));
+      placed.forEach((p) => {
+        const s = byKey[p.key];
+        box.append(el('button', {
+          class: 'spot' + (absent.has(s.key) ? ' abs' : ''),
+          style: 'left:' + (p.x * 100) + '%;top:' + (p.y * 100) + '%',
+          title: s.name, onclick: () => toggle(s.key),
+        }, (absent.has(s.key) ? '欠 ' : '') + shortName(s.name)));
+      });
+      L.append(box);
+    } else {
+      L.append(gridView(placed, seat.desk, seat.flip, false));
+    }
     if (notPlaced.length) L.append(el('div', { class: 'msg warn' }, '座席表に置いていない生徒：' + notPlaced.map((s) => s.name).join('、') + '（右の名列から押せます）'));
+  }
+
+  // 見やすい表：写真の上のボタンの位置から、行と列にそろえて並べなおした座席表
+  //  small：座席表を直すときの下の見本（押せない）
+  function gridView(spots, desk, flip, small) {
+    const wrap = el('div');
+    const g = seatGrid(spots);
+    if (!g) { wrap.append(el('div', { class: 'empty' }, 'まだボタンが置かれていません。')); return wrap; }
+    const byKey = Object.fromEntries(D.students.map((s) => [s.key, s]));
+    // 教卓が写真の上にあれば表の上に出す（向きを変えたら反対側）
+    const deskTop = desk ? (desk === 'top') !== !!flip : null;
+    const deskEl = () => el('div', { class: 'desk' }, '教卓');
+    if (deskTop === true) wrap.append(deskEl());
+    const grid = el('div', { class: 'grid' + (small ? ' small' : '') + (g.cols >= 8 ? ' dense' : ''), style: 'grid-template-columns:repeat(' + g.cols + ', minmax(0, 1fr))' });
+    for (let rr = 0; rr < g.rows; rr++) {
+      for (let cc = 0; cc < g.cols; cc++) {
+        const r = flip ? g.rows - 1 - rr : rr, c = flip ? g.cols - 1 - cc : cc;
+        const keys = (g.at[r + ',' + c] || []).filter((k) => byKey[k]);
+        if (!keys.length) { grid.append(el('div', { class: 'seat empty' })); continue; }
+        if (keys.length > 1) {
+          // 同じマスに2人（ボタンの位置が近すぎる）：両方出す
+          grid.append(el('div', { class: 'seat multi', title: '同じ席に2人います。「直す・撮り直す」で位置を直してください' }, keys.map((k) => el('button', {
+            class: absent.has(k) ? 'abs' : '', disabled: small, onclick: () => toggle(k),
+          }, shortName(byKey[k].name)))));
+          continue;
+        }
+        const s = byKey[keys[0]];
+        const on = !small && absent.has(s.key);
+        const st = small ? null : statOf(s);
+        grid.append(el(small ? 'div' : 'button', {
+          class: 'seat' + (on ? ' abs' : ''), title: s.name, onclick: small ? null : () => toggle(s.key),
+        },
+          el('span', { class: 'sno' }, s.no !== '' ? String(s.no).padStart(2, '0') : ''),
+          el('span', { class: 'snm' }, on ? '欠 ' + shortName(s.name) : s.name),
+          st ? el('span', { class: 'sst', style: st.color && !on ? 'background:' + st.color.bg + ';color:' + st.color.fg : '' }, '欠' + st.total + (D.hours ? ' ' + pct(st.rate) : '')) : null));
+      }
+    }
+    wrap.append(grid);
+    if (deskTop === false) wrap.append(deskEl());
+    return wrap;
   }
 
   // ───────── 座席表を登録・直す ─────────
   function startSeatEdit() {
     if (dirty && !confirm('書きこんでいない出欠があります。座席表を直すと、いま押した出欠は消えます。よろしいですか？')) return;
     const seat = seats[D.target] || {};
-    E = { image: seat.image || '', newImage: '', spots: new Map((seat.spots || []).map((p) => [p.key, { x: p.x, y: p.y }])), sel: '', status: '', progress: -1, stream: null, camera: false };
+    E = { image: seat.image || '', newImage: '', spots: new Map((seat.spots || []).map((p) => [p.key, { x: p.x, y: p.y }])), desk: seat.desk || '', sel: '', status: '', progress: -1, stream: null, camera: false };
     mode = 'seat';
     loadMarks();
     E.sel = (D.students.find((s) => !E.spots.has(s.key)) || {}).key || '';
@@ -353,6 +422,15 @@
         box.append(b);
       });
       L.append(box);
+      // できあがる見やすい表の見本
+      if (E.spots.size) {
+        const spots = Array.from(E.spots.entries()).map(([key, p]) => ({ key, x: p.x, y: p.y }));
+        L.append(el('h3', { style: 'margin-top:10px' }, 'できあがる座席表（見やすい表）', el('small', null, '写真の上のボタンの位置から作ります'), el('span', { class: 'sp' }),
+          el('label', { style: 'font-weight:normal;font-size:12px' }, '教卓：',
+            el('select', { onchange: (e) => { E.desk = e.target.value; drawSeatEdit(); } },
+              [['', 'なし'], ['top', '写真の上'], ['bottom', '写真の下']].map(([v, t]) => el('option', { value: v, selected: E.desk === v }, t))))),
+          gridView(spots, E.desk, false, true));
+      }
     }
     drawPlaceList();
     $('foot').style.display = '';
@@ -541,6 +619,9 @@
         lines = lines.concat(res.data.lines || []);
       }
       if (!E || mode !== 'seat') { await worker.terminate(); return; } // 読み取り中に画面を変えた
+      // 「教卓」「黒板」「教壇」が写真の上と下のどちらにあるか
+      const deskLine = lines.find((l) => /教卓|黒板|教壇/.test(String(l.text || '').replace(/\s/g, '')));
+      if (deskLine && deskLine.bbox) E.desk = (deskLine.bbox.y0 + deskLine.bbox.y1) / 2 < c.height / 2 ? 'top' : 'bottom';
       // 1クラスだけの講座なら、出席番号でも照合する（合同授業は番号が重なるので名前だけ）
       const oneClass = new Set(D.students.map((s) => s.cls)).size === 1;
       const all = D.students.map((s) => ({ key: s.key, name: s.name, no: s.no }));
@@ -548,7 +629,7 @@
       // 読めなかった生徒は、表の空いているマスを1マスずつ読み直す（1マスだけのほうが正しく読める）
       // （番号だけで置いた席は名前より少し上にあるので、表の形は名前で置いた席から見つける）
       const named = found.filter((f) => f.by !== 'no');
-      const grid = found.length < all.length ? gridCells(named.length >= 6 ? named : found, c.width, c.height) : null;
+      const grid = found.length < all.length ? gridCells(named.length >= 6 ? named : found, c.width, c.height, found) : null;
       if (grid && grid.cells.length) {
         await worker.setParameters({ tessedit_pageseg_mode: '6' });
         for (let i = 0; i < grid.cells.length; i++) {
@@ -563,8 +644,12 @@
           const rect = { left, top, width: Math.min(c.width - left, Math.round(grid.dx * 1.1)), height: Math.min(c.height - top, Math.round(grid.dy * 1.1)) };
           const r = await worker.recognize(c, { rectangle: rect }, { blocks: true });
           const hit = matchNames(r.data.lines || [], rest, { numbers: oneClass, size: Math.max(c.width, c.height) }).sort((a, b) => b.score - a.score)[0];
-          if (hit) found.push({ key: hit.key, x: cell.x, y: cell.y, score: hit.score, by: hit.by });
+          if (hit) found.push({ key: hit.key, x: cell.x, y: cell.y, score: hit.score, by: hit.by === 'no' ? 'no' : 'cell' });
         }
+        // 番号だけで置いた席に、マスの読み直しで別の生徒が見つかったら、番号のほうはまちがい
+        const kept = dedupe(found, Math.min(grid.dx, grid.dy) * 0.4);
+        found.length = 0;
+        kept.forEach((f) => found.push(f));
       }
       await worker.terminate();
       let put = 0;
@@ -681,7 +766,7 @@
           const x = (Math.min(...run.map((q) => q.x0)) + Math.max(...run.map((q) => q.x1))) / 2;
           const y = (Math.min(...run.map((q) => q.y0)) + Math.max(...run.map((q) => q.y1))) / 2;
           const list = seen[n] = seen[n] || [];
-          if (!list.some((p) => Math.abs(p.x - x) < tol && Math.abs(p.y - y) < tol)) list.push({ x, y });
+          if (!list.some((p) => Math.abs(p.x - x) < tol && Math.abs(p.y - y) < tol)) list.push({ x, y, two: run.length === 2 });
         }
         i = j;
       }
@@ -689,23 +774,37 @@
     const byKey = {};
     out.forEach((o) => { byKey[o.key] = o; });
     const limit = (opt.size || 1000) * 0.12; // 番号と名前がこれ以上はなれていたら、別の席とみなす
+    const offs = [], onlyNo = [];
     Object.keys(seen).forEach((n) => {
       const key = byNo[n];
       if (!key || seen[n].length !== 1) return;
       const p = seen[n][0];
       const nm = byKey[key];
-      if (nm && Math.hypot(nm.x - p.x, nm.y - p.y) < limit) { nm.by = 'both'; return; } // 名前の位置のまま
-      byKey[key] = { key, x: p.x, y: p.y, score: 1, by: 'no' }; // 番号を優先する
+      if (nm && Math.hypot(nm.x - p.x, nm.y - p.y) < limit) { nm.by = 'both'; offs.push([nm.x - p.x, nm.y - p.y]); return; } // 名前の位置のまま
+      // 番号だけで置くのは2けた（「04」など）のときだけ。1けたは読みまちがい（9→4 など）が多い
+      if (!nm && p.two) onlyNo.push({ key, x: p.x, y: p.y, score: 0.95, by: 'no' });
     });
-    // 番号で置いた席に、別の生徒の名前が重なっていたら、その名前の読み取りは使わない
-    const final = Object.values(byKey);
-    return final.filter((o) => o.by !== 'name' || !final.some((q) => q.by === 'no' && q.key !== o.key && Math.hypot(q.x - o.x, q.y - o.y) < limit * 0.5));
+    // 番号だけで置いた席は、番号から名前までのいつものずれ（両方読めた席から求める）だけ動かして、名前の位置にそろえる
+    const med = (a) => { const v = a.slice().sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
+    const ox = med(offs.map((o) => o[0])), oy = med(offs.map((o) => o[1]));
+    onlyNo.forEach((o) => { o.x += ox; o.y += oy; byKey[o.key] = o; });
+    return dedupe(Object.values(byKey), limit * 0.25);
+  }
+
+  // 近すぎる（同じ席の）2人は、たしかなほう（番号と名前の両方 → 名前・マス → 番号だけ）を残す
+  function dedupe(list, dist) {
+    const rank = { both: 3, name: 2, cell: 2, no: 1 };
+    const sorted = list.slice().sort((a, b) => (rank[b.by] || 2) - (rank[a.by] || 2) || b.score - a.score);
+    const out = [];
+    sorted.forEach((o) => { if (!out.some((q) => Math.hypot(q.x - o.x, q.y - o.y) < dist)) out.push(o); });
+    return out;
   }
 
   // 読めた席の位置から、座席表の行と列を見つけて、まだだれも置いていないマスの中心を返す
   //  points: [{ x, y }]（ピクセル）、W・H: 画像の大きさ
   //  返り値: { cells: [{ x, y }], dx, dy }（dx・dy は1マスの幅・高さ）。表の形が見つからなければ null
-  function gridCells(points, W, H) {
+  //  occupied：すでに置いた席（表の形を見つけるのには使わないが、空いているかどうかには使う）
+  function gridCells(points, W, H, occupied) {
     if (points.length < 6) return null;
     const groups = (vals, tol) => {
       const v = vals.slice().sort((a, b) => a - b);
@@ -739,9 +838,48 @@
     cols = fill(cols, dx); rows = fill(rows, dy);
     const cells = [];
     rows.forEach((y) => cols.forEach((x) => {
-      if (!points.some((p) => Math.abs(p.x - x) < dx * 0.45 && Math.abs(p.y - y) < dy * 0.45)) cells.push({ x, y });
+      if (!(occupied || points).some((p) => Math.abs(p.x - x) < dx * 0.45 && Math.abs(p.y - y) < dy * 0.45)) cells.push({ x, y });
     }));
     return { cells, dx, dy };
+  }
+
+  // ボタンの位置（写真の左上を 0、右下を 1）から、座席表の行と列を見つける
+  //  返り値: { rows, cols, at: { 'r,c': [key] } }（ボタンがなければ null）
+  function seatGrid(spots) {
+    if (!spots.length) return null;
+    const centers = (vals) => {
+      const v = vals.slice().sort((a, b) => a - b);
+      // 席と席の間（大きいすき間）の半分くらいまでは同じ列とみなす（番号の位置と名前の位置の差はまとめる）
+      const all = [];
+      for (let i = 1; i < v.length; i++) all.push(v[i] - v[i - 1]);
+      const max = Math.max(0, ...all);
+      const gaps = all.filter((g) => g > max * 0.4).sort((a, b) => a - b);
+      const typical = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 1;
+      const tol = Math.max(0.015, typical * 0.45);
+      const out = [];
+      v.forEach((x) => {
+        const g = out[out.length - 1];
+        if (g && x - g.last <= tol) { g.sum += x; g.n++; g.last = x; } else out.push({ sum: x, n: 1, last: x });
+      });
+      const cs = out.map((g) => g.sum / g.n);
+      // 1列・1行まるごとだれもいないところ（間があいている）をうめる
+      const d = [];
+      for (let i = 1; i < cs.length; i++) d.push(cs[i] - cs[i - 1]);
+      d.sort((a, b) => a - b);
+      const step = d.length ? d[Math.floor(d.length / 2)] : 0;
+      const full = [cs[0]];
+      for (let i = 1; i < cs.length; i++) {
+        const k = step ? Math.round((cs[i] - cs[i - 1]) / step) : 1;
+        for (let j = 1; j < k; j++) full.push(cs[i - 1] + (cs[i] - cs[i - 1]) * j / k);
+        full.push(cs[i]);
+      }
+      return full;
+    };
+    const rowsC = centers(spots.map((p) => p.y)), colsC = centers(spots.map((p) => p.x));
+    const near = (cs, v) => { let b = 0; cs.forEach((c, i) => { if (Math.abs(c - v) < Math.abs(cs[b] - v)) b = i; }); return b; };
+    const at = {};
+    spots.forEach((p) => { const k = near(rowsC, p.y) + ',' + near(colsC, p.x); (at[k] = at[k] || []).push(p.key); });
+    return { rows: rowsC.length, cols: colsC.length, at };
   }
   // </match>
 
@@ -752,10 +890,10 @@
     if (mode === 'seat') {
       try {
         const spots = Array.from(E.spots.entries()).map(([key, p]) => ({ key, x: p.x, y: p.y }));
-        seats[D.target] = await run('saveSeat', { target: D.target, image: E.newImage, spots });
+        seats[D.target] = await run('saveSeat', { target: D.target, image: E.newImage, spots, desk: E.desk });
         stopCamera();
         mode = 'take'; E = null;
-        note = '✓ 座席表を保存しました。写真の上の名前を押すと欠席になります。';
+        note = '✓ 座席表を保存しました。座席表の名前を押すと欠席になります。';
         draw();
       } catch (e) { alert('座席表を保存できませんでした：' + errText(e)); $('save').disabled = false; }
       return;

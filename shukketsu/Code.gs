@@ -228,11 +228,12 @@ function insertDayColumns_(sh, date, n) {
 // ───────── 座席表 ─────────
 
 // target（講座の「対象」）の座席表：写真（data URL）と、生徒ごとのボタンの位置（写真の左上を 0、右下を 1）
+//  desk：写真の中の教卓の位置（'top'・'bottom'・''）、flip：表を上下左右さかさまに出すか、view：'grid'（見やすい表）か 'photo'（写真）
 function getSeat(target) {
   const row = seatRow_(target);
-  const out = { target: target, image: '', spots: [], updated: '' };
+  const out = { target: target, image: '', spots: [], desk: '', flip: false, view: 'grid', updated: '' };
   if (!row) return out;
-  try { out.spots = JSON.parse(row.json || '[]'); } catch (e) { out.spots = []; }
+  Object.assign(out, seatLayout_(row.json));
   out.updated = row.updated instanceof Date ? Utilities.formatDate(row.updated, tz_(), 'yyyy/M/d') : String(row.updated || '');
   if (row.fileId) {
     try {
@@ -245,7 +246,26 @@ function getSeat(target) {
   return out;
 }
 
-// o: { target, image（新しい写真の data URL。変えないときは空）, spots: [{ key, x, y }] }
+// 「配置」の列の中身。はじめのころの形（ボタンの位置の配列だけ）も読む
+function seatLayout_(json) {
+  let v;
+  try { v = JSON.parse(json || '[]'); } catch (e) { v = []; }
+  if (Array.isArray(v)) v = { spots: v };
+  return { spots: v.spots || [], desk: v.desk === 'top' || v.desk === 'bottom' ? v.desk : '', flip: !!v.flip, view: v.view === 'photo' ? 'photo' : 'grid' };
+}
+
+// 見やすい表・写真の切りかえ、向き（教卓から見た向き）だけを保存する
+function saveSeatView(target, o) {
+  const row = seatRow_(target);
+  if (!row) return false;
+  const lay = seatLayout_(row.json);
+  if (o.flip !== undefined) lay.flip = !!o.flip;
+  if (o.view !== undefined) lay.view = o.view === 'photo' ? 'photo' : 'grid';
+  sheet_(SHEET.SEATS).getRange(row.row, 3).setValue(JSON.stringify(lay));
+  return true;
+}
+
+// o: { target, image（新しい写真の data URL。変えないときは空）, spots: [{ key, x, y }], desk }
 function saveSeat(o) {
   const target = splitList_(o.target).join(', ');
   if (!target) throw new Error('どのクラスの座席表かわかりません');
@@ -267,7 +287,10 @@ function saveSeat(o) {
       return { key: norm_(p.key), x: cl(p.x), y: cl(p.y) };
     }).filter(function (p) { return p.key; });
     const sh = sheet_(SHEET.SEATS);
-    const vals = [target, fileId, JSON.stringify(spots), new Date()];
+    const lay = row ? seatLayout_(row.json) : seatLayout_('');
+    lay.spots = spots;
+    if (o.desk !== undefined) lay.desk = o.desk === 'top' || o.desk === 'bottom' ? o.desk : '';
+    const vals = [target, fileId, JSON.stringify(lay), new Date()];
     const r = row ? row.row : lastDataRow_(sh, 1) + 1;
     ensureSize_(sh, r, SEAT_HEADERS.length);
     sh.getRange(r, 1, 1, 2).setNumberFormat('@');
