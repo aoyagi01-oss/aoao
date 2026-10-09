@@ -16,7 +16,7 @@ const SHEET = {
 const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.SEATS];
 
 // このプログラムの版（サイドバーのいちばん下に出ます。貼り直しが反映されたかの確認用）
-const VERSION = '10/9-3';
+const VERSION = '10/9-4';
 
 const STUDENT_HEADERS = ['学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const COURSE_HEADERS = ['講座名（＝教務手帳のシート名）', '対象（クラス・学籍番号を「,」区切り）', '単位数', 'メモ'];
@@ -65,10 +65,134 @@ function onOpen() {
     .addItem('📝 まとめて入力（使い始める前の欠課）', 'openBulk')
     .addSeparator()
     .addSubMenu(SpreadsheetApp.getUi().createMenu('その他')
+      .addItem('開いたらすぐ出欠をとる画面を出す（オン／オフ）', 'toggleAutoOpen')
       .addItem('教務手帳の色・数式を整える', 'refreshNotebooks')
       .addItem('お試しデータを入れる', 'insertSampleData')
       .addItem('シートを作り直す（消したシートを戻す）', 'setup'))
     .addToUi();
+}
+
+// ───────── 開いたらすぐ出欠をとる画面を出す ─────────
+// ふつうの onOpen（だれが開いても動く）からは画面を出せないので、オンにした先生の「開いたとき」のトリガーを登録する
+
+const AUTO_OPEN_HANDLER = 'openTakeOnOpen';
+
+function openTakeOnOpen() {
+  openTake();
+}
+
+function autoOpenOn_() {
+  return ScriptApp.getProjectTriggers().some(function (t) {
+    return t.getHandlerFunction() === AUTO_OPEN_HANDLER && t.getEventType() === ScriptApp.EventType.ON_OPEN;
+  });
+}
+
+// on：true＝オン、false＝オフ。今の状態（true／false）を返す
+function setAutoOpen(on) {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === AUTO_OPEN_HANDLER) ScriptApp.deleteTrigger(t);
+  });
+  if (on) ScriptApp.newTrigger(AUTO_OPEN_HANDLER).forSpreadsheet(SpreadsheetApp.getActive()).onOpen().create();
+  return !!on;
+}
+
+function toggleAutoOpen() {
+  const on = setAutoOpen(!autoOpenOn_());
+  SpreadsheetApp.getUi().alert(on
+    ? 'オンにしました。次からこのスプレッドシートを開くと、すぐ「出欠をとる」画面が出ます。'
+    : 'オフにしました。出欠をとるときは、メニュー「📋 出欠」→「✋ 出欠をとる」を押してください。');
+}
+
+// 'yyyy-MM-dd' の曜日（0＝日曜）
+function weekday_(key) {
+  const p = key.split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay();
+}
+
+// 講座ごとに、教務手帳に記録した日付（重なりなし・古い順）
+function recordedDates_() {
+  const ss = SpreadsheetApp.getActive();
+  const out = {};
+  getCourses_().forEach(function (c) {
+    const sh = ss.getSheetByName(c.name);
+    const seen = {};
+    if (sh) {
+      const lastCol = lastDateCol_(sh);
+      if (lastCol >= NB.FIRST) {
+        sh.getRange(NB.HEAD, NB.FIRST, 1, lastCol - NB.FIRST + 1).getValues()[0].forEach(function (v) {
+          const k = dateKey_(v);
+          if (k) seen[k] = true;
+        });
+      }
+    }
+    out[c.name] = Object.keys(seen).sort();
+  });
+  return out;
+}
+
+// 今日と同じ曜日に、この6週間で記録した講座（多い順）。開いたときに講座を選んでおくのに使う
+function usualCourses_(today, rec) {
+  rec = rec || recordedDates_();
+  const w = weekday_(today), from = addDaysKey_(today, -42);
+  const out = [];
+  Object.keys(rec).forEach(function (name) {
+    const n = rec[name].filter(function (k) { return k >= from && k < today && weekday_(k) === w; }).length;
+    if (n) out.push({ name: name, n: n });
+  });
+  return out.sort(function (a, b) { return b.n - a.n; }).map(function (x) { return x.name; });
+}
+
+// ───────── 入力忘れの警告 ─────────
+// 講座ごとに「いつも授業がある曜日」（この6週間で2回以上記録した曜日）を見つけ、
+// この4週間（今日はふくめない）で、その曜日なのに記録がない日を返す。「授業なし」にした日は出さない
+const MISSING_DAYS = 28;
+
+function missingLessons_(today, rec) {
+  rec = rec || recordedDates_();
+  const skips = skipped_();
+  const out = [];
+  Object.keys(rec).forEach(function (name) {
+    const dates = rec[name];
+    if (!dates.length) return;
+    const has = {};
+    dates.forEach(function (k) { has[k] = true; });
+    const from6 = addDaysKey_(today, -42);
+    const count = [0, 0, 0, 0, 0, 0, 0];
+    dates.forEach(function (k) { if (k >= from6 && k < today) count[weekday_(k)]++; });
+    // 使い始めた日より前は数えない
+    let k = dates[0] > addDaysKey_(today, -MISSING_DAYS) ? dates[0] : addDaysKey_(today, -MISSING_DAYS);
+    for (; k < today; k = addDaysKey_(k, 1)) {
+      if (count[weekday_(k)] >= 2 && !has[k] && !(skips[name] && skips[name][k])) out.push({ course: name, date: k });
+    }
+  });
+  return out.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+}
+
+function skipped_() {
+  const raw = PropertiesService.getDocumentProperties().getProperty('skippedLessons');
+  try { return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
+}
+
+// その日はその講座の授業がなかった（行事・休日など）：入力忘れの警告に出さない
+function skipLesson(course, date) {
+  const key = dateKey_(date);
+  if (!key) throw new Error('日付がわかりません');
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    const skips = skipped_();
+    const limit = addDaysKey_(todayKey_(), -MISSING_DAYS - 7);
+    // 古くなった分は消して、小さく保つ
+    Object.keys(skips).forEach(function (n) {
+      Object.keys(skips[n]).forEach(function (k) { if (k < limit) delete skips[n][k]; });
+      if (!Object.keys(skips[n]).length) delete skips[n];
+    });
+    (skips[course] = skips[course] || {})[key] = true;
+    PropertiesService.getDocumentProperties().setProperty('skippedLessons', JSON.stringify(skips));
+  } finally {
+    lock.releaseLock();
+  }
+  return missingLessons_(todayKey_());
 }
 
 // 画面の HTML：「Take」などの HTML ファイルがあればそれを、なければ 1ファイル版に入っている HTML（HTML_FILES）を使う
@@ -106,12 +230,16 @@ function openPeriod() {
 
 function getTakeInit() {
   setup_();
+  const rec = recordedDates_();
   return {
     version: VERSION,
     today: todayKey_(),
     lines: lines_(),
     courses: getCourses_().map(function (c) { return { name: c.name, units: c.units, target: c.target }; }),
     students: getStudents_().filter(function (s) { return !s.excluded; }).length,
+    usual: usualCourses_(todayKey_(), rec),
+    missing: missingLessons_(todayKey_(), rec),
+    autoOpen: autoOpenOn_(),
   };
 }
 

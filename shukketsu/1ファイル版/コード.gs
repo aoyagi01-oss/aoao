@@ -22,7 +22,7 @@ const SHEET = {
 const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.SEATS];
 
 // このプログラムの版（サイドバーのいちばん下に出ます。貼り直しが反映されたかの確認用）
-const VERSION = '10/9-3';
+const VERSION = '10/9-4';
 
 const STUDENT_HEADERS = ['学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const COURSE_HEADERS = ['講座名（＝教務手帳のシート名）', '対象（クラス・学籍番号を「,」区切り）', '単位数', 'メモ'];
@@ -71,10 +71,134 @@ function onOpen() {
     .addItem('📝 まとめて入力（使い始める前の欠課）', 'openBulk')
     .addSeparator()
     .addSubMenu(SpreadsheetApp.getUi().createMenu('その他')
+      .addItem('開いたらすぐ出欠をとる画面を出す（オン／オフ）', 'toggleAutoOpen')
       .addItem('教務手帳の色・数式を整える', 'refreshNotebooks')
       .addItem('お試しデータを入れる', 'insertSampleData')
       .addItem('シートを作り直す（消したシートを戻す）', 'setup'))
     .addToUi();
+}
+
+// ───────── 開いたらすぐ出欠をとる画面を出す ─────────
+// ふつうの onOpen（だれが開いても動く）からは画面を出せないので、オンにした先生の「開いたとき」のトリガーを登録する
+
+const AUTO_OPEN_HANDLER = 'openTakeOnOpen';
+
+function openTakeOnOpen() {
+  openTake();
+}
+
+function autoOpenOn_() {
+  return ScriptApp.getProjectTriggers().some(function (t) {
+    return t.getHandlerFunction() === AUTO_OPEN_HANDLER && t.getEventType() === ScriptApp.EventType.ON_OPEN;
+  });
+}
+
+// on：true＝オン、false＝オフ。今の状態（true／false）を返す
+function setAutoOpen(on) {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === AUTO_OPEN_HANDLER) ScriptApp.deleteTrigger(t);
+  });
+  if (on) ScriptApp.newTrigger(AUTO_OPEN_HANDLER).forSpreadsheet(SpreadsheetApp.getActive()).onOpen().create();
+  return !!on;
+}
+
+function toggleAutoOpen() {
+  const on = setAutoOpen(!autoOpenOn_());
+  SpreadsheetApp.getUi().alert(on
+    ? 'オンにしました。次からこのスプレッドシートを開くと、すぐ「出欠をとる」画面が出ます。'
+    : 'オフにしました。出欠をとるときは、メニュー「📋 出欠」→「✋ 出欠をとる」を押してください。');
+}
+
+// 'yyyy-MM-dd' の曜日（0＝日曜）
+function weekday_(key) {
+  const p = key.split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay();
+}
+
+// 講座ごとに、教務手帳に記録した日付（重なりなし・古い順）
+function recordedDates_() {
+  const ss = SpreadsheetApp.getActive();
+  const out = {};
+  getCourses_().forEach(function (c) {
+    const sh = ss.getSheetByName(c.name);
+    const seen = {};
+    if (sh) {
+      const lastCol = lastDateCol_(sh);
+      if (lastCol >= NB.FIRST) {
+        sh.getRange(NB.HEAD, NB.FIRST, 1, lastCol - NB.FIRST + 1).getValues()[0].forEach(function (v) {
+          const k = dateKey_(v);
+          if (k) seen[k] = true;
+        });
+      }
+    }
+    out[c.name] = Object.keys(seen).sort();
+  });
+  return out;
+}
+
+// 今日と同じ曜日に、この6週間で記録した講座（多い順）。開いたときに講座を選んでおくのに使う
+function usualCourses_(today, rec) {
+  rec = rec || recordedDates_();
+  const w = weekday_(today), from = addDaysKey_(today, -42);
+  const out = [];
+  Object.keys(rec).forEach(function (name) {
+    const n = rec[name].filter(function (k) { return k >= from && k < today && weekday_(k) === w; }).length;
+    if (n) out.push({ name: name, n: n });
+  });
+  return out.sort(function (a, b) { return b.n - a.n; }).map(function (x) { return x.name; });
+}
+
+// ───────── 入力忘れの警告 ─────────
+// 講座ごとに「いつも授業がある曜日」（この6週間で2回以上記録した曜日）を見つけ、
+// この4週間（今日はふくめない）で、その曜日なのに記録がない日を返す。「授業なし」にした日は出さない
+const MISSING_DAYS = 28;
+
+function missingLessons_(today, rec) {
+  rec = rec || recordedDates_();
+  const skips = skipped_();
+  const out = [];
+  Object.keys(rec).forEach(function (name) {
+    const dates = rec[name];
+    if (!dates.length) return;
+    const has = {};
+    dates.forEach(function (k) { has[k] = true; });
+    const from6 = addDaysKey_(today, -42);
+    const count = [0, 0, 0, 0, 0, 0, 0];
+    dates.forEach(function (k) { if (k >= from6 && k < today) count[weekday_(k)]++; });
+    // 使い始めた日より前は数えない
+    let k = dates[0] > addDaysKey_(today, -MISSING_DAYS) ? dates[0] : addDaysKey_(today, -MISSING_DAYS);
+    for (; k < today; k = addDaysKey_(k, 1)) {
+      if (count[weekday_(k)] >= 2 && !has[k] && !(skips[name] && skips[name][k])) out.push({ course: name, date: k });
+    }
+  });
+  return out.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+}
+
+function skipped_() {
+  const raw = PropertiesService.getDocumentProperties().getProperty('skippedLessons');
+  try { return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
+}
+
+// その日はその講座の授業がなかった（行事・休日など）：入力忘れの警告に出さない
+function skipLesson(course, date) {
+  const key = dateKey_(date);
+  if (!key) throw new Error('日付がわかりません');
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    const skips = skipped_();
+    const limit = addDaysKey_(todayKey_(), -MISSING_DAYS - 7);
+    // 古くなった分は消して、小さく保つ
+    Object.keys(skips).forEach(function (n) {
+      Object.keys(skips[n]).forEach(function (k) { if (k < limit) delete skips[n][k]; });
+      if (!Object.keys(skips[n]).length) delete skips[n];
+    });
+    (skips[course] = skips[course] || {})[key] = true;
+    PropertiesService.getDocumentProperties().setProperty('skippedLessons', JSON.stringify(skips));
+  } finally {
+    lock.releaseLock();
+  }
+  return missingLessons_(todayKey_());
 }
 
 // 画面の HTML：「Take」などの HTML ファイルがあればそれを、なければ 1ファイル版に入っている HTML（HTML_FILES）を使う
@@ -112,12 +236,16 @@ function openPeriod() {
 
 function getTakeInit() {
   setup_();
+  const rec = recordedDates_();
   return {
     version: VERSION,
     today: todayKey_(),
     lines: lines_(),
     courses: getCourses_().map(function (c) { return { name: c.name, units: c.units, target: c.target }; }),
     students: getStudents_().filter(function (s) { return !s.excluded; }).length,
+    usual: usualCourses_(todayKey_(), rec),
+    missing: missingLessons_(todayKey_(), rec),
+    autoOpen: autoOpenOn_(),
   };
 }
 
@@ -1156,6 +1284,14 @@ HTML_FILES["Take"] = [
   "  .course { padding: 5px 12px; border: 1px solid #dadce0; border-radius: 16px; background: #fff; font-size: 13px; }",
   "  .course:hover { background: #f1f3f4; }",
   "  .course.on { background: #1a73e8; color: #fff; border-color: #1a73e8; font-weight: bold; }",
+  "  .course .usual { font-size: 10px; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: #fef7e0; color: #b06000; font-weight: normal; }",
+  "  .lnk.auto { color: #188038; }",
+  "  #warn { background: #fce8e6; color: #a50e0e; border-bottom: 1px solid #f4c7c3; padding: 5px 10px; font-size: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; max-height: 76px; overflow: auto; }",
+  "  #warn b { margin-right: 4px; }",
+  "  #warn .mi { display: inline-flex; align-items: center; border: 1px solid #f4c7c3; border-radius: 12px; background: #fff; overflow: hidden; }",
+  "  #warn .mi button { border: none; background: none; font-size: 12px; padding: 2px 8px; color: #a50e0e; }",
+  "  #warn .mi button.go:hover { background: #fde7e5; }",
+  "  #warn .mi button.skip { color: #5f6368; border-left: 1px solid #f4c7c3; font-size: 11px; }",
   "  .menu { display: flex; gap: 2px; }",
   "  #body { flex: 1; display: flex; min-height: 0; }",
   "  #left { flex: 1.6; border-right: 1px solid #dadce0; overflow: auto; padding: 8px 10px; position: relative; }",
@@ -1244,9 +1380,11 @@ HTML_FILES["Take"] = [
   "    <button class=\"lnk\" id=\"lPeriod\">🔎 期間集計</button>",
   "    <button class=\"lnk\" id=\"lBulk\">📝 まとめて入力</button>",
   "    <button class=\"lnk\" id=\"lSetup\">⚙ 初期設定</button>",
+  "    <button class=\"lnk\" id=\"lAuto\" title=\"スプレッドシートを開いたら、すぐこの画面を出すか\">🚀</button>",
   "    <button class=\"lnk\" id=\"lReload\" title=\"初期設定を変えたあとに押す\">🔄</button>",
   "  </div>",
   "</div>",
+  "<div id=\"warn\" style=\"display:none\"></div>",
   "<div id=\"body\">",
   "  <div id=\"left\"><div class=\"empty\">読み込み中…</div></div>",
   "  <div id=\"right\"></div>",
@@ -1303,11 +1441,44 @@ HTML_FILES["Take"] = [
   "    $('dateInput').value = date;",
   "    $('today').style.display = date === I.today ? 'none' : '';",
   "    $('courses').innerHTML = '';",
-  "    I.courses.forEach((c) => $('courses').append(el('button', { class: 'course' + (D && D.course === c.name ? ' on' : ''), onclick: () => pick(c.name) }, c.name)));",
+  "    // 今日と同じ曜日にいつも記録している講座を先に出す",
+  "    const usual = (I.usual || []).filter((n) => I.courses.some((c) => c.name === n));",
+  "    const list = usual.map((n) => I.courses.find((c) => c.name === n)).concat(I.courses.filter((c) => !usual.includes(c.name)));",
+  "    list.forEach((c) => $('courses').append(el('button', { class: 'course' + (D && D.course === c.name ? ' on' : ''), onclick: () => pick(c.name), title: usual.includes(c.name) ? WD[new Date().getDay()] + '曜日にいつも記録している講座' : '' },",
+  "      c.name, usual.includes(c.name) ? el('span', { class: 'usual' }, 'いつもの') : null)));",
+  "    $('lAuto').textContent = I.autoOpen ? '🚀 開いたらすぐ表示：オン' : '🚀 開いたらすぐ表示：オフ';",
+  "    $('lAuto').className = 'lnk' + (I.autoOpen ? ' auto' : '');",
+  "  }",
+  "",
+  "  // 入力忘れの警告：いつも授業がある曜日なのに、教務手帳に記録がない日",
+  "  function drawWarn() {",
+  "    const W = $('warn');",
+  "    const list = (I && I.missing) || [];",
+  "    W.innerHTML = '';",
+  "    W.style.display = list.length && mode === 'take' ? '' : 'none';",
+  "    if (!list.length) return;",
+  "    W.append(el('b', null, '⚠ 記録がない授業があります（' + list.length + '件）'));",
+  "    list.forEach((m) => W.append(el('span', { class: 'mi' },",
+  "      el('button', { class: 'go', title: 'この日のこの講座を開いて記録する', onclick: () => goTo(m.date, m.course) }, dayLabel(m.date) + ' ' + m.course),",
+  "      el('button', { class: 'skip', title: '行事・休日などで、この日は授業がなかった', onclick: () => skip(m) }, '授業なし'))));",
+  "  }",
+  "  function goTo(d, course) {",
+  "    if (busy === 'save') return;",
+  "    if (mode === 'seat') { alert('座席表を保存するか「やめる」を押してから、選んでください。'); return; }",
+  "    if (dirty && !confirm('書きこんでいない変更を捨てて、' + dayLabel(d) + ' の ' + course + ' を開きますか？')) return;",
+  "    dirty = false; note = '';",
+  "    date = d;",
+  "    drawTop();",
+  "    pick(course);",
+  "  }",
+  "  function skip(m) {",
+  "    if (!confirm(dayLabel(m.date) + ' の ' + m.course + ' は、授業がなかった日にしますか？\\n（この警告に出なくなります）')) return;",
+  "    run('skipLesson', m.course, m.date).then((list) => { I.missing = list; drawWarn(); }).catch((e) => alert(errText(e)));",
   "  }",
   "",
   "  function draw() {",
   "    drawTop();",
+  "    drawWarn();",
   "    if (!I.students || !I.courses.length) {",
   "      $('left').innerHTML = '';",
   "      $('left').append(el('div', { class: 'msg warn' }, !I.students ? 'はじめに「⚙ 初期設定」で名簿を登録してください。' : 'はじめに「⚙ 初期設定」で講座を登録してください。'),",
@@ -2172,6 +2343,8 @@ HTML_FILES["Take"] = [
   "      if (D !== d0) { draw(); return; }",
   "      const wasNew = !cols.length;",
   "      D = r;",
+  "      I.missing = (I.missing || []).filter((m) => !(m.course === r.course && m.date === r.date));",
+  "      drawWarn();",
   "      note = '✓ 教務手帳に' + (wasNew ? '書きこみました' : '上書きしました') + '（' + dayLabel(r.date || date) + '・欠席 ' + n + '人' + (r.saved.length > 1 ? '・2コマ分' : '') + '）';",
   "      startEdit(r.saved[0]);",
   "    } catch (e) {",
@@ -2215,6 +2388,13 @@ HTML_FILES["Take"] = [
   "  $('lPeriod').onclick = leaving(() => openOther('openPeriod'));",
   "  $('lBulk').onclick = leaving(() => openOther('openBulk'));",
   "  $('lSetup').onclick = leaving(() => openOther('openSetup', ''));",
+  "  $('lAuto').onclick = () => {",
+  "    if (!I) return;",
+  "    const on = !I.autoOpen;",
+  "    if (!confirm(on ? 'スプレッドシートを開いたら、すぐこの画面を出すようにしますか？\\n（はじめての時は、Google の許可の画面が出ることがあります）' : '開いたらすぐこの画面を出すのをやめますか？')) return;",
+  "    run('setAutoOpen', on).then((v) => { I.autoOpen = v; drawTop(); alert(v ? 'オンにしました。次から開くとすぐこの画面が出ます。' : 'オフにしました。'); })",
+  "      .catch((e) => alert('切りかえられませんでした：' + errText(e)));",
+  "  };",
   "  $('lReload').onclick = leaving(() => {",
   "    run('getTakeInit').then((d) => {",
   "      I = d; const name = D && D.course; D = null; mode = 'take'; E = null; dirty = false; note = '';",
@@ -2228,7 +2408,10 @@ HTML_FILES["Take"] = [
   "  run('getTakeInit').then((d) => {",
   "    I = d; date = d.today;",
   "    draw();",
+  "    // 講座が1つだけ、または今日の曜日にいつも記録している講座が1つだけなら、最初から選んでおく",
+  "    const usual = (I.usual || []).filter((n) => I.courses.some((c) => c.name === n));",
   "    if (I.courses.length === 1) pick(I.courses[0].name);",
+  "    else if (usual.length === 1) pick(usual[0]);",
   "  }).catch((e) => { $('left').innerHTML = ''; $('left').append(el('div', { class: 'msg warn' }, '読み込めませんでした：' + errText(e))); });",
   "</script>",
   "</body>",
