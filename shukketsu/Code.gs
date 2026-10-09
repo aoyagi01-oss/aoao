@@ -31,6 +31,8 @@ const SEAT_FOLDER = '出欠_座席表の写真';
 const NB = { HEAD: 3, SUB: 4, TOP: 5, CLS: 1, NO: 2, KEY: 3, NAME: 4, TOTAL: 5, RATE: 6, BEFORE: 7, SEP: 8, FIRST: 9 };
 const NB_HEADERS = ['クラス', '番号', '学籍番号', '氏名', '欠課時数', '割合', 'それ以前の欠課', ''];
 const MARK = '欠';
+// 2時間続きで書きこんだ列は、4行目（曜日）に「続き」と入れて、まとめて直せるようにする
+const DOUBLE = '続き';
 
 const SETTING = {
   HOURS: '1単位あたりの年間授業時数',
@@ -120,7 +122,7 @@ function getCourseDay(name, date) {
   }
 }
 
-// o: { course, date, col（直すときの列。新しく記録するときは 0）, double（2時間続き）, absent: [学籍番号] }
+// o: { course, date, cols（直すときの列。2時間続きなら2つ。新しく記録するときは空）, double（2時間続き）, absent: [学籍番号] }
 function saveDay(o) {
   const c = findCourse_(o.course);
   const date = dateKey_(o.date);
@@ -131,11 +133,14 @@ function saveDay(o) {
     const sh = notebook_(c);
     const rows = syncRows_(sh, c);
     let cols;
-    if (o.col) {
-      if (dateKey_(sh.getRange(NB.HEAD, o.col).getValue()) !== date) {
-        throw new Error('教務手帳の列が動いたようです。もう一度、講座を選び直してください。');
-      }
-      cols = [Number(o.col)];
+    const fix = (o.cols || (o.col ? [o.col] : [])).map(Number).filter(function (n) { return n >= NB.FIRST; });
+    if (fix.length) {
+      fix.forEach(function (col) {
+        if (dateKey_(sh.getRange(NB.HEAD, col).getValue()) !== date) {
+          throw new Error('教務手帳の列が動いたようです。もう一度、講座を選び直してください。');
+        }
+      });
+      cols = fix;
     } else {
       cols = insertDayColumns_(sh, date, o.double ? 2 : 1);
     }
@@ -174,6 +179,7 @@ function dayData_(sh, c, date) {
   const width = Math.max(lastCol, NB.FIRST);
   const grid = last >= NB.HEAD ? sh.getRange(NB.HEAD, 1, last - NB.HEAD + 1, width).getValues() : [];
   const head = grid[0] || [];
+  const sub = grid[1] || [];
   const dayCols = [];
   let lessons = 0;
   for (let col = NB.FIRST; col <= lastCol; col++) {
@@ -182,6 +188,14 @@ function dayData_(sh, c, date) {
     lessons++;
     if (k === date) dayCols.push(col);
   }
+  // その日の授業：となり合った「続き」の列は1つの授業（2時間続き）にまとめる
+  const isDouble = function (col) { return String(sub[col - 1] || '').indexOf(DOUBLE) >= 0; };
+  const groups = [];
+  dayCols.forEach(function (col) {
+    const g = groups[groups.length - 1];
+    if (g && isDouble(col) && isDouble(g[g.length - 1]) && g[g.length - 1] === col - 1) g.push(col);
+    else groups.push([col]);
+  });
   const members = {};
   members_(c, getStudents_().filter(function (s) { return !s.excluded; })).forEach(function (s) { members[s.key] = s; });
   const students = [];
@@ -198,7 +212,7 @@ function dayData_(sh, c, date) {
     }
     students.push({ key: key, cls: normClass_(r[NB.CLS - 1]), no: r[NB.NO - 1], name: String(r[NB.NAME - 1]), before: Number(r[NB.BEFORE - 1]) || 0, absentAll: absentAll, day: day });
   }
-  return { course: c.name, target: c.target, units: c.units, hours: hoursOf_(sh), date: date, dayCols: dayCols, lessons: lessons, students: students, lines: lines_() };
+  return { course: c.name, target: c.target, units: c.units, hours: hoursOf_(sh), date: date, dayCols: dayCols, groups: groups, lessons: lessons, students: students, lines: lines_() };
 }
 
 // 日付の順になるように、新しい列を入れる（I列から右）。入れた列の番号を返す
@@ -223,9 +237,9 @@ function insertDayColumns_(sh, date, n) {
   const d = toDate_(date);
   const wd = '日月火水木金土'.charAt(Number(Utilities.formatDate(d, tz_(), 'u')) % 7);
   const head = [], sub = [];
-  for (let i = 0; i < n; i++) { head.push(d); sub.push(wd); }
+  for (let i = 0; i < n; i++) { head.push(d); sub.push(n > 1 ? wd + '\n' + DOUBLE : wd); }
   sh.getRange(NB.HEAD, pos, 1, n).setValues([head]).setNumberFormat('m/d').setFontWeight('bold').setBackground(COLOR.header);
-  sh.getRange(NB.SUB, pos, 1, n).setValues([sub]).setBackground(COLOR.header);
+  sh.getRange(NB.SUB, pos, 1, n).setValues([sub]).setBackground(COLOR.header).setWrap(true);
   sh.getRange(NB.HEAD, pos, Math.max(2, sh.getMaxRows() - NB.HEAD + 1), n).setHorizontalAlignment('center');
   for (let i = 0; i < n; i++) sh.setColumnWidth(pos + i, 42);
   applyFormats_(sh);

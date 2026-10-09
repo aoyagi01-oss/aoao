@@ -128,7 +128,8 @@
   let I = null;       // getTakeInit
   let date = '';
   let D = null;       // getCourseDay
-  let col = 0;        // 直している列（0＝新しく記録）
+  let cols = [];      // 直している列（2時間続きなら2つ。空＝新しく記録）
+  let split = false;  // 2時間続きの列も、1コマずつ直す
   let double = false; // 2時間続き
   let absent = new Set();
   let dirty = false;
@@ -215,21 +216,35 @@
     busy = '';
     D = d;
     note = '';
+    split = false;
     startEdit(keepCol);
     loadSeat(D.target);
   }
 
-  // その日の列があれば、それを直す（いちばん右の列）。なければ新しく記録
+  // その日の授業（2時間続きは2列で1つ）。「1コマずつ直す」のときは1列ずつ
+  function units() {
+    if (split) return D.dayCols.map((c) => [c]);
+    return D.groups || D.dayCols.map((c) => [c]);
+  }
+  // その日の列があれば、それを直す（いちばん右の授業）。なければ新しく記録
   function startEdit(keepCol) {
-    col = keepCol && D.dayCols.includes(keepCol) ? keepCol : (D.dayCols.length ? D.dayCols[D.dayCols.length - 1] : 0);
+    const us = units();
+    cols = (keepCol && us.find((u) => u.includes(keepCol))) || us[us.length - 1] || [];
     double = false;
     loadMarks();
     draw();
   }
+  function setCols(u) {
+    if (dirty && !confirm('書きこんでいない変更を捨てますか？')) return;
+    cols = u; loadMarks(); draw();
+  }
+  const isAbs = (s) => cols.some((c) => s.day[c] === '欠');
   function loadMarks() {
-    absent = new Set(col ? D.students.filter((s) => s.day[col] === '欠').map((s) => s.key) : []);
+    absent = new Set(D.students.filter(isAbs).map((s) => s.key));
     dirty = false;
   }
+  // 2時間続きの2列で、欠席がちがう生徒（シートを直接直したときなど）
+  const mismatch = () => cols.length > 1 ? D.students.filter((s) => cols.some((c) => (s.day[c] === '欠') !== (s.day[cols[0]] === '欠'))) : [];
   function toggle(key) {
     if (busy) return; // 書きこみ中・読み込み中は変えない
     // キーボードで押したときも、かき直したあと同じ生徒にフォーカスをもどす
@@ -243,8 +258,8 @@
 
   // 生徒ごとの欠課時数（今つけている分もふくむ）
   function statOf(s) {
-    const per = col ? 1 : (double ? 2 : 1);
-    const others = s.before + s.absentAll - (col && s.day[col] === '欠' ? 1 : 0);
+    const per = cols.length || (double ? 2 : 1);
+    const others = s.before + s.absentAll - cols.filter((c) => s.day[c] === '欠').length;
     const total = others + (absent.has(s.key) ? per : 0);
     const rate = D.hours ? total / D.hours : 0;
     const li = D.hours ? lineIndex(rate) : -1;
@@ -256,18 +271,25 @@
     const R = $('right');
     const y = R.scrollTop;
     R.innerHTML = '';
-    const info = el('div', { class: 'info' + (col ? ' edit' : '') });
-    if (col) {
-      const n = D.dayCols.indexOf(col) + 1;
-      info.append(dayLabel(date) + 'の分は記録ずみです' + (D.dayCols.length > 1 ? '（' + n + 'コマ目）' : '') + '。直して書きこむと上書きします。', el('br'));
-      if (D.dayCols.length > 1) D.dayCols.forEach((c, i) => info.append(el('button', { class: c === col ? 'on' : '', onclick: () => { if (dirty && !confirm('書きこんでいない変更を捨てますか？')) return; col = c; loadMarks(); draw(); } }, (i + 1) + 'コマ目')));
-      info.append(el('button', { onclick: () => { if (dirty && !confirm('書きこんでいない変更を捨てますか？')) return; col = 0; loadMarks(); draw(); } }, '＋ この日にもう1コマ記録する'));
+    const info = el('div', { class: 'info' + (cols.length ? ' edit' : '') });
+    // 「1コマ目」「2・3コマ目（2時間続き）」のような名前
+    const label = (u) => u.map((c) => D.dayCols.indexOf(c) + 1).join('・') + 'コマ目' + (u.length > 1 ? '（2時間続き）' : '');
+    const us = units();
+    const hasDouble = (D.groups || []).some((g) => g.length > 1);
+    if (cols.length) {
+      info.append(dayLabel(date) + 'の分は記録ずみです' + (D.dayCols.length > 1 ? '（' + label(cols) + '）' : '') + '。直して書きこむと上書きします。', el('br'));
+      if (cols.length > 1) info.append(el('b', null, '2時間続きの2列をまとめて直します。'), el('br'));
+      if (us.length > 1) us.forEach((u) => info.append(el('button', { class: u.join() === cols.join() ? 'on' : '', onclick: () => setCols(u) }, label(u))));
+      if (hasDouble) info.append(el('button', { onclick: () => { if (dirty && !confirm('書きこんでいない変更を捨てますか？')) return; split = !split; startEdit(cols[0]); } }, split ? '2時間続きをまとめて直す' : '1コマずつ直す'));
+      info.append(el('button', { onclick: () => setCols([]) }, '＋ この日にもう1コマ記録する'));
+      const mm = mismatch();
+      if (mm.length) info.append(el('div', { class: 'msg warn' }, '2列で欠席がちがう生徒がいます（' + mm.map((s) => s.name).join('、') + '）。どちらかの列に「欠」があれば欠席として出しています。書きこむと2列とも同じになります。'));
     } else {
       info.append(D.dayCols.length ? dayLabel(date) + 'の' + (D.dayCols.length + 1) + 'コマ目として、新しい列を作ります。' : '欠席した生徒を押してください（座席表でも名列でも）。全員出席なら、そのまま書きこみます。');
-      if (D.dayCols.length) info.append(el('br'), el('button', { onclick: () => { col = D.dayCols[D.dayCols.length - 1]; loadMarks(); draw(); } }, '記録ずみの列を直す'));
+      if (D.dayCols.length) info.append(el('br'), el('button', { onclick: () => { cols = us[us.length - 1]; loadMarks(); draw(); } }, '記録ずみの列を直す'));
     }
     R.append(info);
-    if (!col) R.append(el('label', { class: 'opt' }, el('input', { type: 'checkbox', checked: double, onchange: (e) => { double = e.target.checked; draw(); } }), '2時間続き（2コマ分として書きこむ）'));
+    if (!cols.length) R.append(el('label', { class: 'opt' }, el('input', { type: 'checkbox', checked: double, onchange: (e) => { double = e.target.checked; draw(); } }), '2時間続き（2コマ分として書きこむ）'));
     R.append(el('div', { class: 'legend' }, '年間 ' + D.hours + '時間 ・ 色：', D.lines.map((v, i) => { const c = COLORS[Math.min(i, COLORS.length - 1)]; return el('span', { style: 'background:' + c.bg + ';color:' + c.fg }, pct(v).replace('.0', '')); })));
     if (note) R.append(el('div', { class: 'msg ok' }, note));
     if (!D.students.length) R.append(el('div', { class: 'empty' }, '対象の生徒がいません。「⚙ 初期設定」で講座の対象クラスを確かめてください。'));
@@ -275,7 +297,8 @@
     D.students.forEach((s) => {
       const on = absent.has(s.key);
       const st = statOf(s);
-      const other = col && s.day[col] && s.day[col] !== '欠' ? s.day[col] : '';
+      const v0 = cols.length ? s.day[cols[0]] : '';
+      const other = v0 && v0 !== '欠' ? v0 : '';
       list.append(el('button', {
         class: 'stu' + (on ? ' abs' : ''), 'data-k': s.key,
         title: '欠課時数 ' + st.total + '（それ以前 ' + s.before + '）' + (D.hours ? ' ・ ' + pct(st.rate) : ''),
@@ -294,8 +317,8 @@
     $('foot').style.display = '';
     $('cancelSeat').style.display = 'none';
     $('cnt').innerHTML = '';
-    $('cnt').append('欠席 ', el('b', null, absent.size), ' 人 ・ 出席 ' + (D.students.length - absent.size) + ' 人' + (!col && double ? '（2コマ分）' : ''));
-    $('save').textContent = col ? '教務手帳を直す（上書き）' : '教務手帳に書きこむ';
+    $('cnt').append('欠席 ', el('b', null, absent.size), ' 人 ・ 出席 ' + (D.students.length - absent.size) + ' 人' + (cols.length > 1 || (!cols.length && double) ? '（2コマ分）' : ''));
+    $('save').textContent = cols.length ? '教務手帳を直す（上書き）' : '教務手帳に書きこむ';
     $('save').disabled = !!busy;
   }
 
@@ -1007,13 +1030,13 @@
     const d0 = D;
     const n = absent.size;
     try {
-      const r = await run('saveDay', { course: D.course, date, col, double: !col && double, absent: Array.from(absent) });
+      const r = await run('saveDay', { course: D.course, date, cols, double: !cols.length && double, absent: Array.from(absent) });
       busy = '';
       if (D !== d0) { draw(); return; }
-      const wasNew = !col;
+      const wasNew = !cols.length;
       D = r;
       note = '✓ 教務手帳に' + (wasNew ? '書きこみました' : '上書きしました') + '（' + dayLabel(r.date || date) + '・欠席 ' + n + '人' + (r.saved.length > 1 ? '・2コマ分' : '') + '）';
-      startEdit(r.saved[r.saved.length - 1]);
+      startEdit(r.saved[0]);
     } catch (e) {
       busy = '';
       alert('書きこめませんでした：' + errText(e));
