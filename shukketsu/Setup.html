@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; font-size: 13px; color: #202124; }
+  .tabs { display: flex; gap: 4px; border-bottom: 2px solid #dadce0; padding: 8px 16px 0; position: sticky; top: 0; background: #fff; z-index: 2; }
+  .tab { padding: 8px 16px; border: 1px solid #dadce0; border-bottom: none; border-radius: 8px 8px 0 0; background: #f8f9fa; cursor: pointer; font-size: 14px; }
+  .tab.on { background: #fff; color: #1a73e8; font-weight: bold; border-color: #1a73e8; position: relative; top: 2px; }
+  .tab .ck { color: #188038; margin-left: 4px; }
+  .pane { padding: 12px 16px 20px; }
+  .lead { margin: 0 0 8px; line-height: 1.6; }
+  .lead b { color: #1967d2; }
+  textarea { width: 100%; box-sizing: border-box; height: 150px; font-size: 13px; padding: 8px; border: 2px dashed #1a73e8; border-radius: 8px; font-family: inherit; }
+  .ex { color: #5f6368; font-size: 12px; margin: 4px 0 10px; line-height: 1.6; }
+  .bar { display: flex; gap: 10px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  button { font-family: inherit; font-size: 14px; padding: 7px 16px; border-radius: 8px; border: 1px solid #1a73e8; background: #fff; color: #1a73e8; cursor: pointer; }
+  button.primary { background: #1a73e8; color: #fff; }
+  button.danger { border-color: #d93025; color: #d93025; }
+  button:disabled { opacity: .5; cursor: default; }
+  .count span { display: inline-block; margin-right: 8px; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+  .new { background: #e6f4ea; color: #137333; }
+  .update { background: #fef7e0; color: #b06000; }
+  .same { background: #f1f3f4; color: #5f6368; }
+  .bad { background: #fce8e6; color: #c5221f; }
+  .tbl { max-height: 300px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 5px 8px; border-bottom: 1px solid #eee; text-align: left; font-size: 13px; }
+  th { position: sticky; top: 0; background: #f8f9fa; }
+  .ok { background: #e6f4ea; color: #137333; padding: 10px; border-radius: 8px; margin: 8px 0; }
+  .warn { background: #fef7e0; color: #b06000; padding: 10px; border-radius: 8px; margin: 8px 0; }
+  .cols { display: grid; grid-template-columns: 1fr 1.2fr; gap: 16px; }
+  .list .item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #dadce0; border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
+  .list .item:hover { background: #f1f3f4; }
+  .list .item.on { border-color: #1a73e8; background: #e8f0fe; }
+  .list .item b { flex: 1; }
+  .list .item small { color: #5f6368; }
+  .form { border: 1px solid #dadce0; border-radius: 10px; padding: 12px 14px; }
+  .form h3 { margin: 0 0 6px; font-size: 15px; }
+  label.f { display: block; margin: 10px 0 4px; font-size: 12px; color: #5f6368; }
+  input[type=text], input[type=number], input[type=date] { font-family: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 6px; box-sizing: border-box; }
+  input.wide { width: 100%; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { padding: 5px 12px; border: 1px solid #dadce0; border-radius: 14px; background: #fff; font-size: 13px; color: #202124; }
+  .chip.on { background: #e8f0fe; border-color: #1a73e8; color: #1967d2; font-weight: bold; }
+  .units { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .units .chip { min-width: 40px; }
+  .note { font-size: 12px; color: #5f6368; margin-top: 4px; }
+  .bulk td input { width: 70px; text-align: center; }
+  .bulk td.n { color: #5f6368; }
+  .empty { color: #5f6368; padding: 8px 0; }
+</style>
+</head>
+<body>
+<div class="tabs" id="tabs"></div>
+<div class="pane" id="pane"><div class="empty">読み込み中…</div></div>
+
+<script>
+  const START_TAB = '<?= tab ?>';
+  const $ = (id) => document.getElementById(id);
+  const run = (name, ...args) => new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[name](...args));
+  const errText = (e) => (e && e.message) || String(e);
+  let S = null;
+  let tab = START_TAB || '';
+
+  function el(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => {
+      if (v == null || v === false) return;
+      if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+      else if (k === 'class') e.className = v;
+      else if (k === 'style') e.style.cssText = v;
+      else if (k in e) e[k] = v;
+      else e.setAttribute(k, v);
+    });
+    kids.flat().forEach((c) => { if (c != null && c !== false) e.append(c.nodeType ? c : String(c)); });
+    return e;
+  }
+
+  const TABS = [
+    ['roster', '① 名簿', () => S.students > 0],
+    ['course', '② 講座・単位数', () => S.courses.length > 0],
+    ['bulk', '③ まとめて入力', null],
+    ['settings', '設定', null],
+  ];
+  function drawTabs() {
+    $('tabs').innerHTML = '';
+    TABS.forEach(([id, label, done]) => $('tabs').append(el('div', { class: 'tab' + (tab === id ? ' on' : ''), onclick: () => { tab = id; draw(); } },
+      label, done && done() ? el('span', { class: 'ck' }, '✓') : null)));
+  }
+  function draw() {
+    drawTabs();
+    const p = $('pane');
+    p.innerHTML = '';
+    ({ roster: rosterPane, course: coursePane, bulk: bulkPane, settings: settingsPane })[tab](p);
+  }
+
+  // ───────── ① 名簿 ─────────
+  const isKana = (c) => /^[ぁ-んァ-ヶー・\s]+$/.test(c);
+  const hasKanji = (c) => /[一-鿿々]/.test(c);
+  // 1行から 学籍番号・氏名・ふりがな を見つける（課題提出バーコード管理と同じ読み取り方）
+  function parseLine(line) {
+    const n = line.normalize('NFKC').replace(/　/g, ' ').trim();
+    if (!n) return null;
+    let cells;
+    if (n.includes('\t')) cells = n.split('\t');
+    else if (n.includes(',')) cells = n.split(',');
+    else cells = n.split(/\s+/);
+    const byTab = n.includes('\t') || n.includes(',');
+    cells = cells.map((c) => c.trim()).filter(Boolean);
+    if (!/\d/.test(n) && /氏名|名前|学籍|番号|ふりがな|フリガナ|クラス/.test(n)) return { header: true };
+    let gk = '', grade = '', cls = '', no = '';
+    const small = [], text = [];
+    cells.forEach((c) => {
+      let m;
+      if (!gk && /^\d{4}$/.test(c)) gk = c;
+      else if ((m = c.match(/^(\d)\s*(?:-|年)\s*(\d{1,2})\s*組?$/))) { grade = m[1]; cls = m[2]; }
+      else if ((m = c.match(/^(\d)\s*年$/))) grade = m[1];
+      else if ((m = c.match(/^(\d{1,2})\s*組$/))) cls = m[1];
+      else if ((m = c.match(/^(\d{1,2})\s*番?$/))) small.push(m[1]);
+      else if (/^[\d\-\/]+$/.test(c)) { /* 生徒ID・電話番号などの数字は使わない */ }
+      else text.push(c.replace(/\s+/g, ' '));
+    });
+    if (!gk) {
+      if (grade && cls && small.length) no = small[0];
+      else if (small.length >= 3) { grade = small[0]; cls = small[1]; no = small[2]; }
+      if (grade && cls && no && Number(grade) <= 9 && Number(cls) <= 9) gk = grade + cls + String(no).padStart(2, '0');
+    }
+    let kana = '';
+    if (byTab && text.length >= 2) {
+      const i = text.findIndex((c, k) => isKana(c) && (c.includes(' ') || c.length >= 5) && text.some((o, j) => j !== k && hasKanji(o)));
+      if (i >= 0) kana = text.splice(i, 1)[0];
+    } else if (!byTab && text.length >= 3 && isKana(text[text.length - 1]) && isKana(text[text.length - 2]) && text.slice(0, -2).some(hasKanji)) {
+      kana = text.splice(-2).join(' ');
+    }
+    const name = text.join(' ').trim();
+    if (!name || !gk) return { bad: line };
+    return { gakuseki: gk, name, kana };
+  }
+
+  function rosterPane(p) {
+    let parsed = [], bad = [];
+    const ta = el('textarea', { placeholder: 'ここに貼り付け（Ctrl + V）' });
+    const count = el('span', { class: 'count' });
+    const wrap = el('div', { class: 'tbl', style: 'display:none' });
+    const done = el('div');
+    const save = el('button', { class: 'primary', disabled: true }, '② この内容で名簿に登録する');
+    const check = el('button', { class: 'primary' }, '① 読み取って確認する');
+    p.append(
+      el('p', { class: 'lead' }, 'Excel・校務システム・名簿のファイルから、生徒の行を', el('b', null, 'まとめてコピーして、下の枠に貼り付け'), 'てください。列の順番はそのままでかまいません。', el('br'),
+        '登録ずみ：', el('b', null, S.students + '人'), S.classes.length ? '（' + S.classes.join('・') + '）' : ''),
+      ta,
+      el('div', { class: 'ex' }, '読み取れる形の例：「1101　青木 さくら」／「1　1　1　青木　さくら」（学年・組・番号が別の列）／「1年1組　1番　青木さくら　あおき さくら」', el('br'),
+        '学籍番号（1101＝1年1組1番）から、クラスと番号は自動で入ります。転出した生徒は、シート「名簿」の「除外」に ✓ を付けてください。'),
+      el('div', { class: 'bar' }, check, count), wrap, el('div', { class: 'bar' }, save), done);
+    ta.addEventListener('input', () => { save.disabled = true; });
+    check.onclick = async () => {
+      parsed = []; bad = [];
+      ta.value.split('\n').forEach((l) => { const r = parseLine(l); if (!r || r.header) return; if (r.bad) bad.push(r.bad); else parsed.push(r); });
+      if (!parsed.length) { alert('生徒の行が見つかりませんでした。学籍番号（1101 など）か「学年・組・番号」と、氏名が入った表を貼り付けてください。'); return; }
+      check.disabled = true;
+      let plan;
+      try { plan = await run('previewRoster', parsed); } catch (e) { alert(errText(e)); check.disabled = false; return; }
+      check.disabled = false;
+      const cnt = { new: 0, update: 0, same: 0 };
+      const body = el('tbody');
+      plan.forEach((r) => {
+        cnt[r.kind]++;
+        body.append(el('tr', null, el('td', null, r.gakuseki), el('td', null, r.name), el('td', null, r.kana),
+          el('td', { class: r.kind }, { new: '新しく追加', update: '更新（前：' + r.before + '）', same: '登録ずみ' }[r.kind])));
+      });
+      bad.forEach((l) => body.append(el('tr', null, el('td', { class: 'bad', colSpan: 4 }, '読み取れない行（登録しません）：' + l))));
+      wrap.innerHTML = '';
+      wrap.append(el('table', null, el('thead', null, el('tr', null, ['学籍番号', '氏名', 'ふりがな', '登録のされ方'].map((t) => el('th', null, t)))), body));
+      wrap.style.display = '';
+      count.innerHTML = '';
+      [['new', '追加 ' + cnt.new + '人'], ['update', '更新 ' + cnt.update + '人'], ['same', '変更なし ' + cnt.same + '人']].forEach(([k, t]) => count.append(el('span', { class: k }, t)));
+      save.disabled = !(cnt.new + cnt.update);
+    };
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        S = await run('importRoster', parsed);
+        const r = S.result;
+        drawTabs();
+        done.innerHTML = '';
+        done.append(el('div', { class: 'ok' }, '✓ 名簿に登録しました（追加 ' + r.added + '人・更新 ' + r.updated + '人）。',
+          el('button', { class: 'primary', style: 'margin-left:10px', onclick: () => { tab = 'course'; draw(); } }, '次へ：講座を登録する')));
+      } catch (e) { alert(errText(e)); save.disabled = false; }
+    };
+  }
+
+  // ───────── ② 講座・単位数 ─────────
+  let editing = null; // 直している講座の名前（null＝新しく）
+  function coursePane(p) {
+    const list = el('div', { class: 'list' });
+    if (!S.courses.length) list.append(el('div', { class: 'empty' }, 'まだありません。右の欄から登録してください。'));
+    S.courses.forEach((c) => list.append(el('div', { class: 'item' + (editing === c.name ? ' on' : ''), onclick: () => { editing = c.name; draw(); } },
+      el('b', null, c.name), el('small', null, c.units + '単位 ・ ' + c.target + ' ・ ' + c.members + '人'))));
+    list.append(el('button', { onclick: () => { editing = null; draw(); } }, '＋ 新しい講座'));
+
+    const c = editing ? S.courses.find((x) => x.name === editing) : null;
+    const name = el('input', { type: 'text', class: 'wide', value: c ? c.name : '', placeholder: '例：1-1 英語コミュⅠ' });
+    const chosen = new Set();
+    const extra = [];
+    (c ? c.target.split(/\s*,\s*/) : []).forEach((t) => { if (S.classes.includes(t)) chosen.add(t); else if (t) extra.push(t); });
+    const chips = el('div', { class: 'chips' });
+    function drawChips() {
+      chips.innerHTML = '';
+      if (!S.classes.length) chips.append(el('div', { class: 'warn' }, '先に「① 名簿」を登録してください。'));
+      S.classes.forEach((k) => chips.append(el('button', { class: 'chip' + (chosen.has(k) ? ' on' : ''), onclick: () => { chosen.has(k) ? chosen.delete(k) : chosen.add(k); drawChips(); } }, k)));
+    }
+    drawChips();
+    const more = el('input', { type: 'text', class: 'wide', value: extra.join(', '), placeholder: '例：1105, 1203, 2111（選択授業などで、クラスの一部だけのとき）' });
+    let units = c ? c.units : '';
+    const unitInput = el('input', { type: 'number', min: 1, max: 20, value: units, style: 'width:70px', oninput: (e) => { units = e.target.value; drawUnits(); } });
+    const unitBox = el('div', { class: 'units' });
+    const hoursNote = el('div', { class: 'note' });
+    function drawUnits() {
+      unitBox.innerHTML = '';
+      [1, 2, 3, 4, 5, 6].forEach((u) => unitBox.append(el('button', { class: 'chip' + (Number(units) === u ? ' on' : ''), onclick: () => { units = u; unitInput.value = u; drawUnits(); } }, u)));
+      unitBox.append(unitInput, '単位');
+      hoursNote.textContent = Number(units) > 0 ? '年間時数 ' + Number(units) * S.hoursPerUnit + '時間（' + units + '単位 × ' + S.hoursPerUnit + '）→ 20% は ' + Math.round(Number(units) * S.hoursPerUnit * 0.2 * 10) / 10 + '時間' : '';
+    }
+    drawUnits();
+    const msg = el('div');
+    const save = el('button', { class: 'primary', onclick: async () => {
+      const target = Array.from(chosen).concat(more.value.split(/[,、\s]+/).filter(Boolean)).join(', ');
+      save.disabled = true;
+      try {
+        S = await run('saveCourse', { oldName: c ? c.name : '', name: name.value, target, units, memo: c ? c.memo : '' });
+        editing = name.value.trim();
+        draw();
+        $('pane').prepend(el('div', { class: 'ok' }, '✓ 「' + editing + '」を保存しました。教務手帳のシート「' + editing + '」ができています。'));
+      } catch (e) { alert(errText(e)); save.disabled = false; }
+    } }, c ? '保存する' : 'この講座を登録する');
+    const del = c ? el('button', { class: 'danger', onclick: async () => {
+      if (!confirm('「' + c.name + '」を講座の一覧から外しますか？\n（教務手帳のシートは消さずに残します。いらなければシートを削除してください）')) return;
+      try { S = await run('deleteCourse', c.name); editing = null; draw(); } catch (e) { alert(errText(e)); }
+    } }, '一覧から外す') : null;
+
+    const form = el('div', { class: 'form' },
+      el('h3', null, c ? '「' + c.name + '」を直す' : '新しい講座を登録する'),
+      el('label', { class: 'f' }, '講座名（教務手帳のシートの名前になります）'), name,
+      el('label', { class: 'f' }, '対象のクラス（押して選ぶ・合同授業なら複数）'), chips,
+      el('label', { class: 'f' }, '個別の生徒（学籍番号を「,」区切りで・なくてもよい）'), more,
+      el('label', { class: 'f' }, '単位数'), unitBox, hoursNote,
+      el('div', { class: 'bar', style: 'margin-top:14px' }, save, del), msg);
+    p.append(el('p', { class: 'lead' }, '持っている授業を1つずつ登録します。登録すると、講座ごとに', el('b', null, '教務手帳のシート'), 'ができます。'),
+      el('div', { class: 'cols' }, list, form));
+    if (S.courses.length) p.append(el('div', { class: 'bar' }, el('button', { onclick: () => { tab = 'bulk'; draw(); } }, '次へ：まとめて入力（学期の途中から使うとき）')));
+  }
+
+  // ───────── ③ まとめて入力 ─────────
+  let bulkCourse = '';
+  function bulkPane(p) {
+    p.append(el('p', { class: 'lead' }, '学期の途中から使い始めるときは、', el('b', null, 'それまでの欠課時数'), 'を生徒ごとにまとめて入れてください。',
+      '教務手帳の「それ以前の欠課」の列に入り、欠課時数と割合に足されます。'));
+    if (!S.courses.length) { p.append(el('div', { class: 'warn' }, '先に「② 講座・単位数」を登録してください。')); return; }
+    if (!bulkCourse || !S.courses.some((c) => c.name === bulkCourse)) bulkCourse = S.courses[0].name;
+    p.append(el('div', { class: 'chips' }, S.courses.map((c) => el('button', { class: 'chip' + (c.name === bulkCourse ? ' on' : ''), onclick: () => { bulkCourse = c.name; draw(); } }, c.name))));
+    const box = el('div', null, el('div', { class: 'empty' }, '読み込み中…'));
+    p.append(box);
+    run('getBulk', bulkCourse).then((b) => {
+      box.innerHTML = '';
+      const until = el('input', { type: 'date', value: b.until || '' });
+      const inputs = {};
+      const body = el('tbody');
+      b.students.forEach((s, i) => {
+        const inp = el('input', { type: 'number', min: 0, value: s.before, placeholder: '0' });
+        inp.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); const n = Object.values(inputs)[i + 1]; if (n) { n.focus(); n.select(); } }
+          if (e.key === 'ArrowUp') { e.preventDefault(); const n = Object.values(inputs)[i - 1]; if (n) { n.focus(); n.select(); } }
+        });
+        inputs[s.key] = inp;
+        body.append(el('tr', null, el('td', { class: 'n' }, s.cls), el('td', { class: 'n' }, s.no), el('td', null, s.key), el('td', null, s.name), el('td', null, inp)));
+      });
+      const msg = el('div');
+      const save = el('button', { class: 'primary', onclick: async () => {
+        const values = {};
+        Object.entries(inputs).forEach(([k, inp]) => { values[k] = inp.value; });
+        save.disabled = true;
+        try {
+          await run('saveBulk', { course: bulkCourse, until: until.value, values });
+          msg.innerHTML = '';
+          msg.append(el('div', { class: 'ok' }, '✓ 「' + bulkCourse + '」の教務手帳に入れました。'));
+        } catch (e) { alert(errText(e)); }
+        save.disabled = false;
+      } }, 'この講座の分を保存する');
+      box.append(
+        el('div', { class: 'bar' }, el('span', null, 'いつまでの分か（なくてもよい）：'), until),
+        el('div', { class: 'tbl bulk', style: 'max-height:380px' }, el('table', null,
+          el('thead', null, el('tr', null, ['クラス', '番号', '学籍番号', '氏名', 'それまでの欠課時数'].map((t) => el('th', null, t)))), body)),
+        el('div', { class: 'note' }, '欠課のない生徒は空欄のままでOK。Enter で次の生徒に進みます。'),
+        el('div', { class: 'bar' }, save), msg);
+      const first = Object.values(inputs)[0];
+      if (first) first.focus();
+    }).catch((e) => { box.innerHTML = ''; box.append(el('div', { class: 'warn' }, errText(e))); });
+  }
+
+  // ───────── 設定 ─────────
+  function settingsPane(p) {
+    const hours = el('input', { type: 'number', min: 1, value: S.hoursPerUnit, style: 'width:80px' });
+    const lines = el('input', { type: 'text', value: S.lines, style: 'width:240px' });
+    const terms = el('input', { type: 'text', class: 'wide', value: S.terms });
+    const save = el('button', { class: 'primary', onclick: async () => {
+      save.disabled = true;
+      try {
+        S = await run('saveSettings', { hoursPerUnit: hours.value, lines: lines.value, terms: terms.value });
+        draw();
+        $('pane').prepend(el('div', { class: 'ok' }, '✓ 保存しました。教務手帳の色・年間時数も新しい設定にしました。'));
+      } catch (e) { alert(errText(e)); save.disabled = false; }
+    } }, '保存する');
+    p.append(
+      el('label', { class: 'f' }, '1単位あたりの年間授業時数（年間時数 ＝ 単位数 × この数）'), el('div', null, hours, ' 時間'),
+      el('div', { class: 'note' }, '講座ごとに年間時数を変えたいときは、教務手帳のシートの G1（年間時数）に数を直接入れてください。'),
+      el('label', { class: 'f' }, '色を変える割合（%・「,」区切り）'), lines,
+      el('div', { class: 'note' }, '低い順に 黄・橙・赤・濃い赤。例：20, 25, 30, 50'),
+      el('label', { class: 'f' }, '学期の区切り（期間集計のボタンになります）'), terms,
+      el('div', { class: 'note' }, '例：1学期 4/1-7/31, 2学期 8/1-12/31, 3学期 1/1-3/31（前期・後期でも可）'),
+      el('div', { class: 'bar', style: 'margin-top:14px' }, save));
+  }
+
+  run('getSetupData').then((d) => {
+    S = d;
+    if (!tab) tab = !S.students ? 'roster' : !S.courses.length ? 'course' : 'course';
+    draw();
+  }).catch((e) => { $('pane').innerHTML = ''; $('pane').append(el('div', { class: 'warn' }, '読み込めませんでした：' + errText(e))); });
+</script>
+</body>
+</html>

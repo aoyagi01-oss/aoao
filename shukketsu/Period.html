@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; padding: 12px 16px; font-size: 13px; color: #202124; }
+  h2 { font-size: 12px; color: #5f6368; margin: 12px 0 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { padding: 5px 12px; border: 1px solid #dadce0; border-radius: 14px; background: #fff; font-size: 13px; cursor: pointer; font-family: inherit; }
+  .chip.on { background: #e8f0fe; border-color: #1a73e8; color: #1967d2; font-weight: bold; }
+  .range { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .range input { font-family: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid #dadce0; border-radius: 6px; }
+  .tbl { max-height: 400px; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; margin-top: 8px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 13px; text-align: right; white-space: nowrap; }
+  th { position: sticky; top: 0; background: #f8f9fa; }
+  th.l, td.l { text-align: left; }
+  td.z { color: #bdc1c6; }
+  td.hit { color: #c5221f; font-weight: bold; }
+  .note { font-size: 12px; color: #5f6368; margin-top: 6px; }
+  .bar { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+  button.btn { font-family: inherit; font-size: 14px; padding: 7px 16px; border-radius: 8px; border: 1px solid #1a73e8; background: #fff; color: #1a73e8; cursor: pointer; }
+  .ok { background: #e6f4ea; color: #137333; padding: 8px; border-radius: 8px; }
+  .warn { background: #fef7e0; color: #b06000; padding: 8px; border-radius: 8px; margin-top: 8px; }
+  label { font-size: 13px; }
+</style>
+</head>
+<body>
+<h2>講座</h2>
+<div class="chips" id="courses"></div>
+<h2>期間</h2>
+<div class="chips" id="ranges"></div>
+<div class="range"><input type="date" id="from"> 〜 <input type="date" id="to"></div>
+<div id="out"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const run = (name, ...args) => new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[name](...args));
+  const errText = (e) => (e && e.message) || String(e);
+  let P = null;
+  const st = { course: '', range: '', from: '', to: '' };
+  let onlyAbsent = false;
+  let last = null;
+
+  function el(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => {
+      if (v == null || v === false) return;
+      if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+      else if (k === 'class') e.className = v;
+      else if (k in e) e[k] = v;
+      else e.setAttribute(k, v);
+    });
+    kids.flat().forEach((c) => { if (c != null && c !== false) e.append(c.nodeType ? c : String(c)); });
+    return e;
+  }
+  const pad = (n) => ('0' + n).slice(-2);
+  const key = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+
+  function ranges() {
+    const t = new Date(P.today.replace(/-/g, '/'));
+    const m0 = new Date(t.getFullYear(), t.getMonth(), 1), m1 = new Date(t.getFullYear(), t.getMonth() + 1, 0);
+    const p0 = new Date(t.getFullYear(), t.getMonth() - 1, 1), p1 = new Date(t.getFullYear(), t.getMonth(), 0);
+    const w0 = new Date(t); w0.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+    return [{ name: '今週', from: key(w0), to: P.today }, { name: '今月', from: key(m0), to: key(m1) }, { name: '先月', from: key(p0), to: key(p1) }]
+      .concat(P.terms).concat([{ name: P.fy + '年度', from: P.fy + '-04-01', to: (P.fy + 1) + '-03-31' }]);
+  }
+
+  function drawChips() {
+    $('courses').innerHTML = '';
+    [['', 'すべての講座']].concat(P.courses.map((c) => [c, c])).forEach(([v, label]) => $('courses').append(
+      el('button', { class: 'chip' + (st.course === v ? ' on' : ''), onclick: () => { st.course = v; drawChips(); load(); } }, label)));
+    $('ranges').innerHTML = '';
+    ranges().forEach((r) => $('ranges').append(el('button', { class: 'chip' + (st.range === r.name ? ' on' : ''), onclick: () => {
+      Object.assign(st, { range: r.name, from: r.from, to: r.to }); $('from').value = r.from; $('to').value = r.to; drawChips(); load();
+    } }, r.name)));
+  }
+
+  async function load() {
+    const out = $('out');
+    out.innerHTML = '';
+    out.append(el('div', { class: 'note' }, '集計しています…'));
+    try { last = await run('runPeriod', { course: st.course, from: st.from, to: st.to }); }
+    catch (e) { out.innerHTML = ''; out.append(el('div', { class: 'warn' }, errText(e))); return; }
+    draw();
+  }
+
+  function draw() {
+    const r = last;
+    const out = $('out');
+    out.innerHTML = '';
+    const multi = r.courses.length > 1;
+    const head = el('tr', null, el('th', { class: 'l' }, 'クラス'), el('th', { class: 'l' }, '番号'), el('th', { class: 'l' }, '氏名'),
+      r.courses.map((c) => el('th', null, c.name, el('br'), el('small', null, c.lessons + 'コマ中'))), multi ? el('th', null, '合計') : null);
+    const body = el('tbody');
+    let shown = 0;
+    r.rows.forEach((s) => {
+      let sum = 0;
+      const cells = r.courses.map((c) => {
+        const n = c.counts[s.key];
+        sum += n || 0;
+        return el('td', { class: n === undefined ? 'z' : n ? 'hit' : 'z' }, n === undefined ? '－' : n);
+      });
+      if (onlyAbsent && !sum) return;
+      shown++;
+      body.append(el('tr', null, el('td', { class: 'l' }, s.cls), el('td', { class: 'l' }, s.no), el('td', { class: 'l' }, s.name), cells,
+        multi ? el('td', { class: sum ? 'hit' : 'z' }, sum) : null));
+    });
+    const label = (st.from || st.to) ? st.from.replace(/-/g, '/') + ' 〜 ' + st.to.replace(/-/g, '/') : '全期間';
+    out.append(el('div', { class: 'bar' }, el('b', null, label),
+      el('label', null, el('input', { type: 'checkbox', checked: onlyAbsent, onchange: (e) => { onlyAbsent = e.target.checked; draw(); } }), ' 休んだ生徒だけ出す')));
+    out.append(el('div', { class: 'tbl' }, el('table', null, el('thead', null, head), body)));
+    if (!shown) out.append(el('div', { class: 'note' }, 'この期間に休んだ生徒はいません。'));
+    out.append(el('div', { class: 'note' }, '教務手帳の日付の列のうち、期間に入るものの「欠」を数えています。「まとめて入力」した「それ以前の欠課」は日付がないので入りません。'));
+    const done = el('span');
+    out.append(el('div', { class: 'bar' }, el('button', { class: 'btn', onclick: async (e) => {
+      e.target.disabled = true;
+      try { await run('exportPeriod', { course: st.course, from: st.from, to: st.to }); done.innerHTML = ''; done.append(el('span', { class: 'ok' }, '✓ 「期間集計」シートに書き出しました')); }
+      catch (err) { alert(errText(err)); }
+      e.target.disabled = false;
+    } }, '📄 シートに書き出す（印刷用）'), done));
+  }
+
+  $('from').onchange = (e) => { st.from = e.target.value; st.range = ''; drawChips(); load(); };
+  $('to').onchange = (e) => { st.to = e.target.value; st.range = ''; drawChips(); load(); };
+
+  run('getPeriodInit').then((d) => {
+    P = d;
+    const r = ranges()[1]; // 今月
+    Object.assign(st, { range: r.name, from: r.from, to: r.to });
+    $('from').value = r.from; $('to').value = r.to;
+    drawChips();
+    if (!P.courses.length) { $('out').append(el('div', { class: 'warn' }, 'まだ講座がありません。「⚙ 初期設定」で登録してください。')); return; }
+    load();
+  }).catch((e) => { $('out').append(el('div', { class: 'warn' }, '読み込めませんでした：' + errText(e))); });
+</script>
+</body>
+</html>

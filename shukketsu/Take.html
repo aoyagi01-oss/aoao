@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { font-family: "Noto Sans JP", sans-serif; margin: 0; font-size: 13px; color: #202124; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+  button { font-family: inherit; cursor: pointer; }
+  #top { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid #dadce0; flex-wrap: wrap; }
+  .date { font-size: 15px; font-weight: bold; white-space: nowrap; }
+  .date.other { color: #b06000; }
+  .dates { display: flex; align-items: center; gap: 2px; }
+  .dates input { font-family: inherit; font-size: 13px; padding: 3px 4px; border: 1px solid #dadce0; border-radius: 6px; }
+  .dbtn { border: 1px solid #dadce0; background: #fff; border-radius: 6px; padding: 3px 7px; font-size: 11px; }
+  .lnk { border: none; background: none; color: #1a73e8; font-size: 12px; padding: 2px 4px; }
+  .courses { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+  .course { padding: 5px 12px; border: 1px solid #dadce0; border-radius: 16px; background: #fff; font-size: 13px; }
+  .course:hover { background: #f1f3f4; }
+  .course.on { background: #1a73e8; color: #fff; border-color: #1a73e8; font-weight: bold; }
+  .menu { display: flex; gap: 2px; }
+  #body { flex: 1; display: flex; min-height: 0; }
+  #left { flex: 1.6; border-right: 1px solid #dadce0; overflow: auto; padding: 8px 10px; position: relative; }
+  #right { flex: 1; min-width: 300px; overflow: auto; padding: 8px 10px; }
+  #foot { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-top: 1px solid #dadce0; background: #fff; }
+  #foot .cnt { flex: 1; font-size: 13px; }
+  #foot .cnt b { color: #d93025; font-size: 17px; }
+  .save { padding: 9px 26px; border: none; border-radius: 8px; background: #1a73e8; color: #fff; font-size: 15px; font-weight: bold; }
+  .save:disabled { opacity: .5; cursor: default; }
+  .btn { padding: 6px 14px; border-radius: 8px; border: 1px solid #1a73e8; background: #fff; color: #1a73e8; font-size: 13px; }
+  .btn.primary { background: #1a73e8; color: #fff; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  h3 { font-size: 13px; margin: 2px 0 6px; display: flex; align-items: center; gap: 8px; }
+  h3 small { color: #5f6368; font-weight: normal; }
+  h3 .sp { flex: 1; }
+  .info { background: #f1f3f4; border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; font-size: 12px; line-height: 1.6; }
+  .info.edit { background: #fef7e0; color: #7a4f01; }
+  .info button { font-size: 12px; margin: 2px 4px 0 0; padding: 2px 10px; border-radius: 12px; border: 1px solid #1a73e8; background: #fff; color: #1a73e8; }
+  .info button.on { background: #1a73e8; color: #fff; }
+  .opt { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; }
+  .legend { font-size: 11px; color: #5f6368; margin: 0 0 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .legend span { padding: 0 6px; border-radius: 8px; }
+  .list { display: grid; grid-template-columns: 1fr; gap: 3px; }
+  .stu { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 8px; border: 1px solid #dadce0; border-radius: 6px; background: #fff; text-align: left; font-size: 13px; }
+  .stu:hover { border-color: #9aa0a6; }
+  .stu .no { width: 2.4em; text-align: right; color: #5f6368; font-size: 11px; flex: 0 0 auto; }
+  .stu .nm { flex: 1; font-size: 14px; }
+  .stu .st { font-size: 11px; padding: 1px 6px; border-radius: 8px; white-space: nowrap; color: #5f6368; }
+  .stu .mk { width: 1.6em; text-align: center; font-weight: bold; flex: 0 0 auto; }
+  .stu.abs { background: #d93025; border-color: #d93025; color: #fff; }
+  .stu.abs .no { color: #fde7e5; }
+  .stu.abs .nm { font-weight: bold; }
+  .stu.sel { outline: 3px solid #fbbc04; }
+  .stu .placed { font-size: 11px; color: #188038; }
+  .stu .unplaced { font-size: 11px; color: #b06000; }
+  .msg { padding: 8px; border-radius: 8px; margin: 6px 0; font-size: 12px; line-height: 1.6; }
+  .msg.ok { background: #e6f4ea; color: #137333; }
+  .msg.warn { background: #fef7e0; color: #b06000; }
+  .empty { color: #5f6368; padding: 8px 0; }
+
+  /* 座席表 */
+  .seatbox { position: relative; display: inline-block; max-width: 100%; user-select: none; line-height: 0; }
+  .seatbox img { max-width: 100%; max-height: calc(100vh - 170px); display: block; border-radius: 6px; }
+  .seatbox.edit img { cursor: crosshair; }
+  .spot { position: absolute; transform: translate(-50%, -50%); line-height: 1.2; padding: 3px 8px; border-radius: 12px; border: 2px solid #1a73e8; background: rgba(255,255,255,.88); color: #174ea6; font-size: 12px; font-weight: bold; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .spot:hover { background: #e8f0fe; }
+  .spot.abs { background: #d93025; border-color: #d93025; color: #fff; }
+  .spot.sel { outline: 3px solid #fbbc04; }
+  .seatbox.edit .spot { cursor: grab; }
+  .seatbox.dim .spot { opacity: .35; }
+  .place { border: 2px dashed #dadce0; border-radius: 10px; padding: 24px; text-align: center; color: #5f6368; line-height: 1.8; }
+  .place .btn { margin: 4px; font-size: 14px; padding: 8px 18px; }
+  .tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+  video { max-width: 100%; max-height: calc(100vh - 190px); border-radius: 8px; background: #000; display: block; }
+  .bar { height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .bar span { display: block; height: 100%; background: #1a73e8; width: 0; transition: width .2s; }
+  .ver { font-size: 10px; color: #9aa0a6; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div id="top">
+  <span class="date" id="dateLabel">…</span>
+  <span class="dates"><button class="dbtn" id="prev" title="前の日">◀</button><input type="date" id="dateInput"><button class="dbtn" id="next" title="次の日">▶</button><button class="lnk" id="today" style="display:none">今日にもどす</button></span>
+  <div class="courses" id="courses"></div>
+  <div class="menu">
+    <button class="lnk" id="lPeriod">🔎 期間集計</button>
+    <button class="lnk" id="lBulk">📝 まとめて入力</button>
+    <button class="lnk" id="lSetup">⚙ 初期設定</button>
+    <button class="lnk" id="lReload" title="初期設定を変えたあとに押す">🔄</button>
+  </div>
+</div>
+<div id="body">
+  <div id="left"><div class="empty">読み込み中…</div></div>
+  <div id="right"></div>
+</div>
+<div id="foot" style="display:none">
+  <div class="cnt" id="cnt"></div>
+  <button class="btn" id="cancelSeat" style="display:none">やめる</button>
+  <button class="save" id="save">教務手帳に書きこむ</button>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const run = (name, ...args) => new Promise((ok, ng) => google.script.run.withSuccessHandler(ok).withFailureHandler(ng)[name](...args));
+  const COLORS = [{ bg: '#fff2cc', fg: '#7f6000' }, { bg: '#fce5cd', fg: '#b45f06' }, { bg: '#f4cccc', fg: '#990000' }, { bg: '#cc0000', fg: '#ffffff' }];
+  const WD = '日月火水木金土';
+  let I = null;       // getTakeInit
+  let date = '';
+  let D = null;       // getCourseDay
+  let col = 0;        // 直している列（0＝新しく記録）
+  let double = false; // 2時間続き
+  let absent = new Set();
+  let dirty = false;
+  let note = '';
+  const seats = {};   // 対象 → getSeat の結果
+  let mode = 'take';  // 'take'：出欠をとる／'seat'：座席表を登録・直す
+  let E = null;       // 座席表を直しているときの状態
+
+  function el(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => {
+      if (v == null || v === false) return;
+      if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+      else if (k === 'class') e.className = v;
+      else if (k === 'style') e.style.cssText = v;
+      else if (k in e) e[k] = v;
+      else e.setAttribute(k, v);
+    });
+    kids.flat().forEach((c) => { if (c != null && c !== false) e.append(c.nodeType ? c : String(c)); });
+    return e;
+  }
+  const errText = (e) => (e && e.message) || String(e);
+  function dayLabel(k) { const p = k.split('-').map(Number); return p[1] + '/' + p[2] + '（' + WD[new Date(p[0], p[1] - 1, p[2]).getDay()] + '）'; }
+  function lineIndex(rate) { let idx = -1; D.lines.forEach((v, i) => { if (rate >= v - 1e-9) idx = i; }); return idx; }
+  const pct = (r) => (Math.round(r * 1000) / 10).toFixed(1) + '%';
+  const shortName = (n) => String(n).split(/[\s　]+/)[0] || n;
+
+  // ───────── 画面全体 ─────────
+  function drawTop() {
+    $('dateLabel').textContent = '📅 ' + dayLabel(date) + (date === I.today ? '' : ' の分を記録（後日の入力）');
+    $('dateLabel').className = 'date' + (date === I.today ? '' : ' other');
+    $('dateInput').value = date;
+    $('today').style.display = date === I.today ? 'none' : '';
+    $('courses').innerHTML = '';
+    I.courses.forEach((c) => $('courses').append(el('button', { class: 'course' + (D && D.course === c.name ? ' on' : ''), onclick: () => pick(c.name) }, c.name)));
+  }
+
+  function draw() {
+    drawTop();
+    if (!I.students || !I.courses.length) {
+      $('left').innerHTML = '';
+      $('left').append(el('div', { class: 'msg warn' }, !I.students ? 'はじめに「⚙ 初期設定」で名簿を登録してください。' : 'はじめに「⚙ 初期設定」で講座を登録してください。'),
+        el('button', { class: 'btn primary', onclick: () => run('openSetup', '') }, '⚙ 初期設定を開く'));
+      $('right').innerHTML = '';
+      $('foot').style.display = 'none';
+      return;
+    }
+    if (!D) {
+      $('left').innerHTML = '';
+      $('left').append(el('div', { class: 'place' }, '上の講座を押してください。', el('br'), '日付は今日が入っています。'), el('div', { class: 'ver' }, '版 ' + I.version));
+      $('right').innerHTML = '';
+      $('foot').style.display = 'none';
+      return;
+    }
+    if (mode === 'seat') { drawSeatEdit(); return; }
+    drawSeat();
+    drawList();
+    drawFoot();
+  }
+
+  async function pick(name, keepCol) {
+    if (mode === 'seat' && !confirm('座席表を保存せずに講座を変えますか？')) return;
+    if (dirty && D && D.course !== name && !confirm('書きこんでいない変更があります。捨てて講座を変えますか？')) return;
+    stopCamera();
+    mode = 'take';
+    try { D = await run('getCourseDay', name, date); } catch (e) { alert(errText(e)); return; }
+    startEdit(keepCol);
+    loadSeat(D.target);
+  }
+
+  // その日の列があれば、それを直す（いちばん右の列）。なければ新しく記録
+  function startEdit(keepCol) {
+    col = keepCol && D.dayCols.includes(keepCol) ? keepCol : (D.dayCols.length ? D.dayCols[D.dayCols.length - 1] : 0);
+    double = false;
+    loadMarks();
+    draw();
+  }
+  function loadMarks() {
+    absent = new Set(col ? D.students.filter((s) => s.day[col] === '欠').map((s) => s.key) : []);
+    dirty = false;
+  }
+  function toggle(key) {
+    absent.has(key) ? absent.delete(key) : absent.add(key);
+    dirty = true; note = '';
+    drawSeat(); drawList(); drawFoot();
+  }
+
+  // 生徒ごとの欠課時数（今つけている分もふくむ）
+  function statOf(s) {
+    const per = col ? 1 : (double ? 2 : 1);
+    const others = s.before + s.absentAll - (col && s.day[col] === '欠' ? 1 : 0);
+    const total = others + (absent.has(s.key) ? per : 0);
+    const rate = D.hours ? total / D.hours : 0;
+    const li = D.hours ? lineIndex(rate) : -1;
+    return { total, rate, color: li >= 0 ? COLORS[Math.min(li, COLORS.length - 1)] : null };
+  }
+
+  // ───────── 右：名列 ─────────
+  function drawList() {
+    const R = $('right');
+    const y = R.scrollTop;
+    R.innerHTML = '';
+    const info = el('div', { class: 'info' + (col ? ' edit' : '') });
+    if (col) {
+      const n = D.dayCols.indexOf(col) + 1;
+      info.append(dayLabel(date) + 'の分は記録ずみです' + (D.dayCols.length > 1 ? '（' + n + 'コマ目）' : '') + '。直して書きこむと上書きします。', el('br'));
+      if (D.dayCols.length > 1) D.dayCols.forEach((c, i) => info.append(el('button', { class: c === col ? 'on' : '', onclick: () => { if (dirty && !confirm('書きこんでいない変更を捨てますか？')) return; col = c; loadMarks(); draw(); } }, (i + 1) + 'コマ目')));
+      info.append(el('button', { onclick: () => { if (dirty && !confirm('書きこんでいない変更を捨てますか？')) return; col = 0; loadMarks(); draw(); } }, '＋ この日にもう1コマ記録する'));
+    } else {
+      info.append(D.dayCols.length ? dayLabel(date) + 'の' + (D.dayCols.length + 1) + 'コマ目として、新しい列を作ります。' : '欠席した生徒を押してください（座席表でも名列でも）。全員出席なら、そのまま書きこみます。');
+      if (D.dayCols.length) info.append(el('br'), el('button', { onclick: () => { col = D.dayCols[D.dayCols.length - 1]; loadMarks(); draw(); } }, '記録ずみの列を直す'));
+    }
+    R.append(info);
+    if (!col) R.append(el('label', { class: 'opt' }, el('input', { type: 'checkbox', checked: double, onchange: (e) => { double = e.target.checked; draw(); } }), '2時間続き（2コマ分として書きこむ）'));
+    R.append(el('div', { class: 'legend' }, '年間 ' + D.hours + '時間 ・ 色：', D.lines.map((v, i) => { const c = COLORS[Math.min(i, COLORS.length - 1)]; return el('span', { style: 'background:' + c.bg + ';color:' + c.fg }, pct(v).replace('.0', '')); })));
+    if (note) R.append(el('div', { class: 'msg ok' }, note));
+    if (!D.students.length) R.append(el('div', { class: 'empty' }, '対象の生徒がいません。「⚙ 初期設定」で講座の対象クラスを確かめてください。'));
+    const list = el('div', { class: 'list' });
+    D.students.forEach((s) => {
+      const on = absent.has(s.key);
+      const st = statOf(s);
+      const other = col && s.day[col] && s.day[col] !== '欠' ? s.day[col] : '';
+      list.append(el('button', {
+        class: 'stu' + (on ? ' abs' : ''),
+        title: '欠課時数 ' + st.total + '（それ以前 ' + s.before + '）' + (D.hours ? ' ・ ' + pct(st.rate) : ''),
+        onclick: () => toggle(s.key),
+      },
+        el('span', { class: 'no' }, s.no !== '' ? s.no : ''),
+        el('span', { class: 'nm' }, s.name, other ? '（' + other + '）' : ''),
+        el('span', { class: 'st', style: st.color ? 'background:' + st.color.bg + ';color:' + st.color.fg : '' }, '欠' + st.total + (D.hours ? ' ' + pct(st.rate) : '')),
+        el('span', { class: 'mk' }, on ? '欠' : '')));
+    });
+    R.append(list, el('div', { class: 'ver' }, '版 ' + I.version));
+    R.scrollTop = y;
+  }
+
+  function drawFoot() {
+    $('foot').style.display = '';
+    $('cancelSeat').style.display = 'none';
+    $('cnt').innerHTML = '';
+    $('cnt').append('欠席 ', el('b', null, absent.size), ' 人 ・ 出席 ' + (D.students.length - absent.size) + ' 人' + (!col && double ? '（2コマ分）' : ''));
+    $('save').textContent = col ? '教務手帳を直す（上書き）' : '教務手帳に書きこむ';
+    $('save').disabled = false;
+  }
+
+  // ───────── 左：座席表（出欠をとるとき） ─────────
+  async function loadSeat(target) {
+    if (seats[target]) { if (mode === 'take') drawSeat(); return; }
+    seats[target] = { loading: true };
+    drawSeat();
+    try { seats[target] = await run('getSeat', target); }
+    catch (e) { seats[target] = { error: errText(e), image: '', spots: [] }; }
+    if (D && D.target === target && mode === 'take') drawSeat();
+  }
+
+  function drawSeat() {
+    const L = $('left');
+    L.innerHTML = '';
+    const seat = seats[D.target];
+    if (!seat || seat.loading) { L.append(el('div', { class: 'empty' }, '座席表を読み込み中…')); return; }
+    if (!seat.image) {
+      L.append(el('div', { class: 'place' },
+        seat.error ? el('div', { class: 'msg warn' }, '座席表を読み込めませんでした：' + seat.error) : null,
+        seat.missing ? el('div', { class: 'msg warn' }, '座席表の写真がドライブから消されています。撮り直してください。') : null,
+        el('b', null, D.target + ' の座席表がまだありません'), el('br'),
+        '座席表を撮って登録すると、写真の上の名前を押して欠席にできます。', el('br'),
+        el('button', { class: 'btn primary', onclick: () => startSeatEdit() }, '📷 座席表を登録する'), el('br'),
+        el('small', null, '登録しなくても、右の名列から押して記録できます。')));
+      return;
+    }
+    const byKey = Object.fromEntries(D.students.map((s) => [s.key, s]));
+    const placed = seat.spots.filter((p) => byKey[p.key]);
+    const notPlaced = D.students.filter((s) => !seat.spots.some((p) => p.key === s.key));
+    L.append(el('h3', null, '座席表', el('small', null, D.target + (seat.updated ? ' ・ ' + seat.updated + ' 更新' : '')), el('span', { class: 'sp' }),
+      el('button', { class: 'btn', onclick: () => startSeatEdit() }, '✏ 座席表を直す・撮り直す')));
+    const box = el('div', { class: 'seatbox' }, el('img', { src: seat.image, alt: '座席表', draggable: false }));
+    placed.forEach((p) => {
+      const s = byKey[p.key];
+      box.append(el('button', {
+        class: 'spot' + (absent.has(s.key) ? ' abs' : ''),
+        style: 'left:' + (p.x * 100) + '%;top:' + (p.y * 100) + '%',
+        title: s.name, onclick: () => toggle(s.key),
+      }, (absent.has(s.key) ? '欠 ' : '') + shortName(s.name)));
+    });
+    L.append(box);
+    if (notPlaced.length) L.append(el('div', { class: 'msg warn' }, '座席表に置いていない生徒：' + notPlaced.map((s) => s.name).join('、') + '（右の名列から押せます）'));
+  }
+
+  // ───────── 座席表を登録・直す ─────────
+  function startSeatEdit() {
+    if (dirty && !confirm('書きこんでいない出欠があります。座席表を直すと、いま押した出欠は消えます。よろしいですか？')) return;
+    const seat = seats[D.target] || {};
+    E = { image: seat.image || '', newImage: '', spots: new Map((seat.spots || []).map((p) => [p.key, { x: p.x, y: p.y }])), sel: '', status: '', progress: -1, stream: null, camera: false };
+    mode = 'seat';
+    loadMarks();
+    E.sel = (D.students.find((s) => !E.spots.has(s.key)) || {}).key || '';
+    draw();
+  }
+
+  function drawSeatEdit() {
+    const L = $('left');
+    L.innerHTML = '';
+    L.append(el('h3', null, '座席表を登録・直す', el('small', null, D.target + '（同じクラスの講座で共通）')));
+    if (E.camera) {
+      const v = el('video', { autoplay: true, playsInline: true, muted: true });
+      v.srcObject = E.stream;
+      L.append(el('div', { class: 'tools' },
+        el('button', { class: 'btn primary', onclick: () => shoot(v) }, '📸 撮る'),
+        el('button', { class: 'btn', onclick: () => { stopCamera(); drawSeatEdit(); } }, 'やめる'),
+        el('small', null, '座席表の全体が入るように写して、「撮る」を押してください。')), v);
+    } else if (!E.image) {
+      L.append(el('div', { class: 'place' },
+        el('b', null, '座席表の写真を用意してください'), el('br'),
+        el('button', { class: 'btn primary', onclick: startCamera }, '📷 カメラで撮る'),
+        el('button', { class: 'btn', onclick: pickFile }, '🖼 写真のファイルを選ぶ'), el('br'),
+        el('small', null, '写真をこの画面に貼り付け（Ctrl + V）・ドラッグしてもOKです。'), el('br'),
+        el('small', null, '名前を書いた座席表を撮ると、名前を自動で読み取ってボタンを置きます。')));
+    } else {
+      L.append(el('div', { class: 'tools' },
+        el('button', { class: 'btn primary', onclick: autoRead, disabled: E.progress >= 0 }, '🔤 名前を自動で読み取る'),
+        el('button', { class: 'btn', onclick: startCamera }, '📷 撮り直す'),
+        el('button', { class: 'btn', onclick: pickFile }, '🖼 ほかの写真'),
+        el('button', { class: 'btn', onclick: rotate, title: '写真を右に90度まわす' }, '↻ 回転'),
+        E.spots.size ? el('button', { class: 'btn', onclick: () => { if (confirm('置いたボタンをすべて外しますか？')) { E.spots.clear(); E.sel = (D.students[0] || {}).key || ''; drawSeatEdit(); } } }, 'ボタンを全部外す') : null));
+      if (E.status) L.append(el('div', { class: 'msg ' + (E.progress >= 0 ? 'warn' : 'ok') }, E.status, E.progress >= 0 ? el('div', { class: 'bar' }, el('span', { style: 'width:' + Math.round(E.progress * 100) + '%' })) : null));
+      const img = el('img', { src: E.image, alt: '座席表', draggable: false });
+      const box = el('div', { class: 'seatbox edit' }, img);
+      img.addEventListener('click', (e) => {
+        if (!E.sel) { E.status = '右の名列で、置く生徒を選んでください。'; drawSeatEdit(); return; }
+        const r = img.getBoundingClientRect();
+        E.spots.set(E.sel, { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
+        E.sel = nextUnplaced(E.sel);
+        E.status = '';
+        drawSeatEdit();
+      });
+      const byKey = Object.fromEntries(D.students.map((s) => [s.key, s]));
+      E.spots.forEach((p, key) => {
+        const s = byKey[key];
+        if (!s) return;
+        const b = el('div', { class: 'spot' + (E.sel === key ? ' sel' : ''), style: 'left:' + (p.x * 100) + '%;top:' + (p.y * 100) + '%', title: s.name + '（ドラッグで動かす）' }, shortName(s.name));
+        dragSpot(b, key, img);
+        box.append(b);
+      });
+      L.append(box);
+    }
+    drawPlaceList();
+    $('foot').style.display = '';
+    $('cancelSeat').style.display = '';
+    $('cnt').innerHTML = '';
+    $('cnt').append('座席表に置いた生徒 ', el('b', { style: 'color:#1a73e8' }, Array.from(E.spots.keys()).filter((k) => D.students.some((s) => s.key === k)).length), ' / ' + D.students.length + ' 人');
+    $('save').textContent = '座席表を保存する';
+    $('save').disabled = !E.image;
+  }
+
+  // 右：座席に置く生徒を選ぶ
+  function drawPlaceList() {
+    const R = $('right');
+    const y = R.scrollTop;
+    R.innerHTML = '';
+    R.append(el('div', { class: 'info' }, E.image
+      ? '① 右で生徒を選ぶ（黄色の枠）→ ② 写真の上のその生徒の席を押すと、ボタンが置かれます。置いたボタンはドラッグで動かせます。'
+      : '左で座席表の写真を用意してください。'));
+    const list = el('div', { class: 'list' });
+    D.students.forEach((s) => {
+      const placed = E.spots.has(s.key);
+      list.append(el('button', { class: 'stu' + (E.sel === s.key ? ' sel' : ''), onclick: () => { E.sel = s.key; drawSeatEdit(); } },
+        el('span', { class: 'no' }, s.no !== '' ? s.no : ''),
+        el('span', { class: 'nm' }, s.name),
+        placed ? el('span', { class: 'placed' }, '✓ 置いた') : el('span', { class: 'unplaced' }, 'まだ'),
+        placed ? el('span', { class: 'mk', title: 'ボタンを外す', onclick: (e) => { e.stopPropagation(); E.spots.delete(s.key); E.sel = s.key; drawSeatEdit(); } }, '×') : el('span', { class: 'mk' })));
+    });
+    R.append(list);
+    R.scrollTop = y;
+  }
+
+  function nextUnplaced(after) {
+    const i = D.students.findIndex((s) => s.key === after);
+    const order = D.students.slice(i + 1).concat(D.students.slice(0, i + 1));
+    return (order.find((s) => !E.spots.has(s.key)) || {}).key || '';
+  }
+
+  // 置いたボタンをドラッグで動かす（少しも動かさなければ「選ぶ」）
+  function dragSpot(b, key, img) {
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      b.setPointerCapture(e.pointerId);
+      const r = img.getBoundingClientRect();
+      const sx = e.clientX, sy = e.clientY;
+      let moved = false;
+      const move = (ev) => {
+        if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 3) moved = true;
+        if (!moved) return;
+        const x = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+        const y = Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height));
+        E.spots.set(key, { x, y });
+        b.style.left = (x * 100) + '%'; b.style.top = (y * 100) + '%';
+      };
+      const up = () => {
+        b.removeEventListener('pointermove', move);
+        b.removeEventListener('pointerup', up);
+        E.sel = key;
+        drawSeatEdit();
+      };
+      b.addEventListener('pointermove', move);
+      b.addEventListener('pointerup', up);
+    });
+  }
+
+  // ───────── 写真：カメラ・ファイル・貼り付け ─────────
+  async function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('このブラウザではカメラを使えません。「写真のファイルを選ぶ」を使ってください。'); return; }
+    try {
+      E.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'environment' }, audio: false });
+      E.camera = true;
+      drawSeatEdit();
+    } catch (e) {
+      alert('カメラを起動できませんでした。\n・アドレスバー右のカメラのマークで「許可」にしてから、もう一度押してください。\n・それでもだめなときは、カメラのアプリで撮って「写真のファイルを選ぶ」から選んでください。\n\n（' + (e.name || '') + ' ' + (e.message || '') + '）');
+    }
+  }
+  function stopCamera() {
+    if (E && E.stream) { E.stream.getTracks().forEach((t) => t.stop()); E.stream = null; }
+    if (E) E.camera = false;
+  }
+  function shoot(video) {
+    if (!video.videoWidth) { alert('まだカメラの準備ができていません。少し待ってから押してください。'); return; }
+    setImage(toJpeg(video, video.videoWidth, video.videoHeight));
+    stopCamera();
+  }
+  function pickFile() {
+    const inp = el('input', { type: 'file', accept: 'image/*' });
+    inp.onchange = () => { if (inp.files[0]) readFile(inp.files[0]); };
+    inp.click();
+  }
+  function readFile(file) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { setImage(toJpeg(img, img.naturalWidth, img.naturalHeight)); URL.revokeObjectURL(url); };
+    img.onerror = () => alert('この写真は読めませんでした（JPEG・PNG の写真を選んでください）');
+    img.src = url;
+  }
+  // 長い辺 1600px までに小さくして JPEG にする（保存とやりとりを軽くするため）
+  function toJpeg(src, w, h) {
+    const k = Math.min(1, 1600 / Math.max(w, h));
+    const c = document.createElement('canvas');
+    c.width = Math.round(w * k); c.height = Math.round(h * k);
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.85);
+  }
+  function setImage(url) {
+    const first = !E.image;
+    E.image = url; E.newImage = url;
+    E.status = first || !E.spots.size ? '写真を用意しました。「🔤 名前を自動で読み取る」を押すと、ボタンを自動で置きます。' : '写真を変えました。席がえをしたときは「🔤 名前を自動で読み取る」で置き直せます。';
+    E.progress = -1;
+    drawSeatEdit();
+  }
+  function rotate() {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalHeight; c.height = img.naturalWidth;
+      const g = c.getContext('2d');
+      g.translate(c.width, 0); g.rotate(Math.PI / 2);
+      g.drawImage(img, 0, 0);
+      E.image = E.newImage = c.toDataURL('image/jpeg', 0.85);
+      E.spots.forEach((p, k) => E.spots.set(k, { x: 1 - p.y, y: p.x }));
+      drawSeatEdit();
+    };
+    img.src = E.image;
+  }
+  document.addEventListener('paste', (e) => {
+    if (mode !== 'seat') return;
+    const item = Array.from(e.clipboardData.items || []).find((i) => i.type.startsWith('image/'));
+    if (item) { e.preventDefault(); stopCamera(); readFile(item.getAsFile()); }
+  });
+  document.addEventListener('dragover', (e) => { if (mode === 'seat') e.preventDefault(); });
+  document.addEventListener('drop', (e) => {
+    if (mode !== 'seat') return;
+    e.preventDefault();
+    const f = Array.from(e.dataTransfer.files || []).find((x) => x.type.startsWith('image/'));
+    if (f) { stopCamera(); readFile(f); }
+  });
+
+  // ───────── 名前の自動読み取り（Tesseract.js） ─────────
+  let tessLoading = null;
+  function loadTesseract() {
+    if (window.Tesseract) return Promise.resolve();
+    if (!tessLoading) {
+      tessLoading = new Promise((ok, ng) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+        s.onload = ok; s.onerror = () => { tessLoading = null; ng(new Error('読み取りの部品を読み込めませんでした（ネットワークを確かめてください）')); };
+        document.head.appendChild(s);
+      });
+    }
+    return tessLoading;
+  }
+
+  async function autoRead() {
+    const already = E.spots.size;
+    let keep = false;
+    if (already) keep = !confirm('いま置いてあるボタンも、読み取った位置に置き直しますか？\n「OK」＝置き直す ／「キャンセル」＝まだ置いていない生徒だけ置く');
+    E.progress = 0; E.status = '読み取りの準備をしています…（はじめての時は少しかかります）';
+    drawSeatEdit();
+    try {
+      await loadTesseract();
+      const img = new Image();
+      await new Promise((ok) => { img.onload = ok; img.src = E.image; });
+      // 小さい写真だけ大きくしてから読む
+      const k = Math.max(1, 1200 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      // 読み方を2通り（表の中のばらばらの文字向き・ふつうの文章向き）ためして、見つかった行を合わせる
+      const passes = ['12', '6'];
+      let pass = 0;
+      const worker = await Tesseract.createWorker('jpn', 1, {
+        logger: (m) => {
+          if (!E || mode !== 'seat') return;
+          if (m.status === 'recognizing text') {
+            E.progress = 0.3 + (pass + m.progress) / passes.length * 0.7;
+            E.status = '名前を読み取っています… ' + Math.round((pass + m.progress) / passes.length * 100) + '%';
+          } else if (m.progress != null && pass === 0) { E.progress = Math.min(0.3, m.progress * 0.3); E.status = '読み取りの準備をしています…'; }
+          drawSeatEdit();
+        },
+      });
+      let lines = [];
+      for (pass = 0; pass < passes.length; pass++) {
+        await worker.setParameters({ tessedit_pageseg_mode: passes[pass] });
+        const res = await worker.recognize(c, {}, { blocks: true });
+        lines = lines.concat(res.data.lines || []);
+      }
+      if (!E || mode !== 'seat') { await worker.terminate(); return; } // 読み取り中に画面を変えた
+      // 1クラスだけの講座なら、出席番号でも照合する（合同授業は番号が重なるので名前だけ）
+      const oneClass = new Set(D.students.map((s) => s.cls)).size === 1;
+      const all = D.students.map((s) => ({ key: s.key, name: s.name, no: s.no }));
+      const found = matchNames(lines, all, { numbers: oneClass, size: Math.max(c.width, c.height) });
+      // 読めなかった生徒は、表の空いているマスを1マスずつ読み直す（1マスだけのほうが正しく読める）
+      // （番号だけで置いた席は名前より少し上にあるので、表の形は名前で置いた席から見つける）
+      const named = found.filter((f) => f.by !== 'no');
+      const grid = found.length < all.length ? gridCells(named.length >= 6 ? named : found, c.width, c.height) : null;
+      if (grid && grid.cells.length) {
+        await worker.setParameters({ tessedit_pageseg_mode: '6' });
+        for (let i = 0; i < grid.cells.length; i++) {
+          if (!E || mode !== 'seat') { await worker.terminate(); return; }
+          const rest = all.filter((s) => !found.some((f) => f.key === s.key));
+          if (!rest.length) break;
+          E.progress = 0.85 + 0.15 * i / grid.cells.length;
+          E.status = '空いているマスを1つずつ読み直しています… ' + (i + 1) + '/' + grid.cells.length;
+          drawSeatEdit();
+          const cell = grid.cells[i];
+          const left = Math.max(0, Math.round(cell.x - grid.dx * 0.55)), top = Math.max(0, Math.round(cell.y - grid.dy * 0.55));
+          const rect = { left, top, width: Math.min(c.width - left, Math.round(grid.dx * 1.1)), height: Math.min(c.height - top, Math.round(grid.dy * 1.1)) };
+          const r = await worker.recognize(c, { rectangle: rect }, { blocks: true });
+          const hit = matchNames(r.data.lines || [], rest, { numbers: oneClass, size: Math.max(c.width, c.height) }).sort((a, b) => b.score - a.score)[0];
+          if (hit) found.push({ key: hit.key, x: cell.x, y: cell.y, score: hit.score, by: hit.by });
+        }
+      }
+      await worker.terminate();
+      let put = 0;
+      found.forEach((f) => {
+        if (keep && E.spots.has(f.key)) return;
+        E.spots.set(f.key, { x: f.x / c.width, y: f.y / c.height });
+        put++;
+      });
+      const rest = D.students.filter((s) => !E.spots.has(s.key));
+      E.progress = -1;
+      const byNo = found.filter((f) => f.by !== 'name').length;
+      E.status = '✓ ' + found.length + '人を読み取り（出席番号で ' + byNo + '人）、' + put + '人のボタンを置きました。' +
+        (rest.length ? 'のこり ' + rest.length + '人は、右で選んでから写真の上の席を押して置いてください。' : '全員置けました。') +
+        ' 位置がずれているボタンはドラッグで直せます。';
+      E.sel = rest.length ? rest[0].key : '';
+    } catch (e) {
+      if (!E) return;
+      E.progress = -1;
+      E.status = '自動で読み取れませんでした：' + errText(e) + '　右で生徒を選んでから、写真の上の席を押して置いてください。';
+    }
+    drawSeatEdit();
+  }
+
+  // <match>
+  // OCR の結果（行ごとの単語と位置）から、生徒の出席番号と名前を探して位置を返す
+  //  lines: [{ words: [{ text, bbox: { x0, y0, x1, y1 } }] }]、students: [{ key, name, no }]
+  //  opt: { numbers: 出席番号でも探すか（1クラスだけの講座）, size: 画像の長い辺 }
+  //  返り値: [{ key, x, y, score, by }]（x・y は読み取った画像の中のピクセル、by は 'no'・'name'・'both'）
+  function matchNames(lines, students, opt) {
+    opt = opt || {};
+    const clean = (t) => String(t || '').normalize('NFKC').replace(/[\s　・,.、。|｜\[\]()（）{}「」『』\-_—―:：;；'"`~〜!?！？*＊#＃=＝+＋/／\\]/g, '');
+    const L = lines.map((line) => {
+      const chars = [];
+      (line.words || []).forEach((w, wi) => {
+        const t = Array.from(clean(w.text));
+        if (!t.length || !w.bbox) return;
+        const b = w.bbox, cw = (b.x1 - b.x0) / t.length;
+        t.forEach((ch, i) => chars.push({ ch, w: wi, x0: b.x0 + cw * i, x1: b.x0 + cw * (i + 1), y0: b.y0, y1: b.y1 }));
+      });
+      return chars;
+    }).filter((c) => c.length);
+    const vs = students.map((s) => {
+      const parts = String(s.name).normalize('NFKC').trim().split(/\s+/);
+      return { key: s.key, full: clean(s.name), fam: parts.length > 1 ? clean(parts[0]) : '', giv: parts.length > 1 ? clean(parts.slice(1).join('')) : '' };
+    });
+    const count = {};
+    vs.forEach((v) => { [v.fam, v.giv].forEach((t) => { if (t) count[t] = (count[t] || 0) + 1; }); });
+    // 名前（target）と、行の中の文字の並び（start から len 文字）の似ている度合い
+    const score = (target, chars, start, len) => {
+      const T = Array.from(target);
+      const bag = {};
+      T.forEach((c) => { bag[c] = (bag[c] || 0) + 1; });
+      let pos = 0, inter = 0;
+      for (let i = 0; i < len; i++) {
+        const c = chars[start + i].ch;
+        if (c === T[i]) pos++;
+        if (bag[c]) { bag[c]--; inter++; }
+      }
+      return Math.max(pos / T.length, 0.9 * inter / Math.max(T.length, len));
+    };
+    const cands = [];
+    vs.forEach((v) => {
+      const variants = [[v.full, 1]];
+      // 名字だけ・名前だけの座席表でも読めるように（そのクラスに1人だけのときだけ）
+      if (v.fam && Array.from(v.fam).length >= 2 && count[v.fam] === 1) variants.push([v.fam, 0.9]);
+      if (v.giv && Array.from(v.giv).length >= 2 && count[v.giv] === 1) variants.push([v.giv, 0.85]);
+      variants.forEach(([t, w]) => {
+        const n = Array.from(t).length;
+        if (!n) return;
+        const need = n <= 2 ? 1 : n === 3 ? 0.66 : 0.6;
+        L.forEach((chars, li) => {
+          [n, n - 1, n + 1].forEach((len) => {
+            if (len < 2 || len > chars.length) return;
+            for (let st = 0; st + len <= chars.length; st++) {
+              const sc = score(t, chars, st, len);
+              if (sc >= need) cands.push({ key: v.key, li, st, len, score: sc * w + (len === n ? 0.001 : 0) });
+            }
+          });
+        });
+      });
+    });
+    cands.sort((a, b) => b.score - a.score);
+    const used = {}, taken = {}, out = [];
+    cands.forEach((c) => {
+      if (used[c.key]) return;
+      for (let i = c.st; i < c.st + c.len; i++) if (taken[c.li + ':' + i]) return;
+      used[c.key] = true;
+      for (let i = c.st; i < c.st + c.len; i++) taken[c.li + ':' + i] = true;
+      const ch = L[c.li].slice(c.st, c.st + c.len);
+      const x0 = Math.min(...ch.map((q) => q.x0)), x1 = Math.max(...ch.map((q) => q.x1));
+      const y0 = Math.min(...ch.map((q) => q.y0)), y1 = Math.max(...ch.map((q) => q.y1));
+      out.push({ key: c.key, x: (x0 + x1) / 2, y: (y0 + y1) / 2, score: c.score, by: 'name' });
+    });
+    if (!opt.numbers) return out;
+
+    // 出席番号（1〜2けたの数字）。「1年1組」「3番」のような数字は使わない。同じ番号が2か所にあれば使わない
+    const byNo = {};
+    students.forEach((s) => { const n = Number(s.no); if (n > 0) byNo[n] = s.key; });
+    const seen = {};
+    const near = new Set(Array.from('年組番限月日時回列号階棟'));
+    // 読み取りがゆらいで同じ数字が2回出ても、近い位置なら同じ1か所として数える
+    const tol = (opt.size || 1000) * 0.03;
+    L.forEach((chars) => {
+      let i = 0;
+      while (i < chars.length) {
+        if (!/[0-9]/.test(chars[i].ch)) { i++; continue; }
+        let j = i;
+        // 数字は単語の区切りで分ける（「26」「28」が同じ行に並んでいても、別の番号）
+        while (j < chars.length && /[0-9]/.test(chars[j].ch) && chars[j].w === chars[i].w) j++;
+        const run = chars.slice(i, j);
+        const after = chars[j] ? chars[j].ch : '', before = i > 0 ? chars[i - 1].ch : '';
+        if (run.length <= 2 && !near.has(after) && !near.has(before)) {
+          const n = Number(run.map((q) => q.ch).join(''));
+          const x = (Math.min(...run.map((q) => q.x0)) + Math.max(...run.map((q) => q.x1))) / 2;
+          const y = (Math.min(...run.map((q) => q.y0)) + Math.max(...run.map((q) => q.y1))) / 2;
+          const list = seen[n] = seen[n] || [];
+          if (!list.some((p) => Math.abs(p.x - x) < tol && Math.abs(p.y - y) < tol)) list.push({ x, y });
+        }
+        i = j;
+      }
+    });
+    const byKey = {};
+    out.forEach((o) => { byKey[o.key] = o; });
+    const limit = (opt.size || 1000) * 0.12; // 番号と名前がこれ以上はなれていたら、別の席とみなす
+    Object.keys(seen).forEach((n) => {
+      const key = byNo[n];
+      if (!key || seen[n].length !== 1) return;
+      const p = seen[n][0];
+      const nm = byKey[key];
+      if (nm && Math.hypot(nm.x - p.x, nm.y - p.y) < limit) { nm.by = 'both'; return; } // 名前の位置のまま
+      byKey[key] = { key, x: p.x, y: p.y, score: 1, by: 'no' }; // 番号を優先する
+    });
+    // 番号で置いた席に、別の生徒の名前が重なっていたら、その名前の読み取りは使わない
+    const final = Object.values(byKey);
+    return final.filter((o) => o.by !== 'name' || !final.some((q) => q.by === 'no' && q.key !== o.key && Math.hypot(q.x - o.x, q.y - o.y) < limit * 0.5));
+  }
+
+  // 読めた席の位置から、座席表の行と列を見つけて、まだだれも置いていないマスの中心を返す
+  //  points: [{ x, y }]（ピクセル）、W・H: 画像の大きさ
+  //  返り値: { cells: [{ x, y }], dx, dy }（dx・dy は1マスの幅・高さ）。表の形が見つからなければ null
+  function gridCells(points, W, H) {
+    if (points.length < 6) return null;
+    const groups = (vals, tol) => {
+      const v = vals.slice().sort((a, b) => a - b);
+      const out = [];
+      v.forEach((x) => {
+        const g = out[out.length - 1];
+        if (g && x - g.last <= tol) { g.sum += x; g.n++; g.last = x; } else out.push({ sum: x, n: 1, last: x });
+      });
+      return out.map((g) => g.sum / g.n);
+    };
+    const step = (cs) => {
+      const d = [];
+      for (let i = 1; i < cs.length; i++) d.push(cs[i] - cs[i - 1]);
+      d.sort((a, b) => a - b);
+      return d.length ? d[Math.floor(d.length / 2)] : 0;
+    };
+    let cols = groups(points.map((p) => p.x), W * 0.035);
+    let rows = groups(points.map((p) => p.y), H * 0.035);
+    const dx = step(cols), dy = step(rows);
+    if (cols.length < 2 || rows.length < 2 || !dx || !dy) return null;
+    // 1列・1行まるごと読めなかったところ（間があいている）をうめる
+    const fill = (cs, d) => {
+      const out = [cs[0]];
+      for (let i = 1; i < cs.length; i++) {
+        const k = Math.round((cs[i] - cs[i - 1]) / d);
+        for (let j = 1; j < k; j++) out.push(cs[i - 1] + (cs[i] - cs[i - 1]) * j / k);
+        out.push(cs[i]);
+      }
+      return out;
+    };
+    cols = fill(cols, dx); rows = fill(rows, dy);
+    const cells = [];
+    rows.forEach((y) => cols.forEach((x) => {
+      if (!points.some((p) => Math.abs(p.x - x) < dx * 0.45 && Math.abs(p.y - y) < dy * 0.45)) cells.push({ x, y });
+    }));
+    return { cells, dx, dy };
+  }
+  // </match>
+
+  // ───────── 保存 ─────────
+  $('save').onclick = async () => {
+    if (!D) return;
+    $('save').disabled = true;
+    if (mode === 'seat') {
+      try {
+        const spots = Array.from(E.spots.entries()).map(([key, p]) => ({ key, x: p.x, y: p.y }));
+        seats[D.target] = await run('saveSeat', { target: D.target, image: E.newImage, spots });
+        stopCamera();
+        mode = 'take'; E = null;
+        note = '✓ 座席表を保存しました。写真の上の名前を押すと欠席になります。';
+        draw();
+      } catch (e) { alert('座席表を保存できませんでした：' + errText(e)); $('save').disabled = false; }
+      return;
+    }
+    try {
+      const r = await run('saveDay', { course: D.course, date, col, double: !col && double, absent: Array.from(absent) });
+      const wasNew = !col;
+      D = r;
+      note = '✓ 教務手帳に' + (wasNew ? '書きこみました' : '上書きしました') + '（' + dayLabel(date) + '・欠席 ' + absent.size + '人' + (r.saved.length > 1 ? '・2コマ分' : '') + '）';
+      startEdit(r.saved[r.saved.length - 1]);
+    } catch (e) {
+      alert('書きこめませんでした：' + errText(e));
+      $('save').disabled = false;
+    }
+  };
+  $('cancelSeat').onclick = () => {
+    if (!confirm('座席表の変更を保存せずにやめますか？')) return;
+    stopCamera();
+    mode = 'take'; E = null;
+    draw();
+  };
+
+  // 日付を変える（後日、休んだ日の分を入れるとき）。教務手帳には日付の順に列が入る
+  function setDate(k) {
+    if (!k || k === date) return;
+    if (mode === 'seat') { alert('座席表を保存するか「やめる」を押してから、日付を変えてください。'); $('dateInput').value = date; return; }
+    if (dirty && !confirm('書きこんでいない変更を捨てて、日付を変えますか？')) { $('dateInput').value = date; return; }
+    date = k;
+    dirty = false; note = '';
+    if (D) pick(D.course); else draw();
+  }
+  function shift(n) {
+    const p = date.split('-').map(Number);
+    const d = new Date(p[0], p[1] - 1, p[2] + n);
+    setDate(d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2));
+  }
+  $('dateInput').onchange = (e) => setDate(e.target.value);
+  $('prev').onclick = () => shift(-1);
+  $('next').onclick = () => shift(1);
+  $('today').onclick = () => setDate(I.today);
+  const leaving = (fn) => () => { if ((dirty || mode === 'seat') && !confirm('保存していない変更は消えます。よろしいですか？')) return; stopCamera(); fn(); };
+  $('lPeriod').onclick = leaving(() => run('openPeriod'));
+  $('lBulk').onclick = leaving(() => run('openBulk'));
+  $('lSetup').onclick = leaving(() => run('openSetup', ''));
+  $('lReload').onclick = leaving(() => {
+    run('getTakeInit').then((d) => {
+      I = d; const name = D && D.course; D = null; mode = 'take'; dirty = false;
+      Object.keys(seats).forEach((k) => delete seats[k]);
+      draw();
+      if (name && I.courses.some((c) => c.name === name)) pick(name);
+    });
+  });
+
+  run('getTakeInit').then((d) => {
+    I = d; date = d.today;
+    draw();
+    if (I.courses.length === 1) pick(I.courses[0].name);
+  }).catch((e) => { $('left').innerHTML = ''; $('left').append(el('div', { class: 'msg warn' }, '読み込めませんでした：' + errText(e))); });
+</script>
+</body>
+</html>
