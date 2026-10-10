@@ -595,7 +595,7 @@
         el('small', null, '名前を書いた座席表を撮ると、名前を自動で読み取ってボタンを置きます。')));
     } else {
       L.append(el('div', { class: 'tools' },
-        el('button', { class: 'btn primary', onclick: autoRead, disabled: reading }, '🔤 名前を自動で読み取る'),
+        reading ? el('button', { class: 'btn primary', onclick: stopRead }, '■ 読み取りをやめる') : el('button', { class: 'btn primary', onclick: autoRead }, '🔤 名前を自動で読み取る'),
         el('button', { class: 'btn', onclick: startCamera, disabled: reading }, '📷 撮り直す'),
         el('button', { class: 'btn', onclick: pickFile, disabled: reading }, '🖼 ほかの写真'),
         el('button', { class: 'btn', onclick: rotate, disabled: reading, title: '写真を右に90度まわす' }, '↻ 回転'),
@@ -750,8 +750,12 @@
     setImage(url);
   }
   function pickFile() {
-    const inp = el('input', { type: 'file', accept: 'image/*' });
-    inp.onchange = () => { if (inp.files[0]) readFile(inp.files[0]); };
+    // 画面の中に置いてから開く（置かずに開くと、Google の画面の中では開かないことがある）
+    const old = document.getElementById('pickPhoto');
+    if (old) old.remove();
+    const inp = el('input', { type: 'file', accept: 'image/*', id: 'pickPhoto', style: 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0' });
+    inp.addEventListener('change', () => { const f = inp.files && inp.files[0]; inp.remove(); if (f) readFile(f); });
+    document.body.appendChild(inp);
     inp.click();
   }
   function readFile(file) {
@@ -826,6 +830,11 @@
 
   // ───────── 名前の自動読み取り（Tesseract.js） ─────────
   let tessLoading = null;
+  // 学校のネットワークなどで読みこみが止まったままにならないよう、時間の上限を付ける
+  function withTimeout(promise, ms, message) {
+    let timer;
+    return Promise.race([promise, new Promise((_, ng) => { timer = setTimeout(() => ng(new Error(message)), ms); })]).finally(() => clearTimeout(timer));
+  }
   function loadTesseract() {
     if (window.Tesseract) return Promise.resolve();
     if (!tessLoading) {
@@ -843,7 +852,9 @@
     if (E.progress >= 0 || E.camera) return;
     const me = E, d0 = D, src = E.image;
     // 読み取り中に講座を変えた・座席表の画面を閉じた・写真を変えたら、結果は使わない
-    const alive = () => E === me && D === d0 && mode === 'seat' && me.image === src;
+    // やめたあとにもう一度読み取ったとき、前の読み取りの結果が混ざらないよう、回ごとに番号をつける
+    const runNo = me.runNo = (me.runNo || 0) + 1;
+    const alive = () => E === me && D === d0 && mode === 'seat' && me.image === src && me.runNo === runNo;
     const already = me.spots.size;
     let keep = false;
     if (already) keep = !confirm('いま置いてあるボタンも、読み取った位置に置き直しますか？\n「OK」＝置き直す ／「キャンセル」＝まだ置いていない生徒だけ置く');
@@ -851,7 +862,9 @@
     drawSeatEdit();
     let worker = null;
     try {
-      await loadTesseract();
+      await withTimeout(loadTesseract(), 30000, '読み取りの部品を読みこめませんでした（学校のネットワークで止められているかもしれません）')
+        .catch((e) => { if (!window.Tesseract) tessLoading = null; throw e; }); // 次に押したときは読みこみからやり直す
+      if (!alive()) return;
       const img = new Image();
       await new Promise((ok, ng) => { img.onload = ok; img.onerror = () => ng(new Error('写真を読めませんでした')); img.src = src; });
       // 小さい写真だけ大きくしてから読む
@@ -863,7 +876,7 @@
       // （'12' は向きの判定用のデータ osd がないと警告が出るが、そのまま '11'（ばらばらの文字）として読む。'11' より少しよく読める）
       const passes = ['12', '6'];
       let pass = 0;
-      worker = await Tesseract.createWorker('jpn', 1, {
+      const making = Tesseract.createWorker('jpn', 1, {
         logger: (m) => {
           if (!alive() || pass >= passes.length) return; // マスの読み直しの進みぐあいは下で出す
           if (m.status === 'recognizing text') {
@@ -874,6 +887,14 @@
           showProgress(me);
         },
       });
+      // 読み取りの準備（日本語のデータの読みこみ）に時間がかかりすぎたら、やめる
+      // （時間切れのあとでできあがった部品や、やめたあとの部品は閉じる）
+      let late = false;
+      making.then((w) => { if (late || !alive()) w.terminate().catch(() => {}); }, () => {});
+      worker = await withTimeout(making, 120000, '読み取りの準備に時間がかかりすぎました（ネットワークを確かめてください）')
+        .catch((e) => { late = true; throw e; });
+      me.worker = worker;
+      if (!alive()) return;
       let lines = [];
       for (pass = 0; pass < passes.length; pass++) {
         if (!alive()) return;
@@ -936,10 +957,25 @@
       me.status = '自動で読み取れませんでした：' + errText(e) + '　右で生徒を選んでから、写真の上の席を押して置いてください。';
     } finally {
       if (worker) worker.terminate().catch(() => {}); // 読み取りの部品（大きなメモリ）を必ず閉じる
-      // とちゅうでやめたとき（写真を変えたなど）、ボタンを押せるようにもどす
-      if (E === me && me.progress >= 0) { me.progress = -1; me.status = '読み取りをやめました。'; if (mode === 'seat') drawSeatEdit(); }
+      // ここから下は、この回がいまの読み取りのときだけ（やめたあとに始めた次の回をじゃましない）
+      if (me.runNo === runNo) {
+        me.worker = null;
+        // とちゅうでやめたとき（写真を変えたなど）、ボタンを押せるようにもどす
+        if (E === me && me.progress >= 0) { me.progress = -1; me.status = '読み取りをやめました。'; if (mode === 'seat') drawSeatEdit(); }
+      }
     }
-    if (E === me && mode === 'seat') drawSeatEdit();
+    if (E === me && mode === 'seat' && me.runNo === runNo) drawSeatEdit();
+  }
+
+  // 読み取りをやめる（止まってしまったときや、手で置きたいとき）
+  function stopRead() {
+    if (!E || E.progress < 0) return;
+    const me = E;
+    me.runNo = (me.runNo || 0) + 1; // 読み取り中の回を止める
+    if (me.worker) { me.worker.terminate().catch(() => {}); me.worker = null; }
+    me.progress = -1;
+    me.status = '読み取りをやめました。右で生徒を選んでから、写真の上の席を押して置いてください（「🔤 名前を自動で読み取る」でもう一度読めます）。';
+    drawSeatEdit();
   }
 
   // <match>
