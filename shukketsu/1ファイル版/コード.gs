@@ -23,7 +23,7 @@ const SHEET = {
 const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.CUTS, SHEET.SEATS];
 
 // このプログラムの版（サイドバーのいちばん下に出ます。貼り直しが反映されたかの確認用）
-const VERSION = '10/10-3';
+const VERSION = '10/10-4';
 
 const STUDENT_HEADERS = ['学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const COURSE_HEADERS = ['講座名（＝教務手帳のシート名）', '対象（クラス・学籍番号を「,」区切り）', '単位数', 'メモ'];
@@ -2224,12 +2224,16 @@ HTML_FILES["Take"] = [
   "    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);",
   "    return c.toDataURL('image/jpeg', 0.85);",
   "  }",
+  "  // 写真を用意したら（撮り直し・ほかの写真も）、前の写真に合わせて置いたボタンは外して、すぐ名前を読み取る",
   "  function setImage(url) {",
-  "    const first = !E.image;",
+  "    const had = E.spots.size > 0;",
   "    E.image = url; E.newImage = url;",
-  "    E.status = first || !E.spots.size ? '写真を用意しました。「🔤 名前を自動で読み取る」を押すと、ボタンを自動で置きます。' : '写真を変えました。席がえをしたときは「🔤 名前を自動で読み取る」で置き直せます。';",
+  "    E.spots.clear();",
+  "    E.sel = (D.students[0] || {}).key || '';",
+  "    E.status = had ? '写真を変えたので、前のボタンは外しました。名前を読み取り直しています…' : '写真を用意しました。名前を読み取っています…';",
   "    E.progress = -1;",
   "    drawSeatEdit();",
+  "    autoRead();",
   "  }",
   "  function rotate() {",
   "    const me = E, src = E.image;",

@@ -17,7 +17,7 @@ const SHEET = {
 const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.CUTS, SHEET.SEATS];
 
 // このプログラムの版（サイドバーのいちばん下に出ます。貼り直しが反映されたかの確認用）
-const VERSION = '10/10-3';
+const VERSION = '10/10-4';
 
 const STUDENT_HEADERS = ['学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const COURSE_HEADERS = ['講座名（＝教務手帳のシート名）', '対象（クラス・学籍番号を「,」区切り）', '単位数', 'メモ'];
