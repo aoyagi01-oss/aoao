@@ -23,7 +23,7 @@ const SHEET = {
 const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.CUTS, SHEET.SEATS];
 
 // このプログラムの版（サイドバーのいちばん下に出ます。貼り直しが反映されたかの確認用）
-const VERSION = '10/10-2';
+const VERSION = '10/10-3';
 
 const STUDENT_HEADERS = ['学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const COURSE_HEADERS = ['講座名（＝教務手帳のシート名）', '対象（クラス・学籍番号を「,」区切り）', '単位数', 'メモ'];
@@ -37,6 +37,9 @@ const SEAT_FOLDER = '出欠_座席表の写真';
 //  （H 列のすき間があるので、いちばん左に日付の列を入れても E 列の数式「H5:5」の範囲に入る）
 const NB = { HEAD: 3, SUB: 4, TOP: 5, CLS: 1, NO: 2, KEY: 3, NAME: 4, TOTAL: 5, RATE: 6, BEFORE: 7, SEP: 8, FIRST: 9 };
 const NB_HEADERS = ['クラス', '番号', '学籍番号', '氏名', '欠課時数', '割合', 'それ以前の欠課', ''];
+// 先生向けの使い方ガイド（画面の見本つき）。「使い方」シートの2行目にリンクを入れる
+const GUIDE_URL = 'https://claude.ai/artifact/MvKbLHvvUmgXFDRwUDqnQF';
+const GUIDE_LABEL = '📖 使い方ガイド（画面の見本つき）を開く';
 const MARK = '欠';
 // 欠課時数には数えない、記録だけのしるし（遅刻・早退・公欠・出停・忌引）。マスには1文字で入れる
 const RECORD_MARKS = [['遅', '遅刻'], ['早', '早退'], ['公', '公欠'], ['停', '出停'], ['忌', '忌引']];
@@ -1131,6 +1134,11 @@ function setup_() {
     writeHowTo_(howto.sh);
     ss.setActiveSheet(howto.sh);
     ss.moveActiveSheet(1);
+  }
+  // 使い方ガイドへのリンク（2行目が空いているときだけ入れる。先生が書きかえたものはそのまま）
+  const a2 = howto.sh.getRange(2, 1);
+  if (a2.getValue() === '' && a2.getFormula() === '') {
+    a2.setFormula('=HYPERLINK("' + GUIDE_URL + '","' + GUIDE_LABEL + '")').setFontSize(12).setFontWeight('bold');
   }
   const students = make(SHEET.STUDENTS, STUDENT_HEADERS, [90, 60, 50, 140, 160, 120]);
   if (students.fresh) students.sh.getRange('A:B').setNumberFormat('@');
