@@ -23,7 +23,7 @@ const SHEET = {
 const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.CUTS, SHEET.SEATS];
 
 // このプログラムの版（サイドバーのいちばん下に出ます。貼り直しが反映されたかの確認用）
-const VERSION = '10/10-1';
+const VERSION = '10/10-2';
 
 const STUDENT_HEADERS = ['学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const COURSE_HEADERS = ['講座名（＝教務手帳のシート名）', '対象（クラス・学籍番号を「,」区切り）', '単位数', 'メモ'];
@@ -38,6 +38,9 @@ const SEAT_FOLDER = '出欠_座席表の写真';
 const NB = { HEAD: 3, SUB: 4, TOP: 5, CLS: 1, NO: 2, KEY: 3, NAME: 4, TOTAL: 5, RATE: 6, BEFORE: 7, SEP: 8, FIRST: 9 };
 const NB_HEADERS = ['クラス', '番号', '学籍番号', '氏名', '欠課時数', '割合', 'それ以前の欠課', ''];
 const MARK = '欠';
+// 欠課時数には数えない、記録だけのしるし（遅刻・早退・公欠・出停・忌引）。マスには1文字で入れる
+const RECORD_MARKS = [['遅', '遅刻'], ['早', '早退'], ['公', '公欠'], ['停', '出停'], ['忌', '忌引']];
+const RECORD_CODES = RECORD_MARKS.map(function (m) { return m[0]; });
 // 2時間続きで書きこんだ列は、4行目（曜日）に「続き」と入れて、まとめて直せるようにする
 const DOUBLE = '続き';
 
@@ -268,7 +271,8 @@ function getCourseDay(name, date) {
   }
 }
 
-// o: { course, date, cols（直すときの列。2時間続きなら2つ。新しく記録するときは空）, double（2時間続き）, absent: [学籍番号] }
+// o: { course, date, cols（直すときの列。2時間続きなら2つ。新しく記録するときは空）, double（2時間続き）, absent: [学籍番号],
+//      extra: { 学籍番号: '遅' など }（記録だけのしるし。欠課時数には数えない） }
 function saveDay(o) {
   const c = findCourse_(o.course);
   const date = dateKey_(o.date);
@@ -292,6 +296,8 @@ function saveDay(o) {
     }
     const absent = {};
     (o.absent || []).forEach(function (k) { absent[norm_(k)] = true; });
+    const extra = {};
+    Object.keys(o.extra || {}).forEach(function (k) { if (RECORD_CODES.indexOf(o.extra[k]) >= 0) extra[norm_(k)] = o.extra[k]; });
     const members = {};
     members_(c, getStudents_().filter(function (s) { return !s.excluded; })).forEach(function (s) { members[s.key] = true; });
     const last = sh.getLastRow();
@@ -304,7 +310,8 @@ function saveDay(o) {
         if (!members[key]) return;
         const cur = String(vals[i][0]).trim();
         if (absent[key]) vals[i][0] = MARK;
-        else if (cur === MARK) vals[i][0] = ''; // 手で書いたメモなど、「欠」以外はそのまま
+        else if (extra[key]) vals[i][0] = extra[key];
+        else if (cur === MARK || RECORD_CODES.indexOf(cur) >= 0) vals[i][0] = ''; // 手で書いたメモなど、ほかの書きこみはそのまま
       });
       range.setValues(vals);
     });
@@ -979,7 +986,7 @@ function notebook_(c) {
 function writeLegend_(sh) {
   const names = ['黄', '橙', '赤', '濃い赤'];
   const txt = '割合（欠課時数 ÷ 年間時数）の色：' + lines_().map(function (v, i) { return Math.round(v * 1000) / 10 + '%以上 ' + names[Math.min(i, names.length - 1)]; }).join('／') +
-    '　　マスの「欠」を数えます。あとから欠席扱いでないとわかったら、そのマスの「欠」を消すだけで直ります';
+    '　　マスの「欠」だけを数えます（遅・早・公・停・忌は記録だけ）。あとから欠席扱いでないとわかったら、そのマスの「欠」を消すだけで直ります';
   sh.getRange(2, 1).setValue(txt).setFontColor('#5f6368');
 }
 
@@ -1044,6 +1051,12 @@ function applyFormats_(sh) {
   rules.push(SpreadsheetApp.newConditionalFormatRule()
     .whenTextEqualTo(MARK).setBackground(COLOR.mark).setFontColor(COLOR.markText)
     .setRanges([sh.getRange(NB.TOP, NB.FIRST, nRows, nCols)]).build());
+  // 記録だけのしるし（遅・早・公・停・忌）はうすい灰色（欠課時数には数えない）
+  RECORD_CODES.forEach(function (code) {
+    rules.push(SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo(code).setBackground('#eceff1').setFontColor('#455a64')
+      .setRanges([sh.getRange(NB.TOP, NB.FIRST, nRows, nCols)]).build());
+  });
   sh.setConditionalFormatRules(rules);
 }
 
@@ -1488,6 +1501,22 @@ HTML_FILES["Take"] = [
   "  .stu.abs .no { color: #fde7e5; }",
   "  .stu.abs .nm { font-weight: bold; }",
   "  .stu.sel { outline: 3px solid #fbbc04; }",
+  "  .rk { display: inline-block; margin-left: 6px; font-size: 10px; padding: 0 5px; border-radius: 6px; background: #eceff1; color: #455a64; font-weight: normal; vertical-align: middle; }",
+  "  .seat .rk { margin: 1px 0 0; }",
+  "  .recopen { margin: 0 0 4px; }",
+  "  .recopen .lnk { color: #80868b; font-size: 11px; padding: 0; }",
+  "  .recbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 6px; padding: 5px 6px; border: 1px dashed #c4c7c5; border-radius: 8px; background: #fafafa; }",
+  "  .recbar .rh { font-size: 11px; color: #5f6368; }",
+  "  .recbar .rb { font-size: 11px; padding: 2px 8px; border-radius: 10px; border: 1px solid #dadce0; background: #fff; color: #455a64; }",
+  "  .recbar .rb.on { background: #455a64; border-color: #455a64; color: #fff; }",
+  "  .recbar .rb.on.abs { background: #d93025; border-color: #d93025; }",
+  "  .recbar .rclose { font-size: 11px; color: #80868b; margin-left: auto; }",
+  "  .recbar .rnote { flex-basis: 100%; font-size: 10px; color: #80868b; }",
+  "  .rkcnt { font-size: 11px; color: #5f6368; margin-left: 6px; }",
+  "  #foot.recmode { background: #fef7e0; }",
+  "  .recnow { font-size: 12px; color: #7a4f01; margin-top: 2px; }",
+  "  #foot .recnow b { font-size: 14px; color: #7a4f01; }",
+  "  .recnow button { margin-left: 8px; font-size: 11px; padding: 1px 8px; border-radius: 10px; border: 1px solid #b06000; background: #fff; color: #b06000; }",
   "  .stu .placed { font-size: 11px; color: #188038; }",
   "  .stu .unplaced { font-size: 11px; color: #b06000; }",
   "  .msg { padding: 8px; border-radius: 8px; margin: 6px 0; font-size: 12px; line-height: 1.6; }",
@@ -1584,6 +1613,13 @@ HTML_FILES["Take"] = [
   "  let split = false;  // 2時間続きの列も、1コマずつ直す",
   "  let double = false; // 2時間続き",
   "  let absent = new Set();",
+  "  // 記録だけのしるし（欠課時数には数えない）。ふだんはかくしておき、使う先生だけ開く",
+  "  const REC = [['遅', '遅刻'], ['早', '早退'], ['公', '公欠'], ['停', '出停'], ['忌', '忌引']];",
+  "  const REC_CODES = REC.map((r) => r[0]);",
+  "  const recLabel = (c) => (REC.find((r) => r[0] === c) || [c, c])[1];",
+  "  let extra = new Map();  // 学籍番号 → '遅' など",
+  "  let recMode = '欠';     // いま押すと何をつけるか（ふだんは欠席）",
+  "  let recOpen = (() => { try { return localStorage.getItem('shukketsu-rec') === '1'; } catch (e) { return false; } })();",
   "  let dirty = false;",
   "  let note = '';",
   "  const seats = {};   // 対象 → getSeat の結果",
@@ -1702,6 +1738,7 @@ HTML_FILES["Take"] = [
   "    D = d;",
   "    note = '';",
   "    split = false;",
+  "    recMode = '欠';",
   "    startEdit(keepCol);",
   "    loadSeat(D.target);",
   "  }",
@@ -1726,16 +1763,27 @@ HTML_FILES["Take"] = [
   "  const isAbs = (s) => cols.some((c) => s.day[c] === '欠');",
   "  function loadMarks() {",
   "    absent = new Set(D.students.filter(isAbs).map((s) => s.key));",
+  "    extra = new Map();",
+  "    D.students.forEach((s) => {",
+  "      if (absent.has(s.key)) return;",
+  "      const c = cols.map((col) => s.day[col]).find((v) => REC_CODES.includes(v));",
+  "      if (c) extra.set(s.key, c);",
+  "    });",
   "    dirty = false;",
   "  }",
   "  // 2時間続きの2列で、欠席がちがう生徒（シートを直接直したときなど）",
-  "  const mismatch = () => cols.length > 1 ? D.students.filter((s) => cols.some((c) => (s.day[c] === '欠') !== (s.day[cols[0]] === '欠'))) : [];",
+  "  const mismatch = () => cols.length > 1 ? D.students.filter((s) => cols.some((c) => String(s.day[c] || '') !== String(s.day[cols[0]] || ''))) : [];",
   "  function toggle(key) {",
   "    if (busy) return; // 書きこみ中・読み込み中は変えない",
   "    // キーボードで押したときも、かき直したあと同じ生徒にフォーカスをもどす",
   "    const a = document.activeElement;",
   "    const side = a && a.getAttribute && a.getAttribute('data-k') === key ? (a.closest('#left') ? 'left' : 'right') : '';",
-  "    absent.has(key) ? absent.delete(key) : absent.add(key);",
+  "    if (recMode === '欠') {",
+  "      if (absent.has(key)) absent.delete(key); else { absent.add(key); extra.delete(key); }",
+  "    } else {",
+  "      // 記録だけのしるし：欠席とは同時につけない",
+  "      if (extra.get(key) === recMode) extra.delete(key); else { extra.set(key, recMode); absent.delete(key); }",
+  "    }",
   "    dirty = true; note = '';",
   "    drawSeat(); drawList(); drawFoot();",
   "    if (side) { const b = Array.from($(side).querySelectorAll('[data-k]')).find((x) => x.getAttribute('data-k') === key); if (b) b.focus({ preventScroll: true }); }",
@@ -1749,6 +1797,18 @@ HTML_FILES["Take"] = [
   "    const rate = D.hours ? total / D.hours : 0;",
   "    const li = D.hours ? lineIndex(rate) : -1;",
   "    return { total, rate, color: li >= 0 ? COLORS[Math.min(li, COLORS.length - 1)] : null };",
+  "  }",
+  "",
+  "  // 記録だけのしるし（遅刻・早退など）のボタン。ふだんは小さなリンクだけ出す",
+  "  function recBar() {",
+  "    const setOpen = (v) => { recOpen = v; if (!v) recMode = '欠'; try { localStorage.setItem('shukketsu-rec', v ? '1' : '0'); } catch (e) { /* 覚えられなくてもよい */ } drawList(); drawFoot(); };",
+  "    if (!recOpen) return el('div', { class: 'recopen' }, el('button', { class: 'lnk', onclick: () => setOpen(true) }, '＋ 遅刻・早退・公欠・出停・忌引も記録する（記録だけ）'));",
+  "    return el('div', { class: 'recbar' },",
+  "      el('span', { class: 'rh' }, '押すと：'),",
+  "      el('button', { class: 'rb' + (recMode === '欠' ? ' on abs' : ''), onclick: () => { recMode = '欠'; drawList(); drawFoot(); } }, '欠席'),",
+  "      REC.map(([c, l]) => el('button', { class: 'rb' + (recMode === c ? ' on' : ''), onclick: () => { recMode = c; drawList(); drawFoot(); } }, l)),",
+  "      el('button', { class: 'lnk rclose', onclick: () => setOpen(false) }, 'とじる'),",
+  "      el('div', { class: 'rnote' }, '遅刻・早退・公欠・出停・忌引は記録だけです（欠課時数には数えません）。教務手帳には「遅」「早」「公」「停」「忌」と入ります。'));",
   "  }",
   "",
   "  // ───────── 右：名列 ─────────",
@@ -1768,7 +1828,7 @@ HTML_FILES["Take"] = [
   "      if (hasDouble) info.append(el('button', { onclick: () => { if (dirty && !confirm('書きこんでいない変更を捨てますか？')) return; split = !split; startEdit(cols[0]); } }, split ? '2時間続きをまとめて直す' : '1コマずつ直す'));",
   "      info.append(el('button', { onclick: () => setCols([]) }, '＋ この日にもう1コマ記録する'));",
   "      const mm = mismatch();",
-  "      if (mm.length) info.append(el('div', { class: 'msg warn' }, '2列で欠席がちがう生徒がいます（' + mm.map((s) => s.name).join('、') + '）。どちらかの列に「欠」があれば欠席として出しています。書きこむと2列とも同じになります。'));",
+  "      if (mm.length) info.append(el('div', { class: 'msg warn' }, '2列で記録がちがう生徒がいます（' + mm.map((s) => s.name).join('、') + '）。どちらかの列に「欠」があれば欠席として出しています。書きこむと2列とも同じになります。'));",
   "    } else {",
   "      info.append(D.dayCols.length ? dayLabel(date) + 'の' + (D.dayCols.length + 1) + 'コマ目として、新しい列を作ります。' : '欠席した生徒を押してください（座席表でも名列でも）。全員出席なら、そのまま書きこみます。');",
   "      if (D.dayCols.length) info.append(el('br'), el('button', { onclick: () => { cols = us[us.length - 1]; loadMarks(); draw(); } }, '記録ずみの列を直す'));",
@@ -1778,19 +1838,21 @@ HTML_FILES["Take"] = [
   "    R.append(el('div', { class: 'legend' }, '年間 ' + D.hours + '時間 ・ 色：', D.lines.map((v, i) => { const c = COLORS[Math.min(i, COLORS.length - 1)]; return el('span', { style: 'background:' + c.bg + ';color:' + c.fg }, pct(v).replace('.0', '')); })));",
   "    if (note) R.append(el('div', { class: 'msg ok' }, note));",
   "    if (!D.students.length) R.append(el('div', { class: 'empty' }, '対象の生徒がいません。「⚙ 初期設定」で講座の対象クラスを確かめてください。'));",
+  "    R.append(recBar());",
   "    const list = el('div', { class: 'list' });",
   "    D.students.forEach((s) => {",
   "      const on = absent.has(s.key);",
   "      const st = statOf(s);",
-  "      const v0 = cols.length ? s.day[cols[0]] : '';",
-  "      const other = v0 && v0 !== '欠' ? v0 : '';",
+  "      const v0 = cols.length ? String(s.day[cols[0]] || '') : '';",
+  "      const other = v0 && v0 !== '欠' && !REC_CODES.includes(v0) ? v0 : '';",
+  "      const rk = extra.get(s.key);",
   "      list.append(el('button', {",
   "        class: 'stu' + (on ? ' abs' : ''), 'data-k': s.key,",
   "        title: '欠課時数 ' + st.total + '（それ以前 ' + s.before + '）' + (D.hours ? ' ・ ' + pct(st.rate) : ''),",
   "        onclick: () => toggle(s.key),",
   "      },",
   "        el('span', { class: 'no' }, s.no !== '' ? s.no : ''),",
-  "        el('span', { class: 'nm' }, s.name, other ? '（' + other + '）' : ''),",
+  "        el('span', { class: 'nm' }, s.name, other ? '（' + other + '）' : '', rk ? el('span', { class: 'rk' }, recLabel(rk)) : null),",
   "        el('span', { class: 'st', style: st.color ? 'background:' + st.color.bg + ';color:' + st.color.fg : '' }, '欠' + st.total + (D.hours ? ' ' + pct(st.rate) : '')),",
   "        el('span', { class: 'mk' }, on ? '欠' : '')));",
   "    });",
@@ -1803,6 +1865,12 @@ HTML_FILES["Take"] = [
   "    $('cancelSeat').style.display = 'none';",
   "    $('cnt').innerHTML = '';",
   "    $('cnt').append('欠席 ', el('b', null, absent.size), ' 人 ・ 出席 ' + (D.students.length - absent.size) + ' 人' + (cols.length > 1 || (!cols.length && double) ? '（2コマ分）' : ''));",
+  "    const ex = REC.map(([c, l]) => [l, Array.from(extra.values()).filter((v) => v === c).length]).filter((x) => x[1]);",
+  "    if (ex.length) $('cnt').append(el('span', { class: 'rkcnt' }, '（記録：' + ex.map((x) => x[0] + x[1]).join('・') + '）'));",
+  "    // 記録だけのしるしをつけているときは、黄色で知らせる（欠席と押しまちがえないように）",
+  "    $('foot').classList.toggle('recmode', recMode !== '欠');",
+  "    if (recMode !== '欠') $('cnt').append(el('div', { class: 'recnow' }, 'いま押すと：', el('b', null, recLabel(recMode)), '（記録だけ・欠課時数には数えません）',",
+  "      el('button', { onclick: () => { recMode = '欠'; drawList(); drawFoot(); } }, '欠席にもどす')));",
   "    $('save').textContent = cols.length ? '教務手帳を直す（上書き）' : '教務手帳に書きこむ';",
   "    $('save').disabled = !!busy;",
   "  }",
@@ -1853,7 +1921,7 @@ HTML_FILES["Take"] = [
   "          class: 'spot' + (absent.has(s.key) ? ' abs' : ''), 'data-k': s.key,",
   "          style: 'left:' + (p.x * 100) + '%;top:' + (p.y * 100) + '%',",
   "          title: s.name, onclick: () => toggle(s.key),",
-  "        }, (absent.has(s.key) ? '欠 ' : '') + shortName(s.name)));",
+  "        }, (absent.has(s.key) ? '欠 ' : '') + shortName(s.name) + (extra.get(s.key) ? '（' + extra.get(s.key) + '）' : '')));",
   "      });",
   "      L.append(box);",
   "    } else {",
@@ -1913,7 +1981,7 @@ HTML_FILES["Take"] = [
   "          // 同じマスに2人（ボタンの位置が近すぎる）：両方出す",
   "          grid.append(el('div', { class: 'seat multi', title: '同じ席に2人います。「直す・撮り直す」で位置を直してください' }, keys.map((k) => el('button', {",
   "            class: !small && absent.has(k) ? 'abs' : '', disabled: small, 'data-k': small ? null : k, onclick: () => toggle(k),",
-  "          }, shortName(byKey[k].name)))));",
+  "          }, shortName(byKey[k].name) + (!small && extra.get(k) ? '（' + extra.get(k) + '）' : '')))));",
   "          continue;",
   "        }",
   "        const s = byKey[keys[0]];",
@@ -1924,6 +1992,7 @@ HTML_FILES["Take"] = [
   "        },",
   "          el('span', { class: 'sno' }, s.no !== '' ? String(s.no).padStart(2, '0') : ''),",
   "          el('span', { class: 'snm', 'data-full': on ? '欠 ' + shortName(s.name) : s.name, 'data-short': (on ? '欠 ' : '') + shortName(s.name) }, on ? '欠 ' + shortName(s.name) : s.name),",
+  "          !small && extra.get(s.key) ? el('span', { class: 'rk' }, recLabel(extra.get(s.key))) : null,",
   "          st ? el('span', { class: 'sst', style: st.color && !on ? 'background:' + st.color.bg + ';color:' + st.color.fg : '' }, '欠' + st.total + (D.hours ? ' ' + pct(st.rate) : '')) : null));",
   "      }",
   "    }",
@@ -2016,6 +2085,7 @@ HTML_FILES["Take"] = [
   "    drawPlaceList();",
   "    $('foot').style.display = '';",
   "    $('cancelSeat').style.display = '';",
+  "    $('foot').classList.remove('recmode');",
   "    $('cnt').innerHTML = '';",
   "    $('cnt').append('座席表に置いた生徒 ', el('b', { style: 'color:#1a73e8' }, Array.from(E.spots.keys()).filter((k) => D.students.some((s) => s.key === k)).length), ' / ' + D.students.length + ' 人');",
   "    $('save').textContent = '座席表を保存する';",
@@ -2547,7 +2617,7 @@ HTML_FILES["Take"] = [
   "    const d0 = D;",
   "    const n = absent.size;",
   "    try {",
-  "      const r = await run('saveDay', { course: D.course, date, cols, double: !cols.length && double, absent: Array.from(absent) });",
+  "      const r = await run('saveDay', { course: D.course, date, cols, double: !cols.length && double, absent: Array.from(absent), extra: Object.fromEntries(extra) });",
   "      busy = '';",
   "      if (D !== d0) { draw(); return; }",
   "      const wasNew = !cols.length;",
@@ -2555,6 +2625,7 @@ HTML_FILES["Take"] = [
   "      I.missing = (I.missing || []).filter((m) => !(m.course === r.course && m.date === r.date));",
   "      drawWarn();",
   "      note = '✓ 教務手帳に' + (wasNew ? '書きこみました' : '上書きしました') + '（' + dayLabel(r.date || date) + '・欠席 ' + n + '人' + (r.saved.length > 1 ? '・2コマ分' : '') + '）';",
+  "      recMode = '欠'; // 書きこんだら欠席にもどす（次の授業で押しまちがえないように）",
   "      startEdit(r.saved[0]);",
   "    } catch (e) {",
   "      busy = '';",

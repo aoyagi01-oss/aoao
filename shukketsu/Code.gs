@@ -17,7 +17,7 @@ const SHEET = {
 const RESERVED = [SHEET.HOWTO, SHEET.STUDENTS, SHEET.COURSES, SHEET.SETTINGS, SHEET.PERIOD, SHEET.CUTS, SHEET.SEATS];
 
 // このプログラムの版（サイドバーのいちばん下に出ます。貼り直しが反映されたかの確認用）
-const VERSION = '10/10-1';
+const VERSION = '10/10-2';
 
 const STUDENT_HEADERS = ['学籍番号', 'クラス', '番号', '氏名', 'ふりがな', '除外（転出などは ✓）'];
 const COURSE_HEADERS = ['講座名（＝教務手帳のシート名）', '対象（クラス・学籍番号を「,」区切り）', '単位数', 'メモ'];
@@ -32,6 +32,9 @@ const SEAT_FOLDER = '出欠_座席表の写真';
 const NB = { HEAD: 3, SUB: 4, TOP: 5, CLS: 1, NO: 2, KEY: 3, NAME: 4, TOTAL: 5, RATE: 6, BEFORE: 7, SEP: 8, FIRST: 9 };
 const NB_HEADERS = ['クラス', '番号', '学籍番号', '氏名', '欠課時数', '割合', 'それ以前の欠課', ''];
 const MARK = '欠';
+// 欠課時数には数えない、記録だけのしるし（遅刻・早退・公欠・出停・忌引）。マスには1文字で入れる
+const RECORD_MARKS = [['遅', '遅刻'], ['早', '早退'], ['公', '公欠'], ['停', '出停'], ['忌', '忌引']];
+const RECORD_CODES = RECORD_MARKS.map(function (m) { return m[0]; });
 // 2時間続きで書きこんだ列は、4行目（曜日）に「続き」と入れて、まとめて直せるようにする
 const DOUBLE = '続き';
 
@@ -262,7 +265,8 @@ function getCourseDay(name, date) {
   }
 }
 
-// o: { course, date, cols（直すときの列。2時間続きなら2つ。新しく記録するときは空）, double（2時間続き）, absent: [学籍番号] }
+// o: { course, date, cols（直すときの列。2時間続きなら2つ。新しく記録するときは空）, double（2時間続き）, absent: [学籍番号],
+//      extra: { 学籍番号: '遅' など }（記録だけのしるし。欠課時数には数えない） }
 function saveDay(o) {
   const c = findCourse_(o.course);
   const date = dateKey_(o.date);
@@ -286,6 +290,8 @@ function saveDay(o) {
     }
     const absent = {};
     (o.absent || []).forEach(function (k) { absent[norm_(k)] = true; });
+    const extra = {};
+    Object.keys(o.extra || {}).forEach(function (k) { if (RECORD_CODES.indexOf(o.extra[k]) >= 0) extra[norm_(k)] = o.extra[k]; });
     const members = {};
     members_(c, getStudents_().filter(function (s) { return !s.excluded; })).forEach(function (s) { members[s.key] = true; });
     const last = sh.getLastRow();
@@ -298,7 +304,8 @@ function saveDay(o) {
         if (!members[key]) return;
         const cur = String(vals[i][0]).trim();
         if (absent[key]) vals[i][0] = MARK;
-        else if (cur === MARK) vals[i][0] = ''; // 手で書いたメモなど、「欠」以外はそのまま
+        else if (extra[key]) vals[i][0] = extra[key];
+        else if (cur === MARK || RECORD_CODES.indexOf(cur) >= 0) vals[i][0] = ''; // 手で書いたメモなど、ほかの書きこみはそのまま
       });
       range.setValues(vals);
     });
@@ -973,7 +980,7 @@ function notebook_(c) {
 function writeLegend_(sh) {
   const names = ['黄', '橙', '赤', '濃い赤'];
   const txt = '割合（欠課時数 ÷ 年間時数）の色：' + lines_().map(function (v, i) { return Math.round(v * 1000) / 10 + '%以上 ' + names[Math.min(i, names.length - 1)]; }).join('／') +
-    '　　マスの「欠」を数えます。あとから欠席扱いでないとわかったら、そのマスの「欠」を消すだけで直ります';
+    '　　マスの「欠」だけを数えます（遅・早・公・停・忌は記録だけ）。あとから欠席扱いでないとわかったら、そのマスの「欠」を消すだけで直ります';
   sh.getRange(2, 1).setValue(txt).setFontColor('#5f6368');
 }
 
@@ -1038,6 +1045,12 @@ function applyFormats_(sh) {
   rules.push(SpreadsheetApp.newConditionalFormatRule()
     .whenTextEqualTo(MARK).setBackground(COLOR.mark).setFontColor(COLOR.markText)
     .setRanges([sh.getRange(NB.TOP, NB.FIRST, nRows, nCols)]).build());
+  // 記録だけのしるし（遅・早・公・停・忌）はうすい灰色（欠課時数には数えない）
+  RECORD_CODES.forEach(function (code) {
+    rules.push(SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo(code).setBackground('#eceff1').setFontColor('#455a64')
+      .setRanges([sh.getRange(NB.TOP, NB.FIRST, nRows, nCols)]).build());
+  });
   sh.setConditionalFormatRules(rules);
 }
 
