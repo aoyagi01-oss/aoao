@@ -412,6 +412,7 @@
         <!-- Mode COMPARE: 自己×他己 重ねレーダーチャート（平均＋個別タブ） -->
         <div id="charts-wrapper-compare" class="hidden space-y-4 avoid-break">
           <h3 class="report-serif text-lg font-bold text-[#2a2420]">自己評価 × 他己評価 比較チャート</h3>
+          <p class="radar-note text-xs text-[#7a6f5c] -mt-2"></p>
 
           <!-- タブ切替（平均 + 個別） -->
           <div class="flex flex-wrap gap-2" id="compare-chart-tabs">
@@ -439,6 +440,7 @@
         <!-- Mode ALL: 3 Category Radar Charts Grid -->
         <div id="charts-wrapper-all" class="space-y-4 avoid-break">
           <h3 class="report-serif text-lg font-bold text-[#2a2420]">カテゴリー別 診断レーダーチャート</h3>
+          <p class="radar-note text-xs text-[#7a6f5c] -mt-2"></p>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-0 md:divide-x divide-[#e6dfd0] border border-[#e6dfd0]">
             <!-- Thinking Chart -->
             <div class="p-4 flex flex-col items-center border-t-[3px]" style="border-top-color:#2c5f8a">
@@ -472,7 +474,8 @@
 
         <!-- Mode SELECT5: Single Radar Chart -->
         <div id="charts-wrapper-select5" class="hidden border border-[#e6dfd0] p-5 max-w-xl mx-auto">
-          <h3 class="report-serif text-base font-bold text-[#2a2420] mb-2 text-center">選択5項目 レーダーチャート</h3>
+          <h3 class="report-serif text-base font-bold text-[#2a2420] mb-1 text-center">選択5項目 レーダーチャート</h3>
+          <p class="radar-note text-xs text-[#7a6f5c] text-center mb-2"></p>
           <div class="relative w-full aspect-square max-w-md mx-auto">
             <canvas id="chart-select5"></canvas>
           </div>
@@ -635,7 +638,7 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.8';
+    const APP_VERSION = '2026-10-24.9';
 
     // Apps Script の画面では <html lang="ja"> の指定が消えてしまう。日本語の指定がないと、
     // 端末によっては漢字が中国語の字形で表示・印刷されるため、ここで入れ直す
@@ -3094,7 +3097,8 @@ renderGrowthSection(record);
         chartInstances.concat(growthChartInstance ? [growthChartInstance] : []).forEach(ch => { ch.stop(); ch.update('none'); });
         // PDFでの大きさ（px）と項目名の文字の大きさを決めて、描き直した画像を使う
         await loadPrintFonts();
-        const PDF_RADAR = { 'chart-compare': [340, 14], 'chart-select5': [300, 14], 'chart-thinking': [232, 11.5], 'chart-communication': [232, 11.5], 'chart-leadership': [232, 11.5] };
+        // 文字の大きさは、グラフの幅の約1/21（画面で項目名が収まる比率）にする
+        const PDF_RADAR = { 'chart-compare': [340, 16], 'chart-select5': [300, 14], 'chart-thinking': [232, 11], 'chart-communication': [232, 11], 'chart-leadership': [232, 11] };
         const chartImgs = {};
         const ids = pdfMode === 'COMPARE' ? ['chart-compare'] : pdfMode === 'ALL' ? ['chart-thinking', 'chart-communication', 'chart-leadership'] : ['chart-select5'];
         ids.forEach(id => {
@@ -3201,7 +3205,7 @@ renderGrowthSection(record);
         chartSec.style.cssText = 'margin-bottom:10px;';
 
         if (pdfMode === 'COMPARE') {
-          chartSec.innerHTML = secHead('自己評価 × 他己評価 比較チャート（平均）');
+          chartSec.innerHTML = secHead('自己評価 × 他己評価 比較チャート（平均）') + `<div style="font-size:8px;color:#7a6f5c;margin:-2px 0 4px;">${RADAR_NOTE}</div>`;
           const chartSize = Math.min(INNER - 20, 340);
           const chartWrap = document.createElement('div');
           chartWrap.style.cssText = 'border:1px solid #e6dfd0; padding:10px; background:#fdfbf6; text-align:center;';
@@ -3254,7 +3258,7 @@ renderGrowthSection(record);
           chartSec.appendChild(gapSec);
 
         } else if (pdfMode === 'ALL') {
-          chartSec.innerHTML = secHead('カテゴリー別 診断レーダーチャート');
+          chartSec.innerHTML = secHead('カテゴリー別 診断レーダーチャート') + `<div style="font-size:8px;color:#7a6f5c;margin:-2px 0 4px;">${RADAR_NOTE}</div>`;
           const catColors = { 'chart-thinking':'#2c5f8a', 'chart-communication':'#3d7a5c', 'chart-leadership':'#6b4c93' };
           const catLabels = { 'chart-thinking':'Thinking（思考・探究）', 'chart-communication':'Communication（発信・表現・協働）', 'chart-leadership':'Leadership（主体性・実行力）' };
           const row = document.createElement('div');
@@ -3270,7 +3274,7 @@ renderGrowthSection(record);
           });
           chartSec.appendChild(row);
         } else {
-          chartSec.innerHTML = secHead('選択5項目 レーダーチャート');
+          chartSec.innerHTML = secHead('選択5項目 レーダーチャート') + `<div style="font-size:8px;color:#7a6f5c;margin:-2px 0 4px;">${RADAR_NOTE}</div>`;
           const cdiv = document.createElement('div');
           cdiv.style.cssText = 'text-align:center;border:1px solid #e6dfd0;padding:10px;background:#fdfbf6;';
           cdiv.innerHTML = `<img src="${chartImgs['chart-select5']}" style="width:300px;height:300px;object-fit:contain;display:inline-block;">`;
@@ -3880,28 +3884,32 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
     }
 
     // exportToPDF も同じスナップショット処理を経由する
-    // レーダーチャートの項目名の改行位置（言葉の途中で切れないように）
-    const RADAR_LABEL_LINES = {
-      '論理的思考力': ['論理的', '思考力'],
-      '学び続ける力': ['学び', '続ける力'],
-      '傾聴力・共感力': ['傾聴力・', '共感力'],
-      '対話力・質問力': ['対話力・', '質問力'],
-      '多角的・多面的視点': ['多角的・', '多面的視点'],
-      '深く掘り下げる力': ['深く', '掘り下げる力'],
-      '目標への段取り力': ['目標への', '段取り力'],
-      '主体的行動力': ['主体的', '行動力'],
-      '自己管理能力': ['自己', '管理能力'],
-      'レジリエンス（挫折回復力）': ['レジリエンス', '（挫折回復力）'],
-      'リーダーシップ': ['リーダー', 'シップ']
+    // レーダーチャートの項目名だけは略称にする（正式な名前のままだと、文字を大きくするとグラフに収まらないため）。
+    // 番号を付けて、スコア一覧やピクトグラムと対応が分かるようにする。ほかの場所は正式な名前のまま
+    const RADAR_SHORT_NAMES = {
+      1: '論理的思考', 2: '課題発見', 3: '課題解決', 4: '創造力', 5: '学び続ける', 6: '好奇心', 7: '柔軟性',
+      8: '協働力', 9: '表現力', 10: '発信力', 11: '傾聴・共感', 12: '対話・質問', 13: '多角的視点', 14: '掘り下げ',
+      15: '段取り', 16: '主体性', 17: '向上心', 18: '自己管理', 19: '自己有用感', 20: 'レジリエンス', 21: 'リーダーシップ'
     };
+    // 1行目に番号、2行目に略称（横幅をおさえて、項目名がグラフからはみ出さないように）
+    function radarLabel(name) {
+      const comp = COMPETENCIES.find(c => c.name === name);
+      return comp && RADAR_SHORT_NAMES[comp.id] ? [String(comp.id), RADAR_SHORT_NAMES[comp.id]] : name;
+    }
+    const RADAR_NOTE = '※グラフの項目名は略称です（数字は資質・能力の番号）';
 
-    // レーダーチャートの共通設定。labelSize は項目名の文字の大きさ（数値、またはグラフに応じて決める関数）
-    function buildRadarOptions(labelSize) {
+    // レーダーチャートの共通設定。labelSize は項目名の文字の大きさ（数値、またはグラフに応じて決める関数）、
+    // pointCount は角の数（5 or 7）
+    function buildRadarOptions(labelSize, pointCount) {
       const size = ctx => typeof labelSize === 'function' ? labelSize(ctx) : labelSize;
+      // グラフの自動調整だけでは、5角形の斜め上の項目名が左右にはみ出すため、5角形のときだけ左右に余白をとる
+      // （文字の大きさの約2.5倍。7角形は余白がなくても収まるので、グラフを大きくとる）
+      const pad = pointCount <= 5 ? Math.round((typeof labelSize === 'function' ? 16 : labelSize) * 2.5) : 4;
       return {
         responsive: true,
         maintainAspectRatio: true,
         aspectRatio: 1,
+        layout: { padding: { left: pad, right: pad, top: 2, bottom: 2 } },
         scales: {
           r: {
             min: 0,
@@ -3918,22 +3926,8 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
               font: ctx => ({ size: size(ctx), weight: 'bold', family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif", lineHeight: 1.15 }),
               color: '#2a2420',
               padding: 6,
-              // 長い名前は、言葉の切れ目で2行に分ける（名前そのものは変えない。改行する位置だけ）
-              callback: function(label) {
-                if (RADAR_LABEL_LINES[label]) return RADAR_LABEL_LINES[label];
-                const breakPoints = ['・', '（'];
-                for (const bp of breakPoints) {
-                  const idx = label.indexOf(bp);
-                  if (idx > 0 && idx < label.length - 1) {
-                    return [label.slice(0, idx), label.slice(idx)];
-                  }
-                }
-                if (label.length > 5) {
-                  const mid = Math.ceil(label.length / 2);
-                  return [label.slice(0, mid), label.slice(mid)];
-                }
-                return label;
-              }
+              // 項目名は略称で表示する（データは正式な名前のまま）
+              callback: label => radarLabel(label)
             }
           }
         }
@@ -3945,14 +3939,12 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
     function radarImageForPdf(chart, size, labelSize) {
       const holder = document.createElement('div');
       holder.style.cssText = `position:fixed;left:-9999px;top:0;width:${size}px;height:${size}px;`;
+      // 画面と同じく、入れ物の大きさに合わせて描く方式にする（大きさを固定すると、項目名の収まり具合の調整がうまく働かないため）
       const canvas = document.createElement('canvas');
-      canvas.width = size; canvas.height = size;
-      canvas.style.cssText = `width:${size}px;height:${size}px;`;
       holder.appendChild(canvas);
       document.body.appendChild(holder);
-      const options = buildRadarOptions(labelSize);
-      // 左右の端の項目名が切れないよう、まわりに余白をとる
-      Object.assign(options, { responsive: false, animation: false, devicePixelRatio: 3, layout: { padding: { left: 12, right: 12, top: 4, bottom: 4 } }, plugins: { legend: { display: false } } });
+      const options = buildRadarOptions(labelSize, chart.data.labels.length);
+      Object.assign(options, { animation: false, devicePixelRatio: 3, plugins: { legend: { display: false } } });
       const copy = new Chart(canvas.getContext('2d'), {
         type: 'radar',
         data: { labels: chart.data.labels.slice(), datasets: chart.data.datasets.map(d => Object.assign({}, d, { data: d.data.slice() })) },
@@ -3978,7 +3970,7 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
       const wrapperSelect5 = document.getElementById('charts-wrapper-select5');
 
       // 画面では、グラフの幅に合わせて項目名を12〜14pxで描く
-      const chartOptions = buildRadarOptions(ctx => Math.max(11, Math.min(14, Math.round(ctx.chart.width / 24))));
+      const chartOptions = buildRadarOptions(ctx => Math.max(12, Math.min(16, Math.round(ctx.chart.width / 21))), mode === 'ALL' ? 7 : targetComps.length);
       chartOptions.plugins = { legend: { display: mode === 'COMPARE' } };
 
       if (mode === 'COMPARE') {
@@ -4536,6 +4528,7 @@ function onGrowthCompareChange() {
       initOccasionSelect();
       initRoster();
       document.getElementById('app-version').textContent = APP_VERSION;
+      document.querySelectorAll('.radar-note').forEach(el => { el.textContent = RADAR_NOTE; });
       // ページ全体のLucideアイコンを初期化（ヘッダーの静的アイコンも含む）
       if (typeof lucide !== 'undefined') {
         lucide.createIcons();
