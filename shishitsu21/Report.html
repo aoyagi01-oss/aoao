@@ -3,11 +3,13 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
+<!-- 印刷・PDF用の日本語フォント（BIZ UDゴシック） -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
 <!-- 用紙の向き。レポートの種類ごとに書きかえる（生徒の変容は横、ほかは縦） -->
 <style id="pageCss">@page { size: A4 portrait; margin: 10mm; }</style>
 <!-- レポート本体の見た目。「別タブで開いて印刷」でもこのまま使う -->
 <style id="reportCss">
-  .rp { font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif; color: #2a2420; font-size: 10pt; }
+  .rp { font-family: "BIZ UDPGothic", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", Meiryo, sans-serif; color: #2a2420; font-size: 10pt; }
   .rp * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
   .rp h1 { font-size: 15pt; margin: 0 0 2px; }
   .rp .sub { font-size: 9pt; color: #6b604c; margin-bottom: 8px; }
@@ -48,7 +50,7 @@
   .rp .summary { font-size: 9.5pt; line-height: 1.7; border: 1px solid #cfc6b0; background: #fdfbf6; padding: 6px 8px; margin: 6px 0; }
 </style>
 <style>
-  body { margin: 0; background: #e9e5dc; font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif; color: #2a2420; }
+  body { margin: 0; background: #e9e5dc; font-family: "BIZ UDPGothic", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", Meiryo, sans-serif; color: #2a2420; }
   .controls { position: sticky; top: 0; z-index: 5; background: #fdfbf6; border-bottom: 1px solid #d8cfb8; padding: 8px 12px; font-size: 13px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
   .tabs button { flex: 1; padding: 8px; font-size: 13px; font-weight: bold; border: 1px solid #d8cfb8; border-radius: 6px; background: #f5f0e8; color: #6b604c; cursor: pointer; }
@@ -149,9 +151,12 @@
   <div id="warn"></div>
 </div>
 
-<div class="paper" id="paper"><div class="rp" id="report"></div></div>
+<div class="paper" id="paper"><div class="rp" id="report" lang="ja"></div></div>
 
 <script>
+  // Apps Script の画面では <html lang="ja"> が消えるため入れ直す（ないと漢字が中国語の字形になることがある）
+  document.documentElement.lang = 'ja';
+
   // ===== 基本データ =====
   const CATS = ['Thinking', 'Communication', 'Leadership'];
   const CAT_COLOR = { Thinking: '#2c5f8a', Communication: '#3d7a5c', Leadership: '#6b4c93' };
@@ -416,7 +421,7 @@
       if (pts.length > 1) g += `<polyline fill="none" stroke="${s.color}" stroke-width="${s.width || 2}"${s.dash ? ' stroke-dasharray="5 3"' : ''} points="${pts.map(p => p.join(',')).join(' ')}"/>`;
       if (!s.dash) pts.forEach(p => { g += `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${s.color}"/>`; });
     });
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">${g}</svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px" xmlns="http://www.w3.org/2000/svg" font-family="'BIZ UDPGothic', sans-serif">${g}</svg>`;
   }
   function legend(series) {
     return '<div class="legend">' + series.map(s => `<span><i style="${s.dash ? `background:repeating-linear-gradient(90deg,${s.color} 0 5px,transparent 5px 8px)` : 'background:' + s.color}"></i>${esc(s.name)}</span>`).join('') + '</div>';
@@ -451,7 +456,7 @@
       });
       g += `<text x="${cx}" y="${m.t + h + 13}" text-anchor="middle" font-size="9">${esc(short(gr.label, Math.max(4, Math.floor(gw / 9))))}</text>`;
     });
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">${g}</svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px" xmlns="http://www.w3.org/2000/svg" font-family="'BIZ UDPGothic', sans-serif">${g}</svg>`;
   }
 
   // ===== ① クラス集計 =====
@@ -762,17 +767,27 @@
     $('report').innerHTML = html;
   }
 
-  function printReport() { window.print(); }
+  // 印刷用フォントの読み込みを待ってから印刷する（最大3秒）
+  async function waitFonts() {
+    if (!document.fonts || !document.fonts.load) return;
+    const loads = ['400 12px "BIZ UDPGothic"', '700 12px "BIZ UDPGothic"'].map(f => document.fonts.load(f, '資質・能力').catch(() => null));
+    await Promise.race([Promise.all(loads), new Promise(r => setTimeout(r, 3000))]);
+  }
+
+  async function printReport() { await waitFonts(); window.print(); }
 
   // ダイアログの中から印刷できないブラウザ向け：別のタブに同じ内容を出して印刷する
   function openInNewTab() {
     const w = window.open('', '_blank');
     if (!w) { alert('ポップアップがブロックされました。アドレスバー右のマークから許可してください。'); return; }
-    w.document.write('<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>資質・能力21 レポート</title><style>' +
+    w.document.write('<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>資質・能力21 レポート</title>' +
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap"><style>' +
       $('pageCss').textContent + 'body{margin:0}' + $('reportCss').textContent + '</style></head><body><div class="rp">' +
       $('report').innerHTML + '</div></body></html>');
     w.document.close();
-    setTimeout(() => w.print(), 500);
+    // フォントの読み込みを待ってから印刷する
+    const go = () => setTimeout(() => w.print(), 300);
+    if (w.document.fonts && w.document.fonts.ready) w.document.fonts.ready.then(go); else setTimeout(go, 1000);
   }
 
   loadYear(null);

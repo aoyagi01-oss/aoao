@@ -15,7 +15,8 @@
   <!-- jsPDF: クライアントサイドでPDFを生成 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Shippori+Mincho+B1:wght@500;700;800&display=swap');
+    /* 画面用（丸ゴシック・明朝）と、印刷・PDF用（BIZ UDゴシック・BIZ UD明朝：日本語専用で読みやすい教育向けのフォント） */
+    @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Shippori+Mincho+B1:wght@500;700;800&family=BIZ+UDPGothic:wght@400;700&family=BIZ+UDPMincho:wght@400;700&display=swap');
     body {
       font-family: 'Zen Maru Gothic', sans-serif;
     }
@@ -70,7 +71,8 @@
     .level-dots span.filled-leadership { background: #6b4c93; }
 
     /* === 印刷・PDF保存：結果をA4 1枚にまとめた紙面（#print-root）だけを印刷する === */
-    #print-root { display: none; }
+    /* 印刷用の紙面は、画面の丸ゴシックを受け継がないよう、日本語用の印刷フォントを直接指定する */
+    #print-root { display: none; font-family: 'BIZ UDPGothic', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans JP', sans-serif; }
     @media print {
       /* 余白を0にして紙面の中で8mmあける（ブラウザが余白に日付やURLを印刷しないように） */
       @page { size: A4 portrait; margin: 0; }
@@ -82,7 +84,7 @@
   </style>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 pb-12">
-  <div id="print-root"></div>
+  <div id="print-root" lang="ja"></div>
 
   <!-- Header -->
   <header class="bg-gradient-to-r from-indigo-700 via-purple-700 to-sky-600 text-white shadow-md sticky top-0 z-50">
@@ -633,7 +635,11 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.6';
+    const APP_VERSION = '2026-10-24.7';
+
+    // Apps Script の画面では <html lang="ja"> の指定が消えてしまう。日本語の指定がないと、
+    // 端末によっては漢字が中国語の字形で表示・印刷されるため、ここで入れ直す
+    document.documentElement.lang = 'ja';
 
     // ===== 資質・能力21のピクトグラム（学校のもの。240px の PNG を埋め込み。元の画像は icons/ フォルダ） =====
     // 画像が使えないときは、各項目の svg（手描きのアイコン）を代わりに出す
@@ -3066,9 +3072,10 @@ renderGrowthSection(record);
       const pdfRoot = document.createElement('div');
       pdfRoot.style.cssText = `
         position:fixed; left:-9999px; top:0;
-        width:800px; font-family:'Zen Maru Gothic',sans-serif;
+        width:800px; font-family:'BIZ UDPGothic','Hiragino Kaku Gothic ProN','Yu Gothic','Noto Sans JP',sans-serif;
         background:#fdfbf6; color:#2a2420; font-size:11px; line-height:1.5;
       `;
+      pdfRoot.lang = 'ja';
       document.body.appendChild(pdfRoot);
 
       try {
@@ -3186,7 +3193,7 @@ renderGrowthSection(record);
 
         hdr.innerHTML = `
           <div style="font-size:8.5px;color:#a8402c;font-weight:700;margin-bottom:2px;">${dateBadge}</div>
-          <div style="font-family:'Shippori Mincho B1',serif;font-size:18px;font-weight:700;
+          <div style="font-family:'BIZ UDPMincho','Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;font-size:18px;font-weight:700;
                       color:#2a2420;line-height:1.25;">${escapeHtml(titleText)}</div>
           ${subInfoHtml}
         `;
@@ -3379,7 +3386,7 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
             const refBox = document.createElement('div');
             refBox.style.cssText = 'border:1px solid #e6dfd0;padding:8px 12px;background:#fdfbf6;';
             refBox.innerHTML = `
-              <div style="font-family:'Shippori Mincho B1',serif;font-size:${reflectionForPdf.fontSize}px;color:#2a2420;line-height:1.6;white-space:pre-wrap;">${escapeHtml(reflectionForPdf.text)}</div>
+              <div style="font-family:'BIZ UDPMincho','Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;font-size:${reflectionForPdf.fontSize}px;color:#2a2420;line-height:1.6;white-space:pre-wrap;">${escapeHtml(reflectionForPdf.text)}</div>
             `;
             refSec.appendChild(refBox);
             page.appendChild(refSec);
@@ -3436,7 +3443,7 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
             const refBox = document.createElement('div');
             refBox.style.cssText = 'border:1px solid #e6dfd0;padding:7px 10px;background:#fdfbf6;';
             refBox.innerHTML = `
-              <div style="font-family:'Shippori Mincho B1',serif;font-size:9.5px;color:#2a2420;line-height:1.65;white-space:pre-wrap;">${escapeHtml(reflectionText)}</div>
+              <div style="font-family:'BIZ UDPMincho','Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;font-size:9.5px;color:#2a2420;line-height:1.65;white-space:pre-wrap;">${escapeHtml(reflectionText)}</div>
             `;
             refSec.appendChild(refBox);
             page.appendChild(refSec);
@@ -3444,7 +3451,7 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
         }
 
         pdfRoot.appendChild(page);
-        if (document.fonts && document.fonts.ready) await document.fonts.ready;
+        await loadPrintFonts();
         await new Promise(r => setTimeout(r, 200));
 
         if (method === 'print') {
@@ -3499,6 +3506,17 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
           lucide.createIcons();
         }
       }
+    }
+
+    // 印刷用のフォント（BIZ UDゴシック・BIZ UD明朝）の読み込みを待つ。
+    // 読みこめないとき（ネットにつながらない等）は、端末の日本語フォントで印刷する（最大3秒待つ）
+    async function loadPrintFonts() {
+      if (!document.fonts || !document.fonts.load) return;
+      const sample = '資質・能力ふりかえり漢字';
+      const loads = ['400 12px "BIZ UDPGothic"', '700 12px "BIZ UDPGothic"', '400 12px "BIZ UDPMincho"', '700 12px "BIZ UDPMincho"']
+        .map(f => document.fonts.load(f, sample).catch(() => null));
+      await Promise.race([Promise.all(loads), new Promise(r => setTimeout(r, 3000))]);
+      await document.fonts.ready;
     }
 
     // 作った紙面（幅800px）を、A4の印刷範囲（余白8mm → 194mm×281mm）に収まる大きさに縮めて印刷する。
@@ -3868,6 +3886,8 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
 
     // exportToPDF も同じスナップショット処理を経由する
     function renderChart(scores, targetComps, mode, peerScores) {
+      // グラフの文字に使うフォントは、先に読み込んでおく（読みこむ前に描くと別のフォントで描かれる）
+      if (document.fonts && document.fonts.load) document.fonts.load('700 12px "BIZ UDPGothic"', '論理的思考力').catch(() => null);
       // Destroy previous chart instances
       chartInstances.forEach(chart => chart.destroy());
       chartInstances = [];
@@ -3892,7 +3912,7 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
             grid: { color: '#e6dfd0' },
             angleLines: { color: '#e6dfd0' },
             pointLabels: {
-              font: { size: 9, weight: 'bold', family: "'Zen Maru Gothic', sans-serif" },
+              font: { size: 9, weight: 'bold', family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif" },
               color: '#2a2420',
               padding: 12,
               callback: function(label) {
@@ -3951,7 +3971,7 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
                 }
               ]
             },
-            options: { ...chartOptions, plugins: { legend: { display: true, labels: { font: { family: "'Zen Maru Gothic', sans-serif", size: 11, weight: 'bold' }, color: '#2a2420' } } } }
+            options: { ...chartOptions, plugins: { legend: { display: true, labels: { font: { family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif", size: 11, weight: 'bold' }, color: '#2a2420' } } } }
           });
           chartInstances.push(chart);
         }
@@ -4393,7 +4413,7 @@ function renderGrowthSection(record) {
       responsive: true, maintainAspectRatio: false,
       scales: { y: { min: 0, max: 4, ticks: { stepSize: 1 }, title: { display: true, text: '平均レベル' } } },
       plugins: {
-        legend: { position: 'top', labels: { font: { family: "'Zen Maru Gothic', sans-serif", size: 11, weight: 'bold' } } },
+        legend: { position: 'top', labels: { font: { family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif", size: 11, weight: 'bold' } } },
         tooltip: { callbacks: { afterTitle: items => series[items[0].dataIndex].title || '' } }
       }
     }
