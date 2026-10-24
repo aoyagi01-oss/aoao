@@ -638,7 +638,7 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.9';
+    const APP_VERSION = '2026-10-24.10';
 
     // Apps Script の画面では <html lang="ja"> の指定が消えてしまう。日本語の指定がないと、
     // 端末によっては漢字が中国語の字形で表示・印刷されるため、ここで入れ直す
@@ -3528,6 +3528,8 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
       root.innerHTML = '';
       root.appendChild(page);
       page.style.zoom = zoom;
+      // 縦に合わせて縮めると横幅が余るので、紙の左右中央に置く
+      page.style.marginLeft = 'auto'; page.style.marginRight = 'auto';
       document.body.classList.add('printing');
       const cleanup = () => {
         document.body.classList.remove('printing');
