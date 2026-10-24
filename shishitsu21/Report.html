@@ -388,7 +388,8 @@
   }
   function header(title, extra) {
     const occCount = DATA.occasions.length;
-    return `<h1>${esc(title)}</h1><div class="sub">${DATA.year}年度${extra ? '　／　' + extra : ''}　／　実施回 ${occCount}回分のデータ　／　作成日 ${esc(DATA.generatedAt)}</div>` +
+    // extra には生徒が自由入力した実施回の名前が入ることがあるため、必ずエスケープする
+    return `<h1>${esc(title)}</h1><div class="sub">${DATA.year}年度${extra ? '　／　' + esc(extra) : ''}　／　実施回 ${occCount}回分のデータ　／　作成日 ${esc(DATA.generatedAt)}</div>` +
       (MODE_NOTE ? `<div class="warnline">${esc(MODE_NOTE)}</div>` : '');
   }
   const short = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
@@ -691,6 +692,8 @@
     const mine = occIdx.map(oi => RESP.find(r => r.n === s.number && r.t === oi) || null);
     const labels = occIdx.map(oi => DATA.occasions[oi]);
     const v = (r, m) => r ? valueOf(r, m) : null;
+    // 差は両方の回に値があるときだけ（5項目モードで集計するときは、回によって答えた項目が違うため）
+    const sub = (a, b) => a === null || b === null ? null : a - b;
     let h = `<h1>成長の記録　${esc(s.name)} さん</h1><div class="sub">${DATA.year}年度　／　${esc(cls.label)} ${esc(s.p.no)}番　／　作成日 ${esc(DATA.generatedAt)}</div>`;
     if (MODE_NOTE) h += `<div class="warnline">${esc(MODE_NOTE)}</div>`;
 
@@ -707,8 +710,8 @@
       const d = v(l, 'all') - v(f, 'all');
       sentences.push(`総合平均は、最初の「${fl}」の${v(f, 'all').toFixed(2)}から、最新の「${ll}」では${v(l, 'all').toFixed(2)}になりました（` +
         (Math.abs(d) < 0.05 ? 'ほぼ横ばい' : `${d > 0 ? '+' : ''}${d.toFixed(2)}`) + '）。');
-      const catD = CATS.map(cat => ({ cat, d: v(l, cat) - v(f, cat) })).sort((p, q) => q.d - p.d);
-      if (catD[0].d >= 0.05) sentences.push(`カテゴリーでは${CAT_SHORT[catD[0].cat]}がいちばん伸びています（+${catD[0].d.toFixed(2)}）。`);
+      const catD = CATS.map(cat => ({ cat, d: sub(v(l, cat), v(f, cat)) })).filter(x => x.d !== null).sort((p, q) => q.d - p.d);
+      if (catD.length && catD[0].d >= 0.05) sentences.push(`カテゴリーでは${CAT_SHORT[catD[0].cat]}がいちばん伸びています（+${catD[0].d.toFixed(2)}）。`);
       const itemD = ALL_IDX.filter(i => f.s[i] > 0 && l.s[i] > 0).map(i => ({ i, d: l.s[i] - f.s[i] }));
       const ups = itemD.filter(x => x.d > 0).sort((p, q) => q.d - p.d);
       const downs = itemD.filter(x => x.d < 0);
@@ -740,7 +743,7 @@
       });
     });
     [['all', '総合平均']].concat(CATS.map(c => [c, c + ' 平均'])).forEach(([m, lb], k) => {
-      const d = answered.length > 1 ? v(lastAns, m) - v(firstAns, m) : null;
+      const d = answered.length > 1 ? sub(v(lastAns, m), v(firstAns, m)) : null;
       h += `<tr class="${k === 0 ? 'sum' : ''}"><td colspan="2" class="name"><b>${esc(lb)}</b></td>` +
         mine.map(r => `<td style="${heat(v(r, m))};font-weight:bold">${fmt(v(r, m))}</td>`).join('') +
         `<td>${diffHtml(d)}</td>` + (withAvg ? `<td>${fmt(avgOf(latestClass, m).avg)}</td>` : '') + '</tr>';

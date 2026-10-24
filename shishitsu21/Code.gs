@@ -53,7 +53,7 @@
  */
 
 // 生徒画面（Index）の APP_VERSION と同じ値にそろえる。貼り直しの確認に使う
-const APP_VERSION = '2026-10-24.10';
+const APP_VERSION = '2026-10-24.11';
 
 const SHEET_NAME = '回答';
 

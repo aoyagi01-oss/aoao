@@ -638,7 +638,7 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.10';
+    const APP_VERSION = '2026-10-24.11';
 
     // Apps Script の画面では <html lang="ja"> の指定が消えてしまう。日本語の指定がないと、
     // 端末によっては漢字が中国語の字形で表示・印刷されるため、ここで入れ直す
@@ -2176,6 +2176,9 @@ const COMPETENCY_SHORT_DESC = {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
+      // 実施回が1つだけのときは、開いたときと同じく選んだ状態に戻す（「選んでください」＋1回分）
+      const occasionSelect = document.getElementById('assessment-occasion');
+      if (occasionSelect && occasionSelect.options.length === 2) occasionSelect.selectedIndex = 1;
 
       // Step1を表示、他は隠す
       document.getElementById('assess-step-1').classList.remove('hidden');
@@ -2922,7 +2925,11 @@ const COMPETENCY_SHORT_DESC = {
     }
 
     // Show Assessment Result View
+    // 結果画面に表示中の記録（PDFで使う）
+    let currentResultRecord = null;
+
     function showResult(record) {
+      currentResultRecord = record;
       document.getElementById('result-title-display').textContent = record.title;
       document.getElementById('result-date-badge').textContent = new Date(record.date).toLocaleDateString('ja-JP', {
         year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -3101,9 +3108,14 @@ renderGrowthSection(record);
         const PDF_RADAR = { 'chart-compare': [340, 16], 'chart-select5': [300, 14], 'chart-thinking': [232, 11], 'chart-communication': [232, 11], 'chart-leadership': [232, 11] };
         const chartImgs = {};
         const ids = pdfMode === 'COMPARE' ? ['chart-compare'] : pdfMode === 'ALL' ? ['chart-thinking', 'chart-communication', 'chart-leadership'] : ['chart-select5'];
+        // 自己×他己のPDFは「他己評価（平均）」との比較なので、画面で友人の個別タブを開いていても平均で描く
+        const avgPeer = pdfMode === 'COMPARE' && currentResultRecord ? (currentResultRecord.peerScores || {}) : null;
         ids.forEach(id => {
           const ch = chartOf(id);
-          if (ch) chartImgs[id] = radarImageForPdf(ch, PDF_RADAR[id][0], PDF_RADAR[id][1]);
+          const peerData = avgPeer && id === 'chart-compare'
+            ? ch && ch.data.labels.map(name => { const c = COMPETENCIES.find(x => x.name === name); return (c && avgPeer[c.id]) || 0; })
+            : null;
+          if (ch) chartImgs[id] = radarImageForPdf(ch, PDF_RADAR[id][0], PDF_RADAR[id][1], peerData);
           else { const c = document.getElementById(id); if (c) chartImgs[id] = c.toDataURL('image/png'); }
         });
 
@@ -3361,9 +3373,11 @@ renderGrowthSection(record);
           page.appendChild(scoreSec);
         }
 
+const growthSection = document.getElementById('growth-section');
 const growthBody = document.getElementById('growth-body');
 const growthCanvas = document.getElementById('chart-growth');
-if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
+// 5項目・比較の結果では成長の経過の欄ごと隠れている（中には前に開いた全21項目の記録が残っているので、欄が出ているときだけ入れる）
+if (growthSection && !growthSection.classList.contains('hidden') && growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
   const gSec = document.createElement('div');
   gSec.style.cssText = 'margin-bottom:10px;';
   gSec.innerHTML = secHead('成長の経過（過去の自分との比較）') + `
@@ -3938,7 +3952,8 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
 
     // PDF用：画面のグラフを縮めて貼ると項目名が読めないほど小さくなるため、
     // PDFに載せる大きさ（size px）で、項目名を labelSize px にして描き直した画像を作る
-    function radarImageForPdf(chart, size, labelSize) {
+    // peerData を渡すと、2本目（他己評価）の線をその値で描く
+    function radarImageForPdf(chart, size, labelSize, peerData) {
       const holder = document.createElement('div');
       holder.style.cssText = `position:fixed;left:-9999px;top:0;width:${size}px;height:${size}px;`;
       // 画面と同じく、入れ物の大きさに合わせて描く方式にする（大きさを固定すると、項目名の収まり具合の調整がうまく働かないため）
@@ -3949,7 +3964,7 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
       Object.assign(options, { animation: false, devicePixelRatio: 3, plugins: { legend: { display: false } } });
       const copy = new Chart(canvas.getContext('2d'), {
         type: 'radar',
-        data: { labels: chart.data.labels.slice(), datasets: chart.data.datasets.map(d => Object.assign({}, d, { data: d.data.slice() })) },
+        data: { labels: chart.data.labels.slice(), datasets: chart.data.datasets.map((d, i) => Object.assign({}, d, { data: (i === 1 && peerData ? peerData : d.data).slice() })) },
         options: options
       });
       const url = canvas.toDataURL('image/png');
