@@ -163,7 +163,7 @@
                 氏名 (姓と名の間に全角スペース) <span class="text-rose-500">*</span>
               </label>
               <input type="text" id="student-name" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base" placeholder="例: 錦丘　太郎">
-              <span class="text-[10px] text-slate-400 font-medium">※姓と名の間に全角スペースを入れてください（例: 錦丘　太郎）</span>
+              <span id="student-name-help" class="text-[10px] text-slate-400 font-medium">※姓と名の間に全角スペースを入れてください（例: 錦丘　太郎）</span>
             </div>
             <div class="flex flex-col justify-start">
               <label class="block text-xs font-bold text-slate-500 mb-1">実施日</label>
@@ -173,6 +173,9 @@
               </div>
             </div>
           </div>
+          <!-- 名簿の確認結果（名簿から名前が入った／番号が名簿にない など） -->
+          <p id="roster-note" class="hidden text-xs font-bold -mt-2"></p>
+
           <!-- 先生が「実施回」シートに実施回を登録しているときは一覧から選ぶ（集計で回がばらばらにならないように） -->
           <div id="occasion-select-wrap" class="hidden">
             <label for="assessment-occasion" class="block text-xs font-bold text-slate-500 mb-1">
@@ -615,7 +618,7 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24';
+    const APP_VERSION = '2026-10-24.2';
 
     // Category metadata configuration
     const CATEGORY_CONFIG = {
@@ -1336,17 +1339,25 @@ const COMPETENCY_SHORT_DESC = {
         return;
       }
 
-      if (!studentName) {
-        showError('氏名を入力してください。', 'student-name');
-        return;
-      }
+      if (rosterActive) {
+        // 名簿がある年度は、名簿で確かめられた番号と名前でしか進めない
+        if (!(rosterLookup.ok && rosterLookup.number === studentNumber.toUpperCase() && studentName)) {
+          showError(rosterLookup.message || '出席番号を入れて、名簿の名前が出るのを待ってください。', 'student-number');
+          return;
+        }
+      } else {
+        if (!studentName) {
+          showError('氏名を入力してください。', 'student-name');
+          return;
+        }
 
-      // 姓と名の間に全角スペースがあるかをチェック
-      const hasFullWidthSpace = /　/.test(studentName);
-      const nameParts = studentName.split(/　+/).filter(Boolean);
-      if (!hasFullWidthSpace || nameParts.length < 2) {
-        showError('氏名は姓と名の間に「全角スペース」を入れて入力してください。（例: 錦丘　太郎）', 'student-name');
-        return;
+        // 姓と名の間に全角スペースがあるかをチェック
+        const hasFullWidthSpace = /　/.test(studentName);
+        const nameParts = studentName.split(/　+/).filter(Boolean);
+        if (!hasFullWidthSpace || nameParts.length < 2) {
+          showError('氏名は姓と名の間に「全角スペース」を入れて入力してください。（例: 錦丘　太郎）', 'student-name');
+          return;
+        }
       }
 
       if (isOccasionSelectActive() && !document.getElementById('assessment-occasion').value) {
@@ -1444,12 +1455,96 @@ const COMPETENCY_SHORT_DESC = {
       document.getElementById('assess-step-2').classList.add('hidden');
       document.getElementById('assess-step-2b').classList.add('hidden');
 
+      // 名簿の状態を入れ直す（アカウントから分かった生徒は番号と名前をもう一度入れる）
+      resetRosterFields();
+
       // モードをALLにリセット
       setAssessmentMode('ALL');
       updateStepIndicator(1);
       switchTab('assess');
       initCurrentDate(); // 実施日を再表示
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ===== 生徒名簿 =====
+    // 先生が今年度の名簿を登録していれば、名前は手で打たずに名簿から入れる
+    let rosterActive = false;   // 名簿がある年度か
+    let rosterIdentity = null;  // Googleアカウントから分かった本人 {number, name}
+    let rosterLookup = { number: '', ok: false, message: '' }; // 入力された番号を名簿で確かめた結果
+
+    function hasServer() {
+      return typeof google !== 'undefined' && google.script && google.script.run;
+    }
+
+    function setRosterNote(text, kind) {
+      const el = document.getElementById('roster-note');
+      el.textContent = text;
+      el.classList.remove('hidden', 'text-slate-500', 'text-rose-600', 'text-emerald-700');
+      if (!text) { el.classList.add('hidden'); return; }
+      el.classList.add(kind === 'error' ? 'text-rose-600' : kind === 'ok' ? 'text-emerald-700' : 'text-slate-500');
+    }
+
+    function initRoster() {
+      if (!hasServer()) return;
+      google.script.run
+        .withSuccessHandler((res) => {
+          rosterActive = !!(res && res.rosterActive);
+          if (res && res.number) rosterIdentity = { number: res.number, name: res.name };
+          if (rosterActive) {
+            document.getElementById('student-number').addEventListener('input', onRosterNumberInput);
+            resetRosterFields();
+          }
+        })
+        .withFailureHandler((err) => console.error('名簿を確認できませんでした（名前は手で入力します）:', err))
+        .whoAmI();
+    }
+
+    function resetRosterFields() {
+      if (!rosterActive) return;
+      const numberEl = document.getElementById('student-number');
+      const nameEl = document.getElementById('student-name');
+      nameEl.readOnly = true;
+      nameEl.classList.add('bg-slate-100');
+      nameEl.placeholder = '出席番号を入れると、名簿の名前が出ます';
+      document.getElementById('student-name-help').textContent = '※名前は先生が登録した名簿から入ります';
+      if (rosterIdentity) {
+        numberEl.value = rosterIdentity.number;
+        numberEl.readOnly = true;
+        numberEl.classList.add('bg-slate-100');
+        nameEl.value = rosterIdentity.name;
+        rosterLookup = { number: rosterIdentity.number, ok: true, message: '' };
+        setRosterNote('Googleアカウントから、出席番号と名前が自動で入りました。違うときは先生に伝えてください。', 'ok');
+      } else {
+        rosterLookup = { number: '', ok: false, message: '' };
+        setRosterNote('', '');
+      }
+    }
+
+    function onRosterNumberInput() {
+      const numberEl = document.getElementById('student-number');
+      const nameEl = document.getElementById('student-name');
+      const value = numberEl.value.trim().toUpperCase();
+      nameEl.value = '';
+      rosterLookup = { number: '', ok: false, message: '' };
+      if (!/^\d[A-Z0-9]\d{2}$/.test(value)) { setRosterNote('', ''); return; }
+      setRosterNote('名簿を確認しています…', '');
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (numberEl.value.trim().toUpperCase() !== value) return; // 確認中に番号が打ち直された
+          if (res && res.ok) {
+            nameEl.value = res.name;
+            rosterLookup = { number: value, ok: true, message: '' };
+            setRosterNote('名簿の名前が入りました。自分の名前でなければ、出席番号を確かめてください。', 'ok');
+          } else {
+            rosterLookup = { number: value, ok: false, message: (res && res.message) || '名簿にない出席番号です。' };
+            setRosterNote(rosterLookup.message, 'error');
+          }
+        })
+        .withFailureHandler(() => {
+          rosterLookup = { number: value, ok: false, message: '名簿を確認できませんでした。出席番号を入れ直してください。' };
+          setRosterNote(rosterLookup.message, 'error');
+        })
+        .lookupStudent(value);
     }
 
     // ===== 実施回の選択 =====
@@ -3633,6 +3728,7 @@ function onGrowthCompareChange() {
       setAssessmentMode('ALL');
       updateStepIndicator(1);
       initOccasionSelect();
+      initRoster();
       document.getElementById('app-version').textContent = APP_VERSION;
       // ページ全体のLucideアイコンを初期化（ヘッダーの静的アイコンも含む）
       if (typeof lucide !== 'undefined') {

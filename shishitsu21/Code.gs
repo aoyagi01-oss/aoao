@@ -5,8 +5,9 @@
  * 1. Googleスプレッドシートを新規作成する（例:「探究アセスメント集約」）
  * 2. メニュー「拡張機能」→「Apps Script」を開く
  * 3. デフォルトのコードを全て削除し、このファイル(.gs)の内容を貼り付けて保存する
- * 4. プロジェクトに新しいHTMLファイルを追加する（ファイル名は必ず「Index」にする）。
- *    ファイル → 新規 → HTML を選び、生徒配布用HTMLファイルの中身を丸ごと貼り付けて保存する
+ * 4. プロジェクトにHTMLファイルを2つ追加する（ファイル → 新規 → HTML）。
+ *    - 「Index」：生徒用の画面（Index.html の中身を丸ごと貼り付ける）
+ *    - 「Report」：先生用のレポート印刷画面（Report.html の中身を丸ごと貼り付ける）
  * 5. 画面右上「デプロイ」→「新しいデプロイ」をクリック
  *    - 種類の選択: 「ウェブアプリ」
  *    - 説明: 任意（例: 生徒用アプリ配布）
@@ -18,7 +19,8 @@
  * 6. 「デプロイ」をクリックし、発行された「ウェブアプリのURL」を生徒に共有する
  *    （このURLをブックマーク・Google Classroom等で配れば、以後ファイル配布は不要になる）
  * 7. スプレッドシートを再読み込みすると、メニューバーに「探究アセスメント」が追加される
- * 8. メニュー「探究アセスメント」→「実施回を設定する」で、生徒が選ぶ実施回の名前を登録する
+ * 8. メニュー「探究アセスメント」→「生徒名簿を設定する」で、今年度の名簿（出席番号・氏名）を貼り付ける
+ * 9. メニュー「探究アセスメント」→「実施回を設定する」で、生徒が選ぶ実施回の名前を登録する
  *
  * ▼コードを貼り直したとき
  * 「デプロイ」→「デプロイを管理」→ 鉛筆マーク →「バージョン：新バージョン」→「デプロイ」を押すと、
@@ -27,14 +29,24 @@
  *
  * ▼出席番号のルール
  * 半角4桁のうち、1桁目=学年、2桁目=組、3〜4桁目=出席番号　という前提で集計します。
- * （例: 1215 → 1年2組15番）　※このルールと異なる場合は parseStudentNumber() を調整してください。
+ * （例: 1215 → 1年2組15番）　※このルールと異なる場合は parseStudentNumber_() を調整してください。
  *
  * ▼シート構成
- * - 「回答」　　　: 生徒から送信された生データが1件1行で自動追記される（doPostが自動作成）
- * - 「クラス集計」: メニューから手動実行した時点の、学校全体／学年別／クラス別の項目別平均
+ * - 「回答」　　　: 生徒から送信された生データが1件1行で自動追記される
+ * - 「生徒名簿_2026」など: 年度ごとの名簿（出席番号・氏名・ふりがな・Googleアカウント）。
+ *     生徒は出席番号を入れるだけで名前が名簿から入り、レポートは名簿の番号順に並ぶ
+ * - 「実施回」　　: 生徒が選ぶ実施回の一覧（B列にチェックが入っている回だけ生徒画面に出る）
  * - 「個人推移」　: 生徒ごとに提出履歴を時系列で並べた一覧（同一生徒の複数回答を追跡できる）
  * - 「レポート_◯◯」: 実施回（タイトル or 日付）を選んで作成する、要約文＋グラフのレポート
- * - 「実施回」　　: 生徒が選ぶ実施回の一覧（B列にチェックが入っている回だけ生徒画面に出る）
+ *
+ * ▼レポート印刷（メニュー「レポートを作る・印刷する」）
+ * クラス集計（クラスを選ぶ）／学年・クラスの推移／クラスの生徒の変容（名簿順の一覧表）を
+ * 画面で選んでプレビューし、そのままA4で印刷・PDF保存する。年度ごと（4月〜3月）に集計する。
+ *
+ * ▼安全のための約束
+ * 「実行ユーザー: 自分」で公開しているため、名前の末尾が「_」でない関数は生徒の画面からも呼べてしまう。
+ * 先生用の関数は最初に assertTeacher_() を呼び、スプレッドシートの編集者以外は止める。
+ * 内部だけで使う関数は、名前の末尾を「_」にする（外から呼べなくなる）。
  *
  * ▼集計に使う回答
  * 「5項目選択」「自己×他己比較」モードは生徒が自分で選んだ5項目だけを答えるため、平均が高めに出やすい。
@@ -43,10 +55,9 @@
  */
 
 // 生徒画面（Index）の APP_VERSION と同じ値にそろえる。貼り直しの確認に使う
-const APP_VERSION = '2026-10-24';
+const APP_VERSION = '2026-10-24.2';
 
 const SHEET_NAME = '回答';
-const CLASS_SUMMARY_SHEET = 'クラス集計';
 const TREND_SHEET = '個人推移';
 
 // 21の資質・能力（ID・名称・カテゴリー）※生徒用アプリのCOMPETENCIESと対応
@@ -95,7 +106,7 @@ const JSON_COLUMNS = [7, 12, 15, 16]; // 折りたたむJSON列
  * @param {Object} data 生徒アプリから送られてきた評価データ
  * @param {string} senderEmail 送信者のGoogleアカウント（不明な場合は空文字）
  */
-function appendResponseRow(data, senderEmail) {
+function appendResponseRow_(data, senderEmail) {
   // 同時送信でも行が混ざったり、重複判定をすり抜けたりしないよう、書き込み中はロックする
   // クラス全員がほぼ同時に送信しても待ちきれずに失敗しないよう、待ち時間は長めにとる
   const lock = LockService.getScriptLock();
@@ -105,13 +116,13 @@ function appendResponseRow(data, senderEmail) {
     let sheet = ss.getSheetByName(SHEET_NAME);
     if (!sheet) {
       sheet = ss.insertSheet(SHEET_NAME);
-      ensureResponseColumns(sheet);
+      ensureResponseColumns_(sheet);
       sheet.getRange(1, 1, 1, RESPONSE_HEADER.length).setValues([RESPONSE_HEADER]);
-      formatResponseSheet(sheet);
+      formatResponseSheet_(sheet);
     }
     // 「サーバーには届いたが応答が返らなかった」記録を再送信しても、同じ記録の行は追加しない
-    if (isDuplicateRecord(sheet, data)) return;
-    sheet.appendRow(buildResponseRow(data, senderEmail));
+    if (isDuplicateRecord_(sheet, data)) return;
+    sheet.appendRow(buildResponseRow_(data, senderEmail));
   } finally {
     lock.releaseLock();
   }
@@ -122,7 +133,7 @@ function appendResponseRow(data, senderEmail) {
  * 記録IDは送信した瞬間の時刻（ミリ秒）なので、別の生徒と偶然重なることがある。
  * 記録ID（J列）と出席番号（C列）の両方が一致したときだけ重複とみなす。
  */
-function isDuplicateRecord(sheet, data) {
+function isDuplicateRecord_(sheet, data) {
   const recordId = data.id;
   if (recordId === undefined || recordId === null || recordId === '') return false;
   const lastRow = sheet.getLastRow();
@@ -136,7 +147,7 @@ function isDuplicateRecord(sheet, data) {
 /**
  * 1件の評価データを「回答」シートの1行分（RESPONSE_HEADERと同じ並び）に変換する
  */
-function buildResponseRow(data, senderEmail) {
+function buildResponseRow_(data, senderEmail) {
   const scores = data.scores || {};
   const notes = data.notes || {};
   const peerEvals = Array.isArray(data.peerEvals) ? data.peerEvals : [];
@@ -175,17 +186,17 @@ function buildResponseRow(data, senderEmail) {
 }
 
 /** 「回答」シートの列数がRESPONSE_HEADER分に足りない場合、列を追加する */
-function ensureResponseColumns(sheet) {
+function ensureResponseColumns_(sheet) {
   const need = RESPONSE_HEADER.length - sheet.getMaxColumns();
   if (need > 0) sheet.insertColumnsAfter(sheet.getMaxColumns(), need);
 }
 
-function parseJsonSafe(text) {
+function parseJsonSafe_(text) {
   try { return JSON.parse(text || '{}') || {}; } catch (e) { return {}; }
 }
 
 /** 「回答」シートの見た目を整える（見出し色・幅・ヒートマップ・JSON列の折りたたみ） */
-function formatResponseSheet(sheet) {
+function formatResponseSheet_(sheet) {
   const lastCol = RESPONSE_HEADER.length;
   const bodyRows = Math.max(sheet.getMaxRows() - 1, 1);
   sheet.getRange(1, 1, 1, lastCol).setFontWeight('bold').setBackground('#f0ece3')
@@ -232,13 +243,14 @@ function formatResponseSheet(sheet) {
  * メニュー用：既存の「回答」シートを新形式に更新し、過去の行の21項目スコア列も自動で埋める
  */
 function upgradeResponseSheet() {
+  assertTeacher_();
   const ui = SpreadsheetApp.getUi();
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
   if (!sheet) {
     ui.alert('「回答」シートがまだありません。最初の回答が届くと、新形式で自動作成されます。');
     return;
   }
-  ensureResponseColumns(sheet);
+  ensureResponseColumns_(sheet);
   sheet.getRange(1, 1, 1, RESPONSE_HEADER.length).setValues([RESPONSE_HEADER]);
 
   const rowCount = sheet.getLastRow() - 1;
@@ -246,7 +258,7 @@ function upgradeResponseSheet() {
     const jsonVals = sheet.getRange(2, 7, rowCount, 1).getValues();
     const existing = sheet.getRange(2, SCORE_COL_START, rowCount, COMPETENCIES.length).getValues();
     const out = jsonVals.map((r, i) => {
-      const scores = parseJsonSafe(r[0]);
+      const scores = parseJsonSafe_(r[0]);
       return COMPETENCIES.map((c, j) => {
         if (existing[i][j] !== '') return existing[i][j];
         const v = Number(scores[c.id]);
@@ -255,24 +267,8 @@ function upgradeResponseSheet() {
     });
     sheet.getRange(2, SCORE_COL_START, rowCount, COMPETENCIES.length).setValues(out);
   }
-  formatResponseSheet(sheet);
+  formatResponseSheet_(sheet);
   ui.alert('「回答」シートを新形式に更新しました（' + Math.max(rowCount, 0) + '行）。');
-}
-
-/**
- * 旧方式（fetch + webhook）で送信された生徒アプリからの受信用。
- * Webアプリ版（google.script.run経由）に移行した後も、後方互換のため残している。
- */
-function doPost(e) {
-  try {
-    const data = JSON.parse(e.postData.contents);
-    appendResponseRow(data, '');
-    return ContentService.createTextOutput(JSON.stringify({ ok: true }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: String(err) }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
 }
 
 /**
@@ -280,7 +276,7 @@ function doPost(e) {
  * 「実行ユーザー: 自分」でも、生徒が同じ学校ドメインのアカウントでログインしていれば取得できる
  * （ドメイン外のアカウントなどで取得できないときは空文字）。
  */
-function getViewerEmail() {
+function getViewerEmail_() {
   try {
     return Session.getActiveUser().getEmail() || '';
   } catch (e) {
@@ -289,10 +285,176 @@ function getViewerEmail() {
 }
 
 /**
+ * 先生用の関数の最初に呼ぶ。スプレッドシートの持ち主・編集者でなければエラーにして止める。
+ * （生徒の画面から先生用の関数を呼ばれても、名前や点数が見えないようにするため）
+ */
+function assertTeacher_() {
+  const email = getViewerEmail_().toLowerCase();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const owner = ss.getOwner();
+  const allowed = ss.getEditors().map(u => u.getEmail())
+    .concat(owner ? [owner.getEmail()] : [])
+    .map(e => String(e || '').toLowerCase());
+  if (!email || allowed.indexOf(email) === -1) {
+    throw new Error('この操作は、スプレッドシートの編集者（先生）だけが使えます。');
+  }
+}
+
+/** 出席番号をそろえる（全角→半角、英字は大文字、前後の空白を取る）。例: '１ｂ１５' → '1B15' */
+function normalizeStudentNumber_(value) {
+  return String(value === undefined || value === null ? '' : value).normalize('NFKC').replace(/\s+/g, '').toUpperCase();
+}
+
+/** 日付が何年度か（4月始まり）。例: 2027年3月 → 2026 */
+function fiscalYearOf_(dateValue) {
+  const d = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  if (isNaN(d.getTime())) return null;
+  const tz = Session.getScriptTimeZone() || 'Asia/Tokyo';
+  const y = Number(Utilities.formatDate(d, tz, 'yyyy'));
+  const m = Number(Utilities.formatDate(d, tz, 'M'));
+  return m >= 4 ? y : y - 1;
+}
+
+/* =====================================================================
+ * 生徒名簿（年度ごとに「生徒名簿_2026」のようなシートを1枚）
+ * A列=出席番号（4桁）、B列=氏名、C列=ふりがな（任意）、D列=Googleアカウント（任意）、E列=メモ
+ * ===================================================================== */
+
+const ROSTER_SHEET_PREFIX = '生徒名簿_';
+const ROSTER_HEADER = ['出席番号', '氏名', 'ふりがな（任意）', 'Googleアカウント（任意）', 'メモ'];
+
+/**
+ * 指定した年度の名簿を読む。
+ * @return {{exists: boolean, sheetName: string, students: Array, problems: string[]}}
+ *   students は出席番号順。problems は番号の書き方の誤り・重複など、先生に知らせたいこと
+ */
+function loadRoster_(year) {
+  const sheetName = ROSTER_SHEET_PREFIX + year;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  const result = { exists: !!sheet, sheetName: sheetName, students: [], problems: [] };
+  if (!sheet || sheet.getLastRow() < 2) return result;
+
+  const seen = {};
+  sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues().forEach((r, i) => {
+    const number = normalizeStudentNumber_(r[0]);
+    const name = String(r[1] || '').trim();
+    if (!number && !name) return;
+    const rowNo = i + 2;
+    const parsed = parseStudentNumber_(number);
+    if (!parsed) {
+      result.problems.push(`${rowNo}行目：出席番号「${r[0]}」が4桁の形になっていません（例：1215、1B15）`);
+      return;
+    }
+    if (!name) {
+      result.problems.push(`${rowNo}行目：${number} の氏名が空です`);
+      return;
+    }
+    if (seen[number]) {
+      result.problems.push(`${rowNo}行目：出席番号 ${number} が ${seen[number]}行目と重なっています`);
+      return;
+    }
+    seen[number] = rowNo;
+    result.students.push({
+      number: number,
+      name: name,
+      kana: String(r[2] || '').trim(),
+      email: String(r[3] || '').trim().toLowerCase(),
+      grade: parsed.grade,
+      klass: parsed.klass,
+      no: parsed.number
+    });
+  });
+  result.students.sort((a, b) => a.number < b.number ? -1 : a.number > b.number ? 1 : 0);
+  return result;
+}
+
+function currentFiscalYear_() {
+  return fiscalYearOf_(new Date());
+}
+
+/** メニュー用：今年度の名簿シートを開く（なければ作る）。入力の誤りがあれば知らせる */
+function showRosterSheet() {
+  assertTeacher_();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const year = currentFiscalYear_();
+  const sheetName = ROSTER_SHEET_PREFIX + year;
+  let sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    sheet.getRange(1, 1, 1, ROSTER_HEADER.length).setValues([ROSTER_HEADER])
+      .setFontWeight('bold').setBackground('#f0ece3');
+    sheet.getRange('A:A').setNumberFormat('@'); // 「1B15」や先頭の0が数値・日付に化けないように
+    sheet.setFrozenRows(1);
+    [90, 160, 160, 260, 200].forEach((w, i) => sheet.setColumnWidth(i + 1, w));
+    sheet.activate();
+    ui.alert(
+      `「${sheetName}」シートを作りました（${year}年度の名簿）。\n\n` +
+      '・A列に出席番号（4桁）、B列に氏名を貼り付けてください。Excel や校務システムの表からコピーできます。\n' +
+      '　出席番号の書き方：高校1年2組15番 → 1215、中学1年B組15番 → 1B15\n' +
+      '・D列に生徒のGoogleアカウント（メールアドレス）を入れておくと、生徒が開いたときに番号と名前が自動で入ります（空でもかまいません）。\n' +
+      '・生徒は出席番号を入れるだけで、名前は名簿から入ります。レポートもこの名簿の番号順に並びます。\n' +
+      '・貼り付けたら、もう一度このメニューを押すと、書き方の誤りがないか確かめられます。\n' +
+      '・4月になると、新しい年度の名簿シートが作られます（前の年度のシートはそのまま残ります）。');
+    return;
+  }
+  sheet.activate();
+  const roster = loadRoster_(year);
+  ui.alert(
+    `「${sheetName}」：${roster.students.length}人が登録されています。\n\n` +
+    (roster.problems.length
+      ? '次の行を直してください（直すまで、その生徒は名簿にいないものとして扱われます）：\n・' +
+        roster.problems.slice(0, 15).join('\n・') + (roster.problems.length > 15 ? `\n…ほか${roster.problems.length - 15}件` : '')
+      : '書き方の誤りや番号の重なりはありませんでした。'));
+}
+
+/**
+ * 生徒画面用：開いている生徒のGoogleアカウントが今年度の名簿にあれば、出席番号と氏名を返す。
+ * 名簿が作られていなければ rosterActive=false（これまでどおり名前も手で入力する）。
+ */
+function whoAmI() {
+  const roster = loadRoster_(currentFiscalYear_());
+  const active = roster.students.length > 0;
+  const email = getViewerEmail_().toLowerCase();
+  const me = active && email ? roster.students.find(s => s.email && s.email === email) : null;
+  return me
+    ? { rosterActive: true, number: me.number, name: me.name }
+    : { rosterActive: active };
+}
+
+/**
+ * 生徒画面用：出席番号から名簿の氏名を返す。
+ * 名簿にGoogleアカウントが書いてある生徒は、そのアカウントで開いたときだけ名前を返す
+ * （他の生徒の番号を入れて名前を調べたり、なりすましたりできないように）。
+ */
+function lookupStudent(studentNumber) {
+  const roster = loadRoster_(currentFiscalYear_());
+  if (roster.students.length === 0) return { rosterActive: false };
+  const number = normalizeStudentNumber_(studentNumber);
+  const student = roster.students.find(s => s.number === number);
+  if (!student) {
+    return { rosterActive: true, ok: false, message: `出席番号 ${number} は名簿にありません。番号を確かめてください。` };
+  }
+  if (student.email && student.email !== getViewerEmail_().toLowerCase()) {
+    return { rosterActive: true, ok: false, message: `出席番号 ${number} は、別のGoogleアカウントの生徒として登録されています。番号を確かめてください。` };
+  }
+  return { rosterActive: true, ok: true, number: number, name: student.name };
+}
+
+/**
  * Webアプリ版の生徒アプリから google.script.run 経由で呼ばれる送信用エンドポイント。
+ * 名簿がある年度は、氏名を名簿の表記にそろえて保存する（入力ミスや表記ゆれで別人扱いにならないように）。
  */
 function submitAssessmentToServer(data) {
-  appendResponseRow(data, getViewerEmail());
+  data.studentNumber = normalizeStudentNumber_(data.studentNumber);
+  const year = fiscalYearOf_(data.date) || currentFiscalYear_();
+  const student = loadRoster_(year).students.find(s => s.number === data.studentNumber);
+  const email = getViewerEmail_();
+  if (student && student.email && student.email !== email.toLowerCase()) {
+    throw new Error(`出席番号 ${data.studentNumber} は、別のGoogleアカウントの生徒として名簿に登録されています。`);
+  }
+  if (student) data.studentName = student.name;
+  appendResponseRow_(data, email);
   return { ok: true };
 }
 
@@ -303,9 +465,9 @@ function submitAssessmentToServer(data) {
  * ※google.script.run は日付(Date)を返せないため、日付は文字列にして返す。
  */
 function getMyHistory() {
-  const email = getViewerEmail().toLowerCase();
+  const email = getViewerEmail_().toLowerCase();
   if (!email) return [];
-  return loadResponses()
+  return loadResponses_()
     .filter(r => String(r.senderEmail).toLowerCase() === email)
     .map(r => ({
       id: Number(r.recordId) || String(r.recordId),
@@ -337,7 +499,7 @@ function getOpenOccasions() {
   if (sheet && sheet.getLastRow() >= 2) {
     names = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues()
       .filter(r => r[1] === true && String(r[0]).trim() !== '')
-      .map(r => normalizeTitle(r[0]));
+      .map(r => normalizeTitle_(r[0]));
   }
   // 生徒が一斉に開いてもシートを毎回読まないよう、1分だけ覚えておく
   cache.put(OCCASION_CACHE_KEY, JSON.stringify(names), 60);
@@ -345,12 +507,12 @@ function getOpenOccasions() {
 }
 
 /** 「実施回」シートに登録されているすべての実施回の名前（受付中かどうかは問わない） */
-function getRegisteredOccasionNames() {
+function getRegisteredOccasionNames_() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OCCASION_LIST_SHEET);
   if (!sheet || sheet.getLastRow() < 2) return [];
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
     .filter(r => String(r[0]).trim() !== '')
-    .map(r => normalizeTitle(r[0]));
+    .map(r => normalizeTitle_(r[0]));
 }
 
 /** 「実施回」シートが書きかえられたら、生徒画面にすぐ反映されるよう覚えておいた一覧を捨てる */
@@ -362,6 +524,7 @@ function onEdit(e) {
 
 /** メニュー用：「実施回」シートを開く（なければ作る） */
 function showOccasionListSheet() {
+  assertTeacher_();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(OCCASION_LIST_SHEET);
   if (!sheet) {
@@ -400,15 +563,101 @@ function doGet(e) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('探究アセスメント')
-    .addItem('実施回を設定する', 'showOccasionListSheet')
+    .addItem('🖨 レポートを作る・印刷する（クラス集計／推移／生徒の変容）', 'showReportCenter')
     .addSeparator()
-    .addItem('集計レポートを更新', 'generateReport')
+    .addItem('👥 生徒名簿を設定する', 'showRosterSheet')
+    .addItem('🗓 実施回を設定する', 'showOccasionListSheet')
+    .addSeparator()
     .addItem('わかりやすいレポートを作成（実施回ごと）', 'showOccasionReportDialog')
     .addItem('生徒個人の成長レポートを作成', 'showPersonalGrowthDialog')
-    .addItem('学年・クラスの推移レポートを作成', 'generateGradeClassTrendReport')
+    .addItem('「個人推移」シート（回答の一覧）を更新', 'updateTrendListSheet')
     .addSeparator()
     .addItem('版を確認', 'showAppVersion')
     .addToUi();
+}
+
+/** メニュー用：「個人推移」シート（1回答1行の一覧）を作り直す */
+function updateTrendListSheet() {
+  assertTeacher_();
+  const records = loadResponses_();
+  const ui = SpreadsheetApp.getUi();
+  if (records.length === 0) {
+    ui.alert('集計対象のデータがまだありません。「回答」シートにデータが蓄積されてから再実行してください。');
+    return;
+  }
+  buildTrendSheet_(records);
+  ui.alert(`「${TREND_SHEET}」シートを更新しました（${records.length}件）。`);
+}
+
+/* =====================================================================
+ * レポート印刷（クラス集計／学年・クラスの推移／クラスの生徒の変容）
+ * 画面（Report.html）でクラスや表示する値を選び、プレビューをそのまま印刷・PDF保存する。
+ * 計算は画面側で行い、ここでは1年度分の回答と名簿をまとめて渡すだけにする。
+ * ===================================================================== */
+
+function showReportCenter() {
+  assertTeacher_();
+  const html = HtmlService.createHtmlOutputFromFile('Report').setWidth(1180).setHeight(800);
+  SpreadsheetApp.getUi().showModalDialog(html, 'レポートを作る・印刷する');
+}
+
+/**
+ * レポート画面用：指定した年度（省略時は今年度）の回答・名簿・実施回をまとめて返す。
+ * 回答は点数だけを返し、振り返りの文章やメッセージは含めない。
+ */
+function getReportData(year) {
+  assertTeacher_();
+  const all = loadResponses_();
+  const thisYear = currentFiscalYear_();
+  const yearSet = new Set([thisYear]);
+  all.forEach(r => { const y = fiscalYearOf_(r.date); if (y) yearSet.add(y); });
+  const targetYear = Number(year) || thisYear;
+
+  const inYear = all.filter(r => fiscalYearOf_(r.date) === targetYear);
+  const roster = loadRoster_(targetYear);
+
+  // 実施回の並び：「実施回」シートの上からの順 → 登録されていない回は実施日の早い順
+  const registered = getRegisteredOccasionNames_();
+  const dates = {};
+  inYear.forEach(r => {
+    const t = normalizeTitle_(r.title);
+    const ms = new Date(r.date).getTime();
+    if (!dates[t]) dates[t] = [];
+    if (!isNaN(ms)) dates[t].push(ms);
+  });
+  const avg = list => list.length ? list.reduce((a, b) => a + b, 0) / list.length : 0;
+  const titles = Object.keys(dates).sort((a, b) => {
+    const ia = registered.indexOf(a), ib = registered.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return avg(dates[a]) - avg(dates[b]);
+  });
+  const titleIndex = {};
+  titles.forEach((t, i) => { titleIndex[t] = i; });
+
+  return {
+    year: targetYear,
+    years: Array.from(yearSet).sort((a, b) => b - a),
+    generatedAt: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy年M月d日'),
+    competencies: COMPETENCIES,
+    categoryLabel: CATEGORY_LABEL,
+    roster: {
+      exists: roster.exists,
+      sheetName: roster.sheetName,
+      problems: roster.problems,
+      students: roster.students.map(s => ({ number: s.number, name: s.name, kana: s.kana }))
+    },
+    occasions: titles,
+    responses: inYear.map(r => ({
+      n: normalizeStudentNumber_(r.studentNumber),
+      name: String(r.studentName || ''),
+      t: titleIndex[normalizeTitle_(r.title)],
+      d: new Date(r.date).getTime() || 0,
+      m: String(r.mode || ''),
+      s: COMPETENCIES.map(c => Number(r.scores[c.id]) || 0)
+    }))
+  };
 }
 
 function showAppVersion() {
@@ -422,7 +671,7 @@ function showAppVersion() {
  * 出席番号（半角4桁）を 学年／組／番号 に分解する
  * 例: "1215" → { grade: '1', klass: '2', number: '15' }
  */
-function parseStudentNumber(studentNumber) {
+function parseStudentNumber_(studentNumber) {
   const s = String(studentNumber || '').trim().toUpperCase();
   // 1文字目=学年(数字)、2文字目=組(数字 or 英字)、3〜4文字目=番号(数字)
   if (!/^\d[A-Z0-9]\d{2}$/.test(s)) return null;
@@ -433,7 +682,7 @@ function parseStudentNumber(studentNumber) {
 /**
  * 「回答」シートの全行を読み込み、パース済みレコードの配列を返す
  */
-function loadResponses() {
+function loadResponses_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet || sheet.getLastRow() < 2) return [];
@@ -448,13 +697,13 @@ function loadResponses() {
     let peerEvals = [];
     try { peerEvals = JSON.parse(peerEvalsJson || '[]') || []; } catch (e) { peerEvals = []; }
     records.push({
-      receivedAt, date, studentNumber: String(studentNumber || ''), studentName, title, mode,
-      scores: parseJsonSafe(scoresJson), reflection, refinedReflection, recordId,
+      receivedAt, date, studentNumber: normalizeStudentNumber_(studentNumber), studentName, title, mode,
+      scores: parseJsonSafe_(scoresJson), reflection, refinedReflection, recordId,
       senderEmail: senderEmail || '',
-      notes: parseJsonSafe(notesJson),
-      peerScores: parseJsonSafe(peerAvgJson),
+      notes: parseJsonSafe_(notesJson),
+      peerScores: parseJsonSafe_(peerAvgJson),
       peerEvals: peerEvals,
-      parsed: parseStudentNumber(studentNumber)
+      parsed: parseStudentNumber_(studentNumber)
     });
   });
   return records;
@@ -466,7 +715,7 @@ function loadResponses() {
  * 全21項目モードの回答があればそれだけを使い、1件もないときだけ全回答を使う。
  * @return {{records: Array, fullOnly: boolean, note: string}} note はレポートに書き添える説明（不要なら空文字）
  */
-function selectRecordsForAggregate(records) {
+function selectRecordsForAggregate_(records) {
   const full = records.filter(r => r.mode === 'ALL');
   if (full.length > 0) {
     const excluded = records.length - full.length;
@@ -488,179 +737,9 @@ function selectRecordsForAggregate(records) {
 }
 
 /**
- * メニュー実行用：「クラス集計」「個人推移」の2シートを最新データで再生成する
- */
-function generateReport() {
-  const records = loadResponses();
-  const ui = SpreadsheetApp.getUi();
-  if (records.length === 0) {
-    ui.alert('集計対象のデータがまだありません。「回答」シートにデータが蓄積されてから再実行してください。');
-    return;
-  }
-
-  const target = selectRecordsForAggregate(records);
-  buildClassSummarySheet(target.records, target.note);
-  buildTrendSheet(records); // 個人推移は1回答1行の一覧なので、モード列つきで全回答を並べる
-  ui.alert(`集計レポートを更新しました（クラス集計の対象: ${target.records.length}件／全回答: ${records.length}件）。\n` +
-    (target.note ? target.note + '\n' : '') +
-    `「${CLASS_SUMMARY_SHEET}」「${TREND_SHEET}」の各シートをご確認ください。`);
-}
-
-/**
- * 学校全体／学年別／クラス別の項目別平均を「クラス集計」シートに書き出す
- * @param {Array} records 集計に使う回答（selectRecordsForAggregate で選んだもの）
- * @param {string} [note] 表の下に書き添える説明
- */
-function buildClassSummarySheet(records, note) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(CLASS_SUMMARY_SHEET);
-  if (sheet) {
-    sheet.getCharts().forEach(chart => sheet.removeChart(chart));
-    sheet.clear();
-    sheet.setConditionalFormatRules([]); // 前回実行時のルールが残らないようリセット
-  } else {
-    sheet = ss.insertSheet(CLASS_SUMMARY_SHEET);
-  }
-
-  // 集計グループ（列）を決定: 全体 → 学年 → 学年内のクラス、の順に並べる
-  const grades = new Set();
-  const classesByGrade = {}; // grade -> Set(klass)
-  records.forEach(r => {
-    if (!r.parsed) return;
-    grades.add(r.parsed.grade);
-    if (!classesByGrade[r.parsed.grade]) classesByGrade[r.parsed.grade] = new Set();
-    classesByGrade[r.parsed.grade].add(r.parsed.klass);
-  });
-  const sortedGrades = [...grades].sort();
-
-  // groups: [{ key, label, level }]  level: 'all' | 'grade' | 'class'
-  const groups = [{ key: 'ALL', label: '学校全体', level: 'all' }];
-let lastSchool = '';
-sortedGrades.forEach(g => {
-  const school = g.charAt(0); // '中' or '高'
-  if (school !== lastSchool) {
-    groups.push({ key: `S${school}`, label: school === '中' ? '中学全体' : '高校全体', level: 'school' });
-    lastSchool = school;
-  }
-  groups.push({ key: `G${g}`, label: `${g}年全体`, level: 'grade', grade: g });
-  [...classesByGrade[g]].sort().forEach(k => {
-    groups.push({ key: `G${g}C${k}`, label: `${g}年${k}組`, level: 'class', grade: g, klass: k });
-  });
-});
-
-  // 集計: groupKey -> compId -> {sum, count}（項目別）、groupKey -> category -> {sum, count}（カテゴリー別、グラフ用）
-  const agg = {};
-  const catAgg = {};
-  groups.forEach(g => { agg[g.key] = {}; catAgg[g.key] = { Thinking: {sum:0,count:0}, Communication: {sum:0,count:0}, Leadership: {sum:0,count:0} }; });
-  const compCategoryById = {};
-  COMPETENCIES.forEach(c => { compCategoryById[c.id] = c.category; });
-
-  records.forEach(r => {
-    // 出席番号が不正な形式でも「学校全体」の集計には含める（学年・組別の内訳のみ対象外）
-    const targetGroupKeys = r.parsed
-  ? ['ALL', `S${r.parsed.grade.charAt(0)}`, `G${r.parsed.grade}`, `G${r.parsed.grade}C${r.parsed.klass}`]
-  : ['ALL'];
-    Object.keys(r.scores).forEach(compIdStr => {
-      const compId = parseInt(compIdStr, 10);
-      const score = Number(r.scores[compIdStr]);
-      if (!score) return;
-      const cat = compCategoryById[compId];
-      targetGroupKeys.forEach(gk => {
-        if (!agg[gk][compId]) agg[gk][compId] = { sum: 0, count: 0 };
-        agg[gk][compId].sum += score;
-        agg[gk][compId].count += 1;
-        if (cat) {
-          catAgg[gk][cat].sum += score;
-          catAgg[gk][cat].count += 1;
-        }
-      });
-    });
-  });
-
-  // ── シート書き出し（各能力スコア一覧：セルは数値、回答数はメモ欄に） ──
-  const header = ['カテゴリー', '項目'].concat(groups.map(g => g.label));
-  const rows = [header];
-  const notesRows = []; // rows[]と同じ行位置に対応する回答数メモ（ヘッダー行を除く）
-
-  let currentCategory = '';
-  COMPETENCIES.forEach(comp => {
-    const catLabel = CATEGORY_LABEL[comp.category];
-    const row = [currentCategory === comp.category ? '' : catLabel, comp.name];
-    const noteRow = ['', ''];
-    currentCategory = comp.category;
-    groups.forEach(g => {
-      const cell = agg[g.key][comp.id];
-      row.push(cell ? Number((cell.sum / cell.count).toFixed(2)) : '');
-      noteRow.push(cell ? `回答数: ${cell.count}件` : '');
-    });
-    rows.push(row);
-    notesRows.push(noteRow);
-  });
-
-  sheet.getRange(1, 1, rows.length, header.length).setValues(rows);
-  sheet.getRange(1, 1, 1, header.length).setFontWeight('bold').setBackground('#f0ece3');
-
-  // 回答数をセルのメモ（ホバーで表示）として、まとめて1回で設定する（クラスが多くても速く終わるように）
-  sheet.getRange(2, 1, notesRows.length, header.length).setNotes(notesRows);
-
-  const scoreRange = sheet.getRange(2, 3, COMPETENCIES.length, groups.length);
-  scoreRange.setNumberFormat('0.00');
-  scoreRange.setHorizontalAlignment('center');
-
-  // ヒートマップ（3色スケール: 低い=オレンジ、中間=黄、高い=緑）
-  const heatmapRule = SpreadsheetApp.newConditionalFormatRule()
-    .setGradientMinpointWithValue('#f4b183', SpreadsheetApp.InterpolationType.NUMBER, '1')
-    .setGradientMidpointWithValue('#ffe699', SpreadsheetApp.InterpolationType.NUMBER, '2.5')
-    .setGradientMaxpointWithValue('#a9d18e', SpreadsheetApp.InterpolationType.NUMBER, '4')
-    .setRanges([scoreRange])
-    .build();
-  sheet.setConditionalFormatRules([heatmapRule]);
-
-  sheet.setFrozenRows(1);
-  sheet.setFrozenColumns(2);
-  autoFitTableColumns(sheet, 1, header.length, 260);
-
-  if (note) {
-    sheet.getRange(rows.length + 2, 1).setValue(note).setFontColor('#a8402c').setFontWeight('bold');
-  }
-
-  // ── カテゴリー別平均比較グラフ（学校全体／学年／クラスをまとめて比較）──
-  const chartStartRow = rows.length + 4;
-  sheet.getRange(chartStartRow, 1).setValue('カテゴリー別 平均レベル比較（グラフ用データ）').setFontWeight('bold');
-  const catHeader = ['グループ', CATEGORY_LABEL.Thinking, CATEGORY_LABEL.Communication, CATEGORY_LABEL.Leadership];
-  const catRows = [catHeader];
-  groups.forEach(g => {
-    catRows.push([
-      g.label,
-      catAgg[g.key].Thinking.count   ? Number((catAgg[g.key].Thinking.sum / catAgg[g.key].Thinking.count).toFixed(2))   : null,
-      catAgg[g.key].Communication.count ? Number((catAgg[g.key].Communication.sum / catAgg[g.key].Communication.count).toFixed(2)) : null,
-      catAgg[g.key].Leadership.count ? Number((catAgg[g.key].Leadership.sum / catAgg[g.key].Leadership.count).toFixed(2)) : null
-    ]);
-  });
-  const catDataStartRow = chartStartRow + 1;
-  sheet.getRange(catDataStartRow, 1, catRows.length, catHeader.length).setValues(catRows);
-
-  const catChart = sheet.newChart()
-    .setChartType(Charts.ChartType.COLUMN)
-    .addRange(sheet.getRange(catDataStartRow, 1, catRows.length, catHeader.length))
-    .setNumHeaders(1)
-    .setOption('useFirstColumnAsDomain', true)
-    .setPosition(chartStartRow, header.length + 2, 0, 0)
-    .setOption('title', 'カテゴリー別 平均レベル比較（学校全体／学年／クラス）')
-    .setOption('titleTextStyle', { fontSize: 14, bold: true })
-    .setOption('legend', { position: 'top' })
-    .setOption('vAxis', { minValue: 0, maxValue: 4, gridlines: { count: 5 }, title: '平均レベル（4段階）' })
-    .setOption('hAxis', { textStyle: { fontSize: 9 }, slantedText: true, slantedTextAngle: 45 })
-    .setOption('colors', [CATEGORY_COLOR.Thinking, CATEGORY_COLOR.Communication, CATEGORY_COLOR.Leadership])
-    .setOption('width', 900).setOption('height', 420)
-    .build();
-  sheet.insertChart(catChart);
-}
-
-/**
  * 生徒ごとの提出履歴を時系列で並べた一覧を「個人推移」シートに書き出す
  */
-function buildTrendSheet(records) {
+function buildTrendSheet_(records) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(TREND_SHEET);
   if (sheet) {
@@ -711,7 +790,7 @@ function buildTrendSheet(records) {
   sheet.getRange(2, 5, Math.max(rows.length - 1, 1), 1).setNumberFormat('yyyy/mm/dd');
   sheet.getRange(2, 7, Math.max(rows.length - 1, 1), 4).setNumberFormat('0.00');
   sheet.setFrozenRows(1);
-  autoFitTableColumns(sheet, 1, header.length, 220);
+  autoFitTableColumns_(sheet, 1, header.length, 220);
 
   // 学年・組・氏名等で絞り込み／並べ替えできるよう、シート全体にフィルタを設定する
   if (rows.length > 1) {
@@ -728,7 +807,7 @@ function buildTrendSheet(records) {
  * ▼タイトルの表記ゆれ対策について
  * 生徒が自由入力するタイトルは、余分な空白・全角半角の違い・入力ミスなどで
  * 本来同じ回のはずが別々の文字列として記録されることがある。これに対し：
- *  1. normalizeTitle() で空白の統一・前後trimを自動的に行い、些細な表記ゆれは吸収する
+ *  1. normalizeTitle_() で空白の統一・前後trimを自動的に行い、些細な表記ゆれは吸収する
  *  2. それでも異なる文字列になったものは、レーベンシュタイン距離が近いタイトル同士を
  *     「似ている候補」としてグループ表示し、チェックボックスで複数選択・統合できる
  *  3. さらに、タイトルに頼らず「実施日」を基準に選ぶ方法も用意した（本セクション）。
@@ -744,7 +823,7 @@ const OCCASION_SHEET_PREFIX = 'レポート_';
  * タイトル文字列を正規化する（全角英数字→半角、全角/半角スペースの統一、前後の空白除去）
  * 例: '第１回　ふりかえり ' → '第1回 ふりかえり'
  */
-function normalizeTitle(title) {
+function normalizeTitle_(title) {
   const cleaned = String(title || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
   return cleaned || '（タイトル未設定）';
 }
@@ -752,7 +831,7 @@ function normalizeTitle(title) {
 /**
  * レーベンシュタイン距離（編集距離）を計算する
  */
-function levenshteinDistance(a, b) {
+function levenshteinDistance_(a, b) {
   const m = a.length, n = b.length;
   if (m === 0) return n;
   if (n === 0) return m;
@@ -777,7 +856,7 @@ function levenshteinDistance(a, b) {
  *        （「第1回」と「第2回」のように似ていても）別の回なので、同じグループにしない
  * @return {Array<{variants: Array<{title:string, count:number}>, totalCount: number}>}
  */
-function clusterTitles(list, keepApart) {
+function clusterTitles_(list, keepApart) {
   const items = list.slice().sort((a, b) => b.count - a.count);
   const used = new Array(items.length).fill(false);
   const clusters = [];
@@ -790,7 +869,7 @@ function clusterTitles(list, keepApart) {
       if (used[j]) continue;
       const a = items[i].title, b = items[j].title;
       if (keepApart && keepApart.has(a) && keepApart.has(b)) continue;
-      const dist = levenshteinDistance(a, b);
+      const dist = levenshteinDistance_(a, b);
       const threshold = Math.max(2, Math.floor(Math.max(a.length, b.length) * 0.2));
       if (dist > 0 && dist <= threshold) {
         cluster.variants.push(items[j]);
@@ -810,20 +889,21 @@ function clusterTitles(list, keepApart) {
  * （ダイアログの選択肢を組み立てるため、クライアント側から呼ばれる）
  */
 function getDistinctTitlesForDialog() {
-  const records = loadResponses();
+  assertTeacher_();
+  const records = loadResponses_();
   const counts = {};
   records.forEach(r => {
-    const t = normalizeTitle(r.title);
+    const t = normalizeTitle_(r.title);
     counts[t] = (counts[t] || 0) + 1;
   });
   const list = Object.keys(counts).map(t => ({ title: t, count: counts[t] }));
-  return clusterTitles(list, new Set(getRegisteredOccasionNames()));
+  return clusterTitles_(list, new Set(getRegisteredOccasionNames_()));
 }
 
 /**
  * 日付文字列（実施日）を 'yyyy-MM-dd' 形式に変換する。無効な日付はnullを返す
  */
-function toDateKey(dateValue) {
+function toDateKey_(dateValue) {
   const d = new Date(dateValue);
   if (isNaN(d.getTime())) return null;
   return Utilities.formatDate(d, Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy-MM-dd');
@@ -832,7 +912,7 @@ function toDateKey(dateValue) {
 /**
  * 2つの日付キー（yyyy-MM-dd）の間隔（日数）を計算する
  */
-function daysBetween(dateKeyA, dateKeyB) {
+function daysBetween_(dateKeyA, dateKeyB) {
   const msPerDay = 24 * 60 * 60 * 1000;
   return Math.abs((new Date(dateKeyA) - new Date(dateKeyB)) / msPerDay);
 }
@@ -841,10 +921,11 @@ function daysBetween(dateKeyA, dateKeyB) {
  * 「回答」シート内に存在する実施日ごとの件数一覧を、近い日付（3日以内）でグループ化して返す
  */
 function getDistinctDatesForDialog() {
-  const records = loadResponses();
+  assertTeacher_();
+  const records = loadResponses_();
   const counts = {};
   records.forEach(r => {
-    const key = toDateKey(r.date);
+    const key = toDateKey_(r.date);
     if (!key) return;
     counts[key] = (counts[key] || 0) + 1;
   });
@@ -859,7 +940,7 @@ function getDistinctDatesForDialog() {
   let current = null;
   list.forEach(item => {
     const anchor = current ? current.variants[0] : null;
-    if (anchor && daysBetween(anchor.title, item.title) <= 3) {
+    if (anchor && daysBetween_(anchor.title, item.title) <= 3) {
       current.variants.push(item);
       current.totalCount += item.count;
     } else {
@@ -874,6 +955,7 @@ function getDistinctDatesForDialog() {
  * メニューから起動：実施回を選ぶダイアログを表示する（タイトルで選ぶ／日付で選ぶ の2方式）
  */
 function showOccasionReportDialog() {
+  assertTeacher_();
   const html = HtmlService.createHtmlOutput(`
     <style>
       body { font-family: sans-serif; font-size: 13px; padding: 4px 10px 10px; color: #2a2420; }
@@ -1061,7 +1143,7 @@ function showOccasionReportDialog() {
  * @param {number} numCols 列数
  * @param {number} [maxWidthPx] この幅を超える列は切り詰める（長い項目名等で極端に広がるのを防ぐ）
  */
-function autoFitTableColumns(sheet, startCol, numCols, maxWidthPx) {
+function autoFitTableColumns_(sheet, startCol, numCols, maxWidthPx) {
   sheet.autoResizeColumns(startCol, numCols);
   if (maxWidthPx) {
     for (let c = startCol; c < startCol + numCols; c++) {
@@ -1075,7 +1157,7 @@ function autoFitTableColumns(sheet, startCol, numCols, maxWidthPx) {
  * @param {string} name 表示名のもとになる文字列
  * @param {string} [prefix] シート名の接頭辞（省略時は実施回レポート用のOCCASION_SHEET_PREFIX）
  */
-function sanitizeSheetName(name, prefix) {
+function sanitizeSheetName_(name, prefix) {
   const cleaned = String(name || '').replace(/[:\\\/\?\*\[\]]/g, '　').trim();
   const base = (prefix !== undefined ? prefix : OCCASION_SHEET_PREFIX) + (cleaned || '無題');
   return base.length > 95 ? base.substring(0, 95) : base;
@@ -1086,7 +1168,7 @@ function sanitizeSheetName(name, prefix) {
  * Google純正グラフの「1系列＝1色」制約を利用し、棒グラフをカテゴリー別の色分け表示にする。
  * @return {number} 使用した列数（常に4列: 項目名 + Thinking + Communication + Leadership）
  */
-function writeCategorySeriesTable(sheet, headerRow, col, items) {
+function writeCategorySeriesTable_(sheet, headerRow, col, items) {
   const header = ['項目', CATEGORY_LABEL.Thinking, CATEGORY_LABEL.Communication, CATEGORY_LABEL.Leadership];
   sheet.getRange(headerRow, col, 1, 4).setValues([header]);
   items.forEach((it, i) => {
@@ -1107,19 +1189,20 @@ function writeCategorySeriesTable(sheet, headerRow, col, items) {
  * @return {string} 生成したシート名（ダイアログ側に返す）
  */
 function generateOccasionReport(criteria, reportName) {
+  assertTeacher_();
   const mode = (criteria && criteria.mode) || 'title';
   const targetValues = ((criteria && criteria.values) || []).filter(v => v);
   if (targetValues.length === 0) {
     throw new Error('対象の実施回が選択されていません。');
   }
 
-  const loadedRecords = loadResponses();
+  const loadedRecords = loadResponses_();
   const occasionRecords = loadedRecords.filter(r => {
     if (mode === 'date') {
-      const key = toDateKey(r.date);
+      const key = toDateKey_(r.date);
       return key !== null && targetValues.indexOf(key) !== -1;
     }
-    return targetValues.indexOf(normalizeTitle(r.title)) !== -1;
+    return targetValues.indexOf(normalizeTitle_(r.title)) !== -1;
   });
 
   if (occasionRecords.length === 0) {
@@ -1127,7 +1210,7 @@ function generateOccasionReport(criteria, reportName) {
   }
 
   // 今回分も、比べる相手の「全期間平均」も、同じモードの回答どうしで計算する
-  const target = selectRecordsForAggregate(occasionRecords);
+  const target = selectRecordsForAggregate_(occasionRecords);
   const records = target.records;
   const allRecords = target.fullOnly ? loadedRecords.filter(r => r.mode === 'ALL') : loadedRecords;
 
@@ -1265,7 +1348,7 @@ function generateOccasionReport(criteria, reportName) {
 
   // ── シート作成 ──
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetName = sanitizeSheetName(displayTitle);
+  const sheetName = sanitizeSheetName_(displayTitle);
   let sheet = ss.getSheetByName(sheetName);
   if (sheet) {
     sheet.getCharts().forEach(chart => sheet.removeChart(chart));
@@ -1292,12 +1375,12 @@ function generateOccasionReport(criteria, reportName) {
   // カテゴリー別平均データ（カテゴリー別に列を分け、棒の色をカテゴリーごとに変える）
   const catHeaderRow = 1;
   const catItems = categoryStats.map(c => ({ label: c.label, category: c.category, value: c.avg }));
-  writeCategorySeriesTable(sheet, catHeaderRow, WORK_COL, catItems);
+  writeCategorySeriesTable_(sheet, catHeaderRow, WORK_COL, catItems);
 
   // 項目別平均データ（高い順、カテゴリー別に色分け）
   const itemHeaderRow = catHeaderRow + catItems.length + 3;
   const itemItems = sortedByAvgDesc.map(it => ({ label: it.name, category: it.category, value: it.avg }));
-  writeCategorySeriesTable(sheet, itemHeaderRow, WORK_COL, itemItems);
+  writeCategorySeriesTable_(sheet, itemHeaderRow, WORK_COL, itemItems);
 
   // レベル分布データ
   const levelHeaderRow = itemHeaderRow + itemItems.length + 3;
@@ -1415,7 +1498,8 @@ const GROWTH_WORK_SHEET_NAME = '成長レポート（作業用）'; // 生徒ご
  * （ダイアログの選択肢を組み立てるため、クライアント側から呼ばれる）
  */
 function getStudentsForDialog() {
-  const records = loadResponses();
+  assertTeacher_();
+  const records = loadResponses_();
   const byStudent = {};
   records.forEach(r => {
     const key = r.studentNumber || '';
@@ -1431,6 +1515,7 @@ function getStudentsForDialog() {
  * メニューから起動：成長レポートを作りたい生徒を選ぶダイアログを表示する
  */
 function showPersonalGrowthDialog() {
+  assertTeacher_();
   const html = HtmlService.createHtmlOutput(`
     <style>
       body { font-family: sans-serif; font-size: 13px; padding: 4px 10px 10px; color: #2a2420; }
@@ -1518,18 +1603,19 @@ function showPersonalGrowthDialog() {
  * @return {{sheetName: string, pdfUrl: (string|null)}}
  */
 function generatePersonalGrowthReport(studentNumber) {
+  assertTeacher_();
   const target = String(studentNumber || '').trim();
   if (!target) {
     throw new Error('生徒が選択されていません。');
   }
 
-  const studentRecords = loadResponses().filter(r => r.studentNumber === target);
+  const studentRecords = loadResponses_().filter(r => r.studentNumber === target);
   if (studentRecords.length === 0) {
     throw new Error('対象の生徒の記録が見つかりませんでした。');
   }
 
   // 5項目モードは回ごとに項目が違うため、推移は全21項目の記録どうしで比べる
-  const selection = selectRecordsForAggregate(studentRecords);
+  const selection = selectRecordsForAggregate_(studentRecords);
   const records = selection.records.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
 
   const studentName = records[records.length - 1].studentName || '';
@@ -1591,7 +1677,7 @@ function generatePersonalGrowthReport(studentNumber) {
   // ── シート作成 ──
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheetName = GROWTH_WORK_SHEET_NAME;
-  const pdfFileName = sanitizeSheetName(`${target}_${studentName}`, GROWTH_SHEET_PREFIX);
+  const pdfFileName = sanitizeSheetName_(`${target}_${studentName}`, GROWTH_SHEET_PREFIX);
   let sheet = ss.getSheetByName(sheetName);
   if (sheet) {
     sheet.getCharts().forEach(chart => sheet.removeChart(chart));
@@ -1662,7 +1748,7 @@ function generatePersonalGrowthReport(studentNumber) {
   }
 
   sheet.hideColumns(WORK_COL, chartHeader.length);
-  autoFitTableColumns(sheet, 1, tableHeader.length, 220);
+  autoFitTableColumns_(sheet, 1, tableHeader.length, 220);
   sheet.setFrozenRows(0);
   sheet.activate();
 
@@ -1670,7 +1756,7 @@ function generatePersonalGrowthReport(studentNumber) {
   let pdfUrl = null;
   try {
     SpreadsheetApp.flush(); // 作り直したグラフを確実に反映してからPDF化する
-    pdfUrl = exportSheetAsPdf(sheet, pdfFileName);
+    pdfUrl = exportSheetAsPdf_(sheet, pdfFileName);
   } catch (e) {
     console.error('PDF生成に失敗しました:', e);
   }
@@ -1681,7 +1767,7 @@ function generatePersonalGrowthReport(studentNumber) {
 /**
  * 指定したシート1枚だけをPDF化し、スプレッドシートと同じフォルダ内に保存して、そのURLを返す
  */
-function exportSheetAsPdf(sheet, fileName) {
+function exportSheetAsPdf_(sheet, fileName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export'
     + '?format=pdf&size=A4&portrait=true&fitw=true&gridlines=false'
@@ -1700,7 +1786,7 @@ function exportSheetAsPdf(sheet, fileName) {
   }
 
   const blob = response.getBlob().setName(fileName + '.pdf');
-  const folder = getOrCreateGrowthPdfFolder();
+  const folder = getOrCreateGrowthPdfFolder_();
   // 同じ生徒のPDFが既にあればゴミ箱に移してから作り直す（何度作成してもファイルが増えないように）
   const oldFiles = folder.getFilesByName(fileName + '.pdf');
   while (oldFiles.hasNext()) oldFiles.next().setTrashed(true);
@@ -1712,7 +1798,7 @@ function exportSheetAsPdf(sheet, fileName) {
 /**
  * 成長レポートPDFの保存先フォルダを取得（無ければ、スプレッドシートと同じ場所に作成）する
  */
-function getOrCreateGrowthPdfFolder() {
+function getOrCreateGrowthPdfFolder_() {
   const FOLDER_NAME = '成長レポートPDF';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const parents = DriveApp.getFileById(ss.getId()).getParents();
@@ -1722,195 +1808,3 @@ function getOrCreateGrowthPdfFolder() {
   return parentFolder.createFolder(FOLDER_NAME);
 }
 
-/* =====================================================================
- * 「学年・クラスの推移レポート」機能
- * 生徒個人ではなく、学年全体・クラス全体が「ふりかえりを繰り返す中でどう変容しているか」を
- * 折れ線グラフで可視化する。時系列の変化を見るには折れ線グラフが最も適しているため、
- * このレポートは一貫してLINEチャートを使用する（他のレポートで、構成比の可視化にPIE、
- * 複数カテゴリーの横並び比較にCOLUMN/BARを使っているのと同じく、データの性質に応じて
- * 効果的なグラフ形式を選んでいる）。
- * ===================================================================== */
-
-const TREND_REPORT_SHEET = '推移レポート（学年・クラス）';
-
-/**
- * メニューから起動：全データをもとに、学年別・クラス別の推移レポートを自動生成する
- * （実施回の選択ダイアログ等は挟まず、蓄積された全データを対象に一括生成する）
- */
-function generateGradeClassTrendReport() {
-  const loadedRecords = loadResponses();
-  const ui = SpreadsheetApp.getUi();
-  if (loadedRecords.length === 0) {
-    ui.alert('集計対象のデータがまだありません。「回答」シートにデータが蓄積されてから再実行してください。');
-    return;
-  }
-
-  // どの実施回も同じモードの回答どうしで比べる（回によって5項目モードが混ざると線が上下してしまうため）
-  const selection = selectRecordsForAggregate(loadedRecords);
-  const records = selection.records;
-
-  // ── 実施回（タイトル）ごとにグループ化する ──
-  // 似たタイトルの自動統合はしない（「第1回」と「第2回」のように1文字違いの別の回が
-  // 1つにまとめられてしまうため）。表記ゆれは「回答」シートのタイトルを直してそろえる。
-  const byTitle = {};
-  records.forEach(r => {
-    const t = normalizeTitle(r.title);
-    if (!byTitle[t]) byTitle[t] = [];
-    byTitle[t].push(r);
-  });
-
-  const occasions = Object.keys(byTitle).map(title => {
-    const occRecords = byTitle[title];
-    const times = occRecords.map(r => new Date(r.date).getTime()).filter(t => !isNaN(t));
-    const avgTime = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0;
-    return { label: title, records: occRecords, sortKey: avgTime };
-  }).sort((a, b) => a.sortKey - b.sortKey);
-
-  if (occasions.length < 2) {
-    ui.alert('実施回が1回分しかないため、推移グラフを作成するには少なくとも2回分の異なる実施回のデータが必要です。');
-    return;
-  }
-
-  // 表記ゆれの可能性がある実施回の組（お知らせするだけで、まとめはしない）。
-  // 「実施回」シートに登録した名前どうし（第1回と第2回など）は別の回なので知らせない
-  const similarPairs = clusterTitles(occasions.map(o => ({ title: o.label, count: o.records.length })),
-    new Set(getRegisteredOccasionNames()))
-    .filter(c => c.variants.length > 1)
-    .map(c => c.variants.map(v => `「${v.title}」`).join(' と '));
-
-  // ── 学年・クラスのグループを洗い出す ──
-  const grades = new Set();
-  const classesByGrade = {};
-  records.forEach(r => {
-    if (!r.parsed) return;
-    grades.add(r.parsed.grade);
-    if (!classesByGrade[r.parsed.grade]) classesByGrade[r.parsed.grade] = new Set();
-    classesByGrade[r.parsed.grade].add(r.parsed.klass);
-  });
-  const sortedGrades = [...grades].sort();
-  const schoolGroups = ['中', '高']
-  .filter(s => sortedGrades.some(g => g.charAt(0) === s))
-  .map(s => ({ school: s, label: s === '中' ? '中学全体' : '高校全体' }));
-const gradeGroups = schoolGroups.concat(sortedGrades.map(g => ({ grade: g, label: `${g}年` })));
-  const classGroups = [];
-  sortedGrades.forEach(g => {
-    [...classesByGrade[g]].sort().forEach(k => {
-      classGroups.push({ grade: g, klass: k, label: `${g}年${k}組` });
-    });
-  });
-
-  if (gradeGroups.length === 0) {
-    ui.alert('出席番号から学年・クラスを判定できるデータが見つかりませんでした。');
-    return;
-  }
-
-  // ── 実施回 × グループ の平均レベル（全項目の単純平均）を算出 ──
-  const overallAvg = (recs) => {
-    let sum = 0, count = 0;
-    recs.forEach(r => {
-      Object.keys(r.scores).forEach(idStr => {
-        const v = Number(r.scores[idStr]);
-        if (v) { sum += v; count += 1; }
-      });
-    });
-    return count ? sum / count : null;
-  };
-
-  const gradeTable = [['実施回'].concat(gradeGroups.map(g => g.label))];
-  const classTable = [['実施回'].concat(classGroups.map(c => c.label))];
-
-  occasions.forEach(occ => {
-    const gradeRow = [occ.label];
-    gradeGroups.forEach(g => {
-      const recs = occ.records.filter(r => r.parsed &&
-  (g.school ? r.parsed.grade.charAt(0) === g.school : r.parsed.grade === g.grade));
-      const avg = overallAvg(recs);
-      gradeRow.push(avg !== null ? Number(avg.toFixed(2)) : null);
-    });
-    gradeTable.push(gradeRow);
-
-    const classRow = [occ.label];
-    classGroups.forEach(c => {
-      const recs = occ.records.filter(r => r.parsed && r.parsed.grade === c.grade && r.parsed.klass === c.klass);
-      const avg = overallAvg(recs);
-      classRow.push(avg !== null ? Number(avg.toFixed(2)) : null);
-    });
-    classTable.push(classRow);
-  });
-
-  // ── シート作成 ──
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(TREND_REPORT_SHEET);
-  if (sheet) {
-    sheet.getCharts().forEach(c => sheet.removeChart(c));
-    sheet.clear();
-  } else {
-    sheet = ss.insertSheet(TREND_REPORT_SHEET);
-  }
-
-  sheet.getRange('A1').setValue('学年・クラスの推移レポート')
-    .setFontSize(18).setFontWeight('bold').setFontColor('#2a2420');
-  sheet.getRange('A2').setValue(`対象実施回数: ${occasions.length}回　／　作成日: ${Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy年M月d日')}`)
-    .setFontSize(10).setFontColor('#7a6f5c');
-  if (selection.note) {
-    sheet.getRange('A3').setValue(selection.note).setFontSize(10).setFontColor('#a8402c').setFontWeight('bold');
-  }
-
-  // 学年別データ＋折れ線グラフ
-  const gradeDataRow = 4;
-  sheet.getRange(gradeDataRow, 1).setValue('学年別 平均レベルの推移（データ）').setFontWeight('bold');
-  sheet.getRange(gradeDataRow + 1, 1, gradeTable.length, gradeTable[0].length).setValues(gradeTable);
-  sheet.getRange(gradeDataRow + 1, 1, 1, gradeTable[0].length).setFontWeight('bold').setBackground('#f0ece3');
-  autoFitTableColumns(sheet, 1, gradeTable[0].length, 220);
-
-  const gradeChartRow = gradeDataRow + gradeTable.length + 3;
-  const gradeChart = sheet.newChart()
-    .setChartType(Charts.ChartType.LINE)
-    .addRange(sheet.getRange(gradeDataRow + 1, 1, gradeTable.length, gradeTable[0].length))
-    .setNumHeaders(1)
-    .setOption('useFirstColumnAsDomain', true)
-    .setOption('interpolateNulls', true)
-    .setPosition(gradeChartRow, 1, 0, 0)
-    .setOption('title', '学年別 平均レベルの推移')
-    .setOption('titleTextStyle', { fontSize: 14, bold: true })
-    .setOption('legend', { position: 'top' })
-    .setOption('vAxis', { minValue: 0, maxValue: 4, gridlines: { count: 5 }, title: '平均レベル（4段階）' })
-    .setOption('hAxis', { title: '実施回（時系列）', textStyle: { fontSize: 9 }, slantedText: true, slantedTextAngle: 30 })
-    .setOption('pointSize', 6)
-    .setOption('width', 820).setOption('height', 420)
-    .build();
-  sheet.insertChart(gradeChart);
-
-  // クラス別データ＋折れ線グラフ（学年別グラフの下に、十分な余白を空けて配置）
-  const classDataRow = gradeChartRow + 25;
-  sheet.getRange(classDataRow, 1).setValue('クラス別 平均レベルの推移（データ）').setFontWeight('bold');
-  sheet.getRange(classDataRow + 1, 1, classTable.length, classTable[0].length).setValues(classTable);
-  sheet.getRange(classDataRow + 1, 1, 1, classTable[0].length).setFontWeight('bold').setBackground('#f0ece3');
-  autoFitTableColumns(sheet, 1, classTable[0].length, 220);
-
-  const classChartRow = classDataRow + classTable.length + 3;
-  const classChart = sheet.newChart()
-    .setChartType(Charts.ChartType.LINE)
-    .addRange(sheet.getRange(classDataRow + 1, 1, classTable.length, classTable[0].length))
-    .setNumHeaders(1)
-    .setOption('useFirstColumnAsDomain', true)
-    .setOption('interpolateNulls', true)
-    .setPosition(classChartRow, 1, 0, 0)
-    .setOption('title', 'クラス別 平均レベルの推移')
-    .setOption('titleTextStyle', { fontSize: 14, bold: true })
-    .setOption('legend', { position: 'right', textStyle: { fontSize: 10 } })
-    .setOption('vAxis', { minValue: 0, maxValue: 4, gridlines: { count: 5 }, title: '平均レベル（4段階）' })
-    .setOption('hAxis', { title: '実施回（時系列）', textStyle: { fontSize: 9 }, slantedText: true, slantedTextAngle: 30 })
-    .setOption('pointSize', 5)
-    .setOption('width', 820).setOption('height', 460)
-    .build();
-  sheet.insertChart(classChart);
-
-  sheet.setFrozenRows(1);
-  sheet.activate();
-
-  ui.alert(`推移レポートを作成しました（対象実施回: ${occasions.length}回、学年数: ${gradeGroups.length}、クラス数: ${classGroups.length}）。\n「${TREND_REPORT_SHEET}」シートをご確認ください。` +
-    (similarPairs.length
-      ? `\n\n次の実施回は名前が似ています。同じ回なら「回答」シートのタイトル（E列）を同じ名前に直してから、もう一度作成してください。\n・${similarPairs.join('\n・')}`
-      : ''));
-}

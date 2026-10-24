@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<!-- 用紙の向き。レポートの種類ごとに書きかえる（生徒の変容は横、ほかは縦） -->
+<style id="pageCss">@page { size: A4 portrait; margin: 10mm; }</style>
+<!-- レポート本体の見た目。「別タブで開いて印刷」でもこのまま使う -->
+<style id="reportCss">
+  .rp { font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif; color: #2a2420; font-size: 10pt; }
+  .rp * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+  .rp h1 { font-size: 15pt; margin: 0 0 2px; }
+  .rp .sub { font-size: 9pt; color: #6b604c; margin-bottom: 8px; }
+  .rp h2 { font-size: 11pt; margin: 14px 0 6px; padding-bottom: 2px; border-bottom: 2px solid #2a2420; }
+  .rp table { border-collapse: collapse; width: 100%; }
+  .rp th, .rp td { border: 1px solid #cfc6b0; padding: 2px 4px; text-align: center; font-size: 9pt; line-height: 1.3; }
+  .rp thead th { background: #f0ece3; font-weight: bold; }
+  .rp thead { display: table-header-group; }
+  .rp tr { page-break-inside: avoid; break-inside: avoid; }
+  .rp td.name, .rp th.name { text-align: left; white-space: nowrap; }
+  .rp td.cat { font-weight: bold; color: #fff; writing-mode: vertical-rl; letter-spacing: 1px; width: 22px; }
+  .rp tr.sum td { font-weight: bold; border-top: 2px solid #2a2420; }
+  .rp tfoot td { font-weight: bold; background: #f7f4ec; }
+  .rp .n { display: block; font-size: 7pt; color: #6b604c; font-weight: normal; }
+  .rp .up { color: #1a6b3a; font-weight: bold; }
+  .rp .down { color: #b03a1e; font-weight: bold; }
+  .rp .flat { color: #6b604c; }
+  .rp .muted { color: #9a8f78; }
+  .rp .note { font-size: 8.5pt; color: #6b604c; margin-top: 6px; line-height: 1.5; }
+  .rp .warnline { font-size: 8.5pt; color: #a8402c; font-weight: bold; margin: 4px 0; }
+  .rp .legend { font-size: 8.5pt; margin: 2px 0 6px; }
+  .rp .legend span { display: inline-block; margin-right: 12px; white-space: nowrap; }
+  .rp .legend i { display: inline-block; width: 14px; height: 4px; vertical-align: middle; margin-right: 4px; }
+  .rp .charts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rp .charts .mini { flex: 1 1 0; min-width: 0; }
+  .rp .charts .mini div { font-size: 9pt; font-weight: bold; text-align: center; }
+  /* 21項目の見出し：縦書きはフォントによって文字がつぶれるため、横書きで列の中で折り返す */
+  .rp .ih { font-size: 7pt; font-weight: normal; line-height: 1.15; word-break: break-all; vertical-align: bottom; padding: 2px 1px; min-width: 30px; }
+  .rp .ih b { display: block; font-size: 8pt; }
+  .rp table.compact td { padding: 1px 3px; font-size: 8.5pt; line-height: 1.15; }
+  .rp table.compact td.name { font-size: 9pt; }
+  .rp .hl { display: flex; gap: 10px; flex-wrap: wrap; }
+  .rp .hl > div { flex: 1 1 240px; border: 1px solid #cfc6b0; padding: 4px 6px; font-size: 8.5pt; line-height: 1.5; page-break-inside: avoid; }
+  .rp .diff { font-size: 6.5pt; margin-left: 1px; }
+  .rp .block { page-break-inside: avoid; break-inside: avoid; }
+</style>
+<style>
+  body { margin: 0; background: #e9e5dc; font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif; color: #2a2420; }
+  .controls { position: sticky; top: 0; z-index: 5; background: #fdfbf6; border-bottom: 1px solid #d8cfb8; padding: 8px 12px; font-size: 13px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .tabs button { flex: 1; padding: 8px; font-size: 13px; font-weight: bold; border: 1px solid #d8cfb8; border-radius: 6px; background: #f5f0e8; color: #6b604c; cursor: pointer; }
+  .tabs button.active { background: #2c5f8a; color: #fff; border-color: #2c5f8a; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 4px 0; }
+  .row label { font-weight: bold; }
+  select { font-size: 13px; padding: 3px 4px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  .chips .grade { font-weight: bold; color: #6b604c; margin-left: 6px; }
+  .chips label { font-weight: normal; white-space: nowrap; }
+  .link { background: none; border: none; color: #2c5f8a; text-decoration: underline; cursor: pointer; font-size: 12px; padding: 0; }
+  .actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  button.primary { padding: 7px 16px; font-size: 13px; font-weight: bold; border: none; border-radius: 6px; background: #2a2420; color: #fff; cursor: pointer; }
+  button.secondary { padding: 7px 12px; font-size: 12px; border: 1px solid #d8cfb8; border-radius: 6px; background: #fff; cursor: pointer; }
+  #msg { font-size: 12px; font-weight: bold; }
+  #warn { font-size: 12px; color: #a8402c; margin-top: 4px; }
+  #warn details { margin-top: 2px; }
+  .paper { background: #fff; margin: 14px auto; padding: 10mm; box-shadow: 0 1px 4px rgba(0,0,0,.15); width: 210mm; min-height: 120mm; }
+  .paper.landscape { width: 297mm; }
+  @media print {
+    body { background: #fff; }
+    .controls { display: none !important; }
+    .paper, .paper.landscape { margin: 0; padding: 0; box-shadow: none; width: auto; min-height: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="controls">
+  <div class="tabs">
+    <button id="tab-summary" class="active" onclick="switchTab('summary')">① クラス集計</button>
+    <button id="tab-trend" onclick="switchTab('trend')">② 学年・クラスの推移</button>
+    <button id="tab-students" onclick="switchTab('students')">③ クラスの生徒の変容</button>
+  </div>
+
+  <div class="row">
+    <label for="year">年度</label>
+    <select id="year" onchange="loadYear(this.value)"></select>
+    <span id="msg">読み込み中…</span>
+  </div>
+
+  <!-- ① クラス集計 -->
+  <div class="panel active" id="panel-summary">
+    <div class="row">
+      <label for="sumOcc">実施回</label>
+      <select id="sumOcc" onchange="render()"></select>
+      <label><input type="checkbox" id="sumGrade" checked onchange="render()"> 学年全体も並べる</label>
+      <label><input type="checkbox" id="sumSchool" checked onchange="render()"> 学校全体も並べる</label>
+    </div>
+    <div class="row"><label>クラス</label><div class="chips" id="sumClasses"></div></div>
+  </div>
+
+  <!-- ② 推移 -->
+  <div class="panel" id="panel-trend">
+    <div class="row">
+      <label>くらべる単位</label>
+      <label><input type="radio" name="trendUnit" value="grade" checked onchange="onTrendUnit()"> 学年ごと</label>
+      <label><input type="radio" name="trendUnit" value="class" onchange="onTrendUnit()"> クラスごと</label>
+      <label for="trendMetric">表示する値</label>
+      <select id="trendMetric" onchange="render()"></select>
+      <label><input type="checkbox" id="trendCats" checked onchange="render()"> カテゴリー別の小さいグラフも出す</label>
+    </div>
+    <div class="row" id="trendClassRow" style="display:none"><label>クラス</label><div class="chips" id="trendClasses"></div></div>
+  </div>
+
+  <!-- ③ 生徒の変容 -->
+  <div class="panel" id="panel-students">
+    <div class="row">
+      <label for="stuClass">クラス</label>
+      <select id="stuClass" onchange="render()"></select>
+      <label for="stuMetric">表示する値</label>
+      <select id="stuMetric" onchange="onStuMetric()"></select>
+      <span id="stuOccWrap" style="display:none">
+        <label for="stuOcc">実施回</label> <select id="stuOcc" onchange="render()"></select>
+        <label for="stuBase">前の回とくらべる</label> <select id="stuBase" onchange="render()"></select>
+      </span>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="primary" onclick="printReport()">🖨 印刷する・PDFで保存する</button>
+    <button class="secondary" onclick="openInNewTab()">別のタブで開いて印刷する</button>
+    <span style="font-size:11px;color:#6b604c">PDFにするときは、印刷画面の「送信先」で「PDFに保存」を選びます。</span>
+  </div>
+  <div id="warn"></div>
+</div>
+
+<div class="paper" id="paper"><div class="rp" id="report"></div></div>
+
+<script>
+  // ===== 基本データ =====
+  const CATS = ['Thinking', 'Communication', 'Leadership'];
+  const CAT_COLOR = { Thinking: '#2c5f8a', Communication: '#3d7a5c', Leadership: '#6b4c93' };
+  const CAT_SHORT = { Thinking: 'Thinking（思考・探究）', Communication: 'Communication（発信・表現・協働）', Leadership: 'Leadership（主体性・実行力）' };
+  const PALETTE = ['#2c5f8a', '#a8402c', '#3d7a5c', '#6b4c93', '#c4692a', '#1f8a9e', '#8a6d1f', '#b8487a', '#4a5a6a', '#6f9a2c', '#9a4a2c', '#2c3e9a'];
+  let DATA = null;       // サーバーから受け取った1年度分のデータ
+  let RESP = [];         // 集計に使う回答（1人1回につき最新の1件）
+  let MODE_NOTE = '';    // 集計に使ったモードの説明
+  let STUDENTS = [];     // 名簿の生徒（＋名簿にない回答者）を出席番号順に
+  let CLASSES = [];      // [{key, label, grade, gradeLabel, school}]
+  let currentTab = 'summary';
+  let CAT_IDX = {}, ALL_IDX = [];
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // 出席番号（1215 / 1B15）→ 学年・組。組が英字なら中学、数字なら高校（Code.gs の parseStudentNumber_ と同じ決まり）
+  function parseNum(n) {
+    const m = /^(\d)([A-Z0-9])(\d{2})$/.exec(n || '');
+    if (!m) return null;
+    const school = /[A-Z]/.test(m[2]) ? '中' : '高';
+    const grade = school + m[1];
+    return { school, grade, gradeLabel: grade + '年', klass: m[2], classKey: grade + '-' + m[2], classLabel: grade + '年' + m[2] + '組', no: m[3] };
+  }
+  const schoolOrder = g => (g.charAt(0) === '中' ? 0 : 1) * 10 + Number(g.charAt(1));
+
+  // ===== 読み込み =====
+  function loadYear(year) {
+    $('msg').textContent = '読み込み中…';
+    google.script.run
+      .withSuccessHandler(data => { DATA = data; prepare(); $('msg').textContent = ''; render(); })
+      .withFailureHandler(err => { $('msg').textContent = 'エラー：' + err.message; })
+      .getReportData(year ? Number(year) : null);
+  }
+
+  function prepare() {
+    const comps = DATA.competencies;
+    ALL_IDX = comps.map((c, i) => i);
+    CAT_IDX = {};
+    CATS.forEach(cat => { CAT_IDX[cat] = comps.map((c, i) => c.category === cat ? i : -1).filter(i => i >= 0); });
+
+    // 年度の選択肢
+    const ysel = $('year');
+    ysel.innerHTML = DATA.years.map(y => `<option value="${y}"${y === DATA.year ? ' selected' : ''}>${y}年度</option>`).join('');
+
+    // 全21項目の回答があればそれだけ使う（5項目モードは生徒が選んだ項目だけなので平均が高めに出るため）
+    const full = DATA.responses.filter(r => r.m === 'ALL');
+    const use = full.length ? full : DATA.responses;
+    MODE_NOTE = full.length
+      ? (full.length < DATA.responses.length ? `「全21項目」モードの回答だけで集計しています（5項目モードの回答${DATA.responses.length - full.length}件は除外）。` : '')
+      : (DATA.responses.length ? '「全21項目」モードの回答がないため、5項目モードの回答で集計しています（平均は高めに出やすい点にご注意ください）。' : '');
+    // 同じ生徒が同じ回に何度か送ったときは、最後に送ったものだけを使う
+    const latest = {};
+    use.forEach(r => { const k = r.n + '|' + r.t; if (!latest[k] || latest[k].d < r.d) latest[k] = r; });
+    RESP = Object.values(latest).filter(r => r.t !== undefined && r.t !== null);
+
+    // 生徒の並び：名簿があれば名簿、なければ回答から
+    const byNum = {};
+    DATA.roster.students.forEach(s => { byNum[s.number] = { number: s.number, name: s.name, kana: s.kana, inRoster: true }; });
+    const outside = {};
+    RESP.forEach(r => {
+      if (!byNum[r.n]) {
+        if (!outside[r.n] || outside[r.n].d < r.d) outside[r.n] = { d: r.d, name: r.name };
+      }
+    });
+    Object.keys(outside).forEach(n => { byNum[n] = { number: n, name: outside[n].name, inRoster: false }; });
+    STUDENTS = Object.values(byNum).map(s => Object.assign(s, { p: parseNum(s.number) }))
+      .sort((a, b) => a.number < b.number ? -1 : a.number > b.number ? 1 : 0);
+
+    const ck = {};
+    STUDENTS.forEach(s => { if (s.p) ck[s.p.classKey] = { key: s.p.classKey, label: s.p.classLabel, grade: s.p.grade, gradeLabel: s.p.gradeLabel, school: s.p.school, klass: s.p.klass }; });
+    CLASSES = Object.values(ck).sort((a, b) => schoolOrder(a.grade) - schoolOrder(b.grade) || (a.klass < b.klass ? -1 : 1));
+
+    buildControls();
+    showWarnings();
+  }
+
+  function showWarnings() {
+    const w = [];
+    const ro = DATA.roster;
+    if (!ro.students.length) {
+      w.push(`「${ro.sheetName}」（${DATA.year}年度の名簿）がないため、回答に書かれた出席番号と名前で並べています。メニュー「生徒名簿を設定する」で名簿を登録すると、入力ミスがあっても名簿の名前で並びます。`);
+    }
+    const outsideCount = STUDENTS.filter(s => !s.inRoster).length;
+    if (ro.students.length && outsideCount) {
+      w.push(`名簿にない出席番号の回答が${outsideCount}人分あります（表の最後に「名簿外」として出します）。番号の打ち間違いなら「回答」シートのC列を直してください。`);
+    }
+    let html = w.map(esc).join('<br>');
+    if (ro.problems.length) {
+      html += (html ? '<br>' : '') + `<details><summary>名簿「${esc(ro.sheetName)}」に直すところが${ro.problems.length}件あります</summary>${ro.problems.map(esc).join('<br>')}</details>`;
+    }
+    $('warn').innerHTML = html;
+  }
+
+  // ===== 画面の選択肢 =====
+  function metricOptions(withItems) {
+    let h = '<option value="all">総合平均（21項目）</option>' + CATS.map(c => `<option value="${c}">${CAT_SHORT[c]}の平均</option>`).join('');
+    if (withItems) {
+      h += '<option value="items">21項目すべて（1回分を一覧に）</option>';
+      CATS.forEach(cat => {
+        h += `<optgroup label="${CAT_SHORT[cat]}">` + CAT_IDX[cat].map(i => `<option value="c${i}">${i + 1}. ${esc(DATA.competencies[i].name)}</option>`).join('') + '</optgroup>';
+      });
+    }
+    return h;
+  }
+
+  function keepSelect(id, html, fallback) {
+    // 年度を切りかえたときは、前に選んでいたものをなるべくそのまま残す（はじめて作るときは既定値）
+    const el = $(id), old = el.value, hadOptions = el.options.length > 0;
+    el.innerHTML = html;
+    if (hadOptions && [...el.options].some(o => o.value === old)) el.value = old;
+    else if (fallback !== undefined) el.value = fallback;
+  }
+
+  function classChips(containerId, classes, checkedKeys, onchange) {
+    let h = '', lastGrade = '';
+    classes.forEach(c => {
+      if (c.grade !== lastGrade) {
+        h += `<span class="grade">${esc(c.gradeLabel)}</span><button type="button" class="link" onclick="toggleGrade('${containerId}','${c.grade}')">全部</button>`;
+        lastGrade = c.grade;
+      }
+      h += `<label><input type="checkbox" value="${esc(c.key)}" data-grade="${esc(c.grade)}"${checkedKeys.has(c.key) ? ' checked' : ''} onchange="${onchange}"> ${esc(c.klass)}組</label>`;
+    });
+    $(containerId).innerHTML = h || '<span class="muted">クラスがありません</span>';
+  }
+
+  function toggleGrade(containerId, grade) {
+    const boxes = [...$(containerId).querySelectorAll(`input[data-grade="${grade}"]`)];
+    const allOn = boxes.every(b => b.checked);
+    boxes.forEach(b => { b.checked = !allOn; });
+    render();
+  }
+
+  function checkedKeys(containerId) {
+    return new Set([...$(containerId).querySelectorAll('input:checked')].map(b => b.value));
+  }
+
+  function buildControls() {
+    const occOpts = DATA.occasions.map((t, i) => `<option value="${i}">${esc(t)}</option>`).join('');
+    keepSelect('sumOcc', '<option value="all">すべての実施回</option>' + occOpts, DATA.occasions.length ? String(DATA.occasions.length - 1) : 'all');
+    const prevSum = checkedKeys('sumClasses');
+    classChips('sumClasses', CLASSES, prevSum.size ? prevSum : new Set(CLASSES.slice(0, 1).map(c => c.key)), 'render()');
+
+    keepSelect('trendMetric', metricOptions(false), 'all');
+    const prevTrend = checkedKeys('trendClasses');
+    const firstGrade = CLASSES.length ? CLASSES[0].grade : '';
+    classChips('trendClasses', CLASSES, prevTrend.size ? prevTrend : new Set(CLASSES.filter(c => c.grade === firstGrade).map(c => c.key)), 'render()');
+
+    keepSelect('stuClass', CLASSES.map(c => `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join(''), CLASSES.length ? CLASSES[0].key : '');
+    keepSelect('stuMetric', metricOptions(true), 'all');
+    keepSelect('stuOcc', occOpts, DATA.occasions.length ? String(DATA.occasions.length - 1) : '');
+    keepSelect('stuBase', '<option value="">くらべない</option>' + occOpts, DATA.occasions.length > 1 ? String(DATA.occasions.length - 2) : '');
+    onStuMetric(true);
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    ['summary', 'trend', 'students'].forEach(t => {
+      $('tab-' + t).classList.toggle('active', t === tab);
+      $('panel-' + t).classList.toggle('active', t === tab);
+    });
+    render();
+  }
+
+  function onTrendUnit() {
+    $('trendClassRow').style.display = trendUnit() === 'class' ? '' : 'none';
+    render();
+  }
+  const trendUnit = () => document.querySelector('input[name="trendUnit"]:checked').value;
+
+  function onStuMetric(skipRender) {
+    $('stuOccWrap').style.display = $('stuMetric').value === 'items' ? '' : 'none';
+    if (skipRender !== true) render();
+  }
+
+  // ===== 計算 =====
+  const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  function idxOf(metric) {
+    if (metric === 'all') return ALL_IDX;
+    if (CAT_IDX[metric]) return CAT_IDX[metric];
+    return [Number(String(metric).slice(1))];
+  }
+  // 1人1回分の回答の値（答えていない項目は除く）
+  function valueOf(r, metric) {
+    return mean(idxOf(metric).map(i => r.s[i]).filter(v => v > 0));
+  }
+  function avgOf(records, metric) {
+    const vals = records.map(r => valueOf(r, metric)).filter(v => v !== null);
+    return { avg: mean(vals), n: vals.length };
+  }
+  const classOf = r => { const p = parseNum(r.n); return p ? p.classKey : null; };
+  const gradeOf = r => { const p = parseNum(r.n); return p ? p.grade : null; };
+  const metricLabel = m => m === 'all' ? '総合平均' : CAT_IDX[m] ? CAT_SHORT[m] + 'の平均' : m === 'items' ? '21項目' : (Number(m.slice(1)) + 1) + '. ' + DATA.competencies[Number(m.slice(1))].name;
+
+  // ===== 表示の部品 =====
+  const fmt = (v, d) => v === null || v === undefined ? '<span class="muted">—</span>' : v.toFixed(d === undefined ? 2 : d);
+  function heat(v) {
+    if (v === null || v === undefined) return '';
+    const stops = [[1, [244, 177, 131]], [2.5, [255, 230, 153]], [4, [169, 209, 142]]];
+    const x = Math.max(1, Math.min(4, v));
+    const [a, b] = x <= 2.5 ? [stops[0], stops[1]] : [stops[1], stops[2]];
+    const t = (x - a[0]) / (b[0] - a[0]);
+    return 'background:rgb(' + a[1].map((c, i) => Math.round(c + (b[1][i] - c) * t)).join(',') + ')';
+  }
+  function diffHtml(d, digits, small) {
+    if (d === null || d === undefined) return '<span class="muted">—</span>';
+    const eps = digits === 0 ? 0.5 : 0.05;
+    const cls = d >= eps ? 'up' : d <= -eps ? 'down' : 'flat';
+    const mark = d >= eps ? '▲' : d <= -eps ? '▼' : '→';
+    // 表の中の小さい印は▲▼で向きが分かるので、符号を省いて幅をつめる
+    const num = small ? Math.abs(d).toFixed(digits === undefined ? 2 : digits) : (d > 0 ? '+' : '') + d.toFixed(digits === undefined ? 2 : digits);
+    return `<span class="${cls}${small ? ' diff' : ''}">${mark}${cls === 'flat' ? '' : num}</span>`;
+  }
+  function header(title, extra) {
+    const occCount = DATA.occasions.length;
+    return `<h1>${esc(title)}</h1><div class="sub">${DATA.year}年度${extra ? '　／　' + extra : ''}　／　実施回 ${occCount}回分のデータ　／　作成日 ${esc(DATA.generatedAt)}</div>` +
+      (MODE_NOTE ? `<div class="warnline">${esc(MODE_NOTE)}</div>` : '');
+  }
+  const short = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+
+  // 折れ線グラフ。縦軸は変化が見えるよう、データのある範囲に合わせて0.5きざみで拡大する（1〜4の中で）。
+  // 値がない回は飛ばして線をつなぐ
+  function lineChart(labels, series, width, height, title) {
+    const m = { l: 30, r: 14, t: title ? 20 : 8, b: 30 };
+    const w = width - m.l - m.r, h = height - m.t - m.b;
+    const all = [].concat(...series.map(s => s.values)).filter(v => v !== null);
+    let lo = all.length ? Math.max(1, Math.floor((Math.min(...all) - 0.2) * 2) / 2) : 1;
+    let hi = all.length ? Math.min(4, Math.ceil((Math.max(...all) + 0.2) * 2) / 2) : 4;
+    if (hi - lo < 1) { hi = Math.min(4, lo + 1); lo = Math.max(1, hi - 1); }
+    const x = i => m.l + (labels.length === 1 ? w / 2 : i * w / (labels.length - 1));
+    const y = v => m.t + h - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * h;
+    let g = title ? `<text x="${width / 2}" y="13" text-anchor="middle" font-size="11" font-weight="bold">${esc(title)}</text>` : '';
+    for (let v = lo; v <= hi + 1e-9; v += 0.5) {
+      g += `<line x1="${m.l}" x2="${m.l + w}" y1="${y(v)}" y2="${y(v)}" stroke="${Number.isInteger(v) ? '#d8cfb8' : '#eee8da'}"/><text x="${m.l - 5}" y="${y(v) + 3}" text-anchor="end" font-size="8.5" fill="#6b604c">${v.toFixed(1)}</text>`;
+    }
+    if (lo > 1 || hi < 4) g += `<text x="${m.l + w}" y="${m.t - 2 > 8 ? m.t - 2 : 8}" text-anchor="end" font-size="7.5" fill="#9a8f78">縦軸は${lo.toFixed(1)}〜${hi.toFixed(1)}を拡大</text>`;
+    const gap = labels.length > 1 ? w / (labels.length - 1) : w;
+    const maxChars = Math.max(4, Math.floor(gap / 9.5));
+    labels.forEach((lb, i) => {
+      const anchor = labels.length === 1 ? 'middle' : i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle';
+      const xx = anchor === 'start' ? x(i) - 6 : anchor === 'end' ? x(i) + 6 : x(i);
+      g += `<text x="${xx}" y="${m.t + h + 14}" text-anchor="${anchor}" font-size="9" fill="#2a2420">${esc(short(lb, anchor === 'middle' ? maxChars : Math.ceil(maxChars / 2) + 2))}</text>`;
+    });
+    series.forEach(s => {
+      const pts = s.values.map((v, i) => v === null ? null : [x(i), y(v)]).filter(Boolean);
+      if (pts.length > 1) g += `<polyline fill="none" stroke="${s.color}" stroke-width="${s.width || 2}" points="${pts.map(p => p.join(',')).join(' ')}"/>`;
+      pts.forEach(p => { g += `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${s.color}"/>`; });
+    });
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">${g}</svg>`;
+  }
+  function legend(series) {
+    return '<div class="legend">' + series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('') + '</div>';
+  }
+  // 小さな折れ線（生徒ごとの推移）
+  function sparkline(values) {
+    const W = 72, H = 14, n = values.length;
+    const x = i => 3 + (n === 1 ? (W - 6) / 2 : i * (W - 6) / (n - 1));
+    const y = v => H - 2 - (Math.max(1, Math.min(4, v)) - 1) / 3 * (H - 4);
+    const pts = values.map((v, i) => v === null ? null : [x(i), y(v)]).filter(Boolean);
+    let g = `<line x1="0" x2="${W}" y1="${y(2.5)}" y2="${y(2.5)}" stroke="#eee5d3"/>`;
+    if (pts.length > 1) g += `<polyline fill="none" stroke="#2c5f8a" stroke-width="1.5" points="${pts.map(p => p.join(',')).join(' ')}"/>`;
+    pts.forEach(p => { g += `<circle cx="${p[0]}" cy="${p[1]}" r="1.8" fill="#2c5f8a"/>`; });
+    return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${g}</svg>`;
+  }
+  // カテゴリー別の棒グラフ（グループごとに3本）
+  function barChart(groups, width, height) {
+    const m = { l: 30, r: 8, t: 8, b: 34 };
+    const w = width - m.l - m.r, h = height - m.t - m.b;
+    const y = v => m.t + h - Math.max(0, Math.min(4, v)) / 4 * h;
+    const gw = w / Math.max(groups.length, 1), bw = Math.min(22, gw * 0.8 / 3);
+    let g = '';
+    [0, 1, 2, 3, 4].forEach(v => { g += `<line x1="${m.l}" x2="${m.l + w}" y1="${y(v)}" y2="${y(v)}" stroke="#e2dccb"/><text x="${m.l - 6}" y="${y(v) + 3}" text-anchor="end" font-size="9" fill="#6b604c">${v}</text>`; });
+    groups.forEach((gr, gi) => {
+      const cx = m.l + gw * gi + gw / 2;
+      CATS.forEach((cat, ci) => {
+        const v = gr.values[ci];
+        if (v === null) return;
+        const bx = cx + (ci - 1.5) * bw;
+        g += `<rect x="${bx}" y="${y(v)}" width="${bw - 2}" height="${m.t + h - y(v)}" fill="${CAT_COLOR[cat]}"/>`;
+        g += `<text x="${bx + (bw - 2) / 2}" y="${y(v) - 2}" text-anchor="middle" font-size="7.5">${v.toFixed(1)}</text>`;
+      });
+      g += `<text x="${cx}" y="${m.t + h + 13}" text-anchor="middle" font-size="9">${esc(short(gr.label, Math.max(4, Math.floor(gw / 9))))}</text>`;
+    });
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">${g}</svg>`;
+  }
+
+  // ===== ① クラス集計 =====
+  function renderSummary() {
+    const occVal = $('sumOcc').value;
+    const recs = occVal === 'all' ? RESP : RESP.filter(r => String(r.t) === occVal);
+    const keys = checkedKeys('sumClasses');
+    const selected = CLASSES.filter(c => keys.has(c.key));
+    if (!selected.length) return '<p>上の「クラス」で、表示するクラスにチェックを入れてください。</p>';
+
+    const cols = selected.map(c => ({ label: c.label, recs: recs.filter(r => classOf(r) === c.key) }));
+    if ($('sumGrade').checked) {
+      [...new Set(selected.map(c => c.grade))].forEach(g => {
+        const gl = CLASSES.find(c => c.grade === g).gradeLabel;
+        cols.push({ label: gl + '全体', recs: recs.filter(r => gradeOf(r) === g), ref: true });
+      });
+    }
+    if ($('sumSchool').checked) cols.push({ label: '学校全体', recs: recs, ref: true });
+
+    const occLabel = occVal === 'all' ? 'すべての実施回' : DATA.occasions[Number(occVal)];
+    let h = header('クラス集計', '実施回：' + occLabel);
+    h += '<table><thead><tr><th colspan="2">項目</th>' + cols.map(c => `<th${c.ref ? ' style="background:#e6e1d4"' : ''}>${esc(c.label)}</th>`).join('') + '</tr>';
+    h += '<tr><th colspan="2">回答' + (occVal === 'all' ? '数（延べ）' : '者数') + '</th>' + cols.map(c => `<th>${c.recs.length}</th>`).join('') + '</tr></thead><tbody>';
+    CATS.forEach(cat => {
+      CAT_IDX[cat].forEach((i, k) => {
+        h += '<tr>' + (k === 0 ? `<td class="cat" rowspan="${CAT_IDX[cat].length}" style="background:${CAT_COLOR[cat]}">${cat}</td>` : '') +
+          `<td class="name">${i + 1}. ${esc(DATA.competencies[i].name)}</td>` +
+          cols.map(c => { const a = avgOf(c.recs, 'c' + i).avg; return `<td style="${heat(a)}">${fmt(a)}</td>`; }).join('') + '</tr>';
+      });
+    });
+    [['all', '総合平均']].concat(CATS.map(c => [c, CAT_SHORT[c].replace(/（.*/, '') + ' 平均'])).forEach(([m, lb], k) => {
+      h += `<tr class="${k === 0 ? 'sum' : ''}"><td colspan="2" class="name"><b>${esc(lb)}</b></td>` +
+        cols.map(c => { const a = avgOf(c.recs, m).avg; return `<td style="${heat(a)};font-weight:bold">${fmt(a)}</td>`; }).join('') + '</tr>';
+    });
+    h += '</tbody></table>';
+
+    h += '<div class="block"><h2>カテゴリー別の平均</h2>' + legend(CATS.map(c => ({ name: CAT_SHORT[c], color: CAT_COLOR[c] }))) +
+      barChart(cols.map(c => ({ label: c.label, values: CATS.map(cat => avgOf(c.recs, cat).avg) })), 700, 170) + '</div>';
+
+    // クラスごとの「高い項目・低い項目」
+    h += '<div class="block"><h2>クラスごとの特徴（高い項目・低い項目）</h2><div class="hl">';
+    cols.filter(c => !c.ref).forEach(c => {
+      const items = ALL_IDX.map(i => ({ i, a: avgOf(c.recs, 'c' + i).avg })).filter(x => x.a !== null).sort((p, q) => q.a - p.a);
+      if (!items.length) { h += `<div><b>${esc(c.label)}</b><br><span class="muted">回答がありません</span></div>`; return; }
+      const top = items.slice(0, 3), low = items.slice(-3).reverse().filter(x => top.indexOf(x) === -1);
+      const line = list => list.map(x => `${esc(DATA.competencies[x.i].name)}（${x.a.toFixed(2)}）`).join('、');
+      h += `<div><b>${esc(c.label)}</b>（${c.recs.length}件）<br><span class="up">高い：</span>${line(top)}<br><span class="down">低い：</span>${line(low)}</div>`;
+    });
+    h += '</div></div>';
+    h += '<div class="note">数値は4段階の自己評価の平均です（色：オレンジ＝低い、黄＝中間、緑＝高い）。同じ生徒が同じ回に何度か送った場合は、最後に送ったものだけを使っています。</div>';
+    return h;
+  }
+
+  // ===== ② 推移 =====
+  function renderTrend() {
+    const metric = $('trendMetric').value;
+    const occ = DATA.occasions;
+    if (occ.length < 1) return '<p>この年度の回答がまだありません。</p>';
+    let groups;
+    if (trendUnit() === 'grade') {
+      const grades = [...new Set(CLASSES.map(c => c.grade))].sort((a, b) => schoolOrder(a) - schoolOrder(b));
+      groups = grades.map(g => ({ label: g + '年', test: r => gradeOf(r) === g }));
+      ['中', '高'].forEach(sc => {
+        if (grades.some(g => g.charAt(0) === sc)) groups.push({ label: sc === '中' ? '中学全体' : '高校全体', test: r => { const g = gradeOf(r); return g && g.charAt(0) === sc; } });
+      });
+    } else {
+      const keys = checkedKeys('trendClasses');
+      groups = CLASSES.filter(c => keys.has(c.key)).map(c => ({ label: c.label, test: r => classOf(r) === c.key }));
+      if (!groups.length) return '<p>上の「クラス」で、くらべるクラスにチェックを入れてください。</p>';
+    }
+    groups.forEach((g, i) => {
+      g.color = PALETTE[i % PALETTE.length];
+      g.cells = occ.map((t, oi) => avgOf(RESP.filter(r => r.t === oi && g.test(r)), metric));
+      g.byCat = CATS.map(cat => occ.map((t, oi) => avgOf(RESP.filter(r => r.t === oi && g.test(r)), cat).avg));
+    });
+
+    let h = header('学年・クラスの推移', (trendUnit() === 'grade' ? '学年ごと' : 'クラスごと') + '　／　' + metricLabel(metric));
+    const series = groups.map(g => ({ name: g.label, color: g.color, values: g.cells.map(c => c.avg), width: 2.2 }));
+    h += '<div class="block">' + legend(series) + lineChart(occ, series, 720, 280, metricLabel(metric) + 'の推移') + '</div>';
+
+    if ($('trendCats').checked && metric === 'all') {
+      h += '<div class="block"><h2>カテゴリー別の推移</h2><div class="charts">' + CATS.map((cat, ci) =>
+        `<div class="mini">${lineChart(occ, groups.map(g => ({ name: g.label, color: g.color, values: g.byCat[ci] })), 240, 180, CAT_SHORT[cat].replace(/（.*/, ''))}</div>`).join('') + '</div></div>';
+    }
+
+    h += '<div class="block"><h2>数値（' + esc(metricLabel(metric)) + '）</h2><table><thead><tr><th class="name">' + (trendUnit() === 'grade' ? '学年' : 'クラス') + '</th>' +
+      occ.map((t, i) => `<th>${i + 1}<br><span style="font-weight:normal;font-size:7.5pt">${esc(short(t, 14))}</span></th>`).join('') + '<th>最初→最新</th></tr></thead><tbody>';
+    groups.forEach(g => {
+      const have = g.cells.filter(c => c.avg !== null);
+      const d = have.length > 1 ? have[have.length - 1].avg - have[0].avg : null;
+      h += `<tr><td class="name"><i style="display:inline-block;width:10px;height:10px;background:${g.color};margin-right:4px"></i>${esc(g.label)}</td>` +
+        g.cells.map(c => `<td style="${heat(c.avg)}">${fmt(c.avg)}${c.n ? `<span class="n">${c.n}人</span>` : ''}</td>`).join('') + `<td>${diffHtml(d)}</td></tr>`;
+    });
+    h += '</tbody></table></div>';
+    h += '<div class="note">各回の数値は、その回に答えた生徒の平均です（小さい数字は回答者数）。回によって答えた生徒が違うと平均も動くので、回答者数もあわせて見てください。「最初→最新」は、数値のある最初の回と最新の回の差です。</div>';
+    return h;
+  }
+
+  // ===== ③ クラスの生徒の変容 =====
+  function renderStudents() {
+    const key = $('stuClass').value;
+    const cls = CLASSES.find(c => c.key === key);
+    if (!cls) return '<p>クラスがありません。名簿を登録するか、回答が集まってから開いてください。</p>';
+    const students = STUDENTS.filter(s => s.p && s.p.classKey === key);
+    const recsOf = n => RESP.filter(r => r.n === n);
+    const metric = $('stuMetric').value;
+    if (metric === 'items') return renderStudentItems(cls, students, recsOf);
+
+    // その組で回答のある実施回だけを列にする
+    const classRecs = RESP.filter(r => classOf(r) === key);
+    const occIdx = DATA.occasions.map((t, i) => i).filter(i => classRecs.some(r => r.t === i));
+    const isItem = metric.charAt(0) === 'c';
+    const digits = isItem ? 0 : 2;
+
+    let up = 0, down = 0, flat = 0;
+    let rows = '';
+    students.forEach(s => {
+      const mine = recsOf(s.number);
+      const vals = occIdx.map(oi => { const r = mine.find(x => x.t === oi); return r ? valueOf(r, metric) : null; });
+      const have = vals.filter(v => v !== null);
+      const d = have.length > 1 ? have[have.length - 1] - have[0] : null;
+      if (d !== null) { const eps = isItem ? 0.5 : 0.05; if (d >= eps) up++; else if (d <= -eps) down++; else flat++; }
+      rows += `<tr><td>${esc(s.p.no)}</td><td class="name">${esc(s.name)}${s.inRoster ? '' : ' <span class="muted">（名簿外）</span>'}</td>` +
+        vals.map(v => `<td style="${heat(v)}">${fmt(v, digits)}</td>`).join('') +
+        `<td>${diffHtml(d, digits)}</td><td>${have.length ? sparkline(vals) : ''}</td></tr>`;
+    });
+    const avgs = occIdx.map(oi => avgOf(classRecs.filter(r => r.t === oi), metric));
+
+    let h = header('クラスの生徒の変容', cls.label + '　／　' + metricLabel(metric) + '　／　' + students.length + '人');
+    h += `<div class="sub">最初と最新の両方に回答した生徒 ${up + down + flat}人のうち：<span class="up">上がった ${up}人</span>　<span class="flat">変わらない ${flat}人</span>　<span class="down">下がった ${down}人</span></div>`;
+    h += '<table class="compact"><thead><tr><th style="width:32px">番号</th><th class="name">氏名</th>' +
+      occIdx.map((oi, k) => `<th>${k + 1}<br><span style="font-weight:normal;font-size:7.5pt">${esc(short(DATA.occasions[oi], 12))}</span></th>`).join('') +
+      '<th>最初→最新</th><th>推移</th></tr></thead><tbody>' + rows + '</tbody>';
+    h += '<tfoot><tr><td colspan="2">クラス平均</td>' + avgs.map(a => `<td style="${heat(a.avg)}">${fmt(a.avg)}</td>`).join('') + '<td colspan="2"></td></tr>' +
+      '<tr><td colspan="2">回答者数</td>' + avgs.map(a => `<td>${a.n}</td>`).join('') + '<td colspan="2"></td></tr></tfoot></table>';
+    h += '<div class="note">—：その回は未回答。「最初→最新」は、その生徒が答えた最初の回と最新の回の差（▲上がった　▼下がった　→ほぼ同じ）。色：オレンジ＝低い、黄＝中間、緑＝高い（4段階）。</div>';
+    return h;
+  }
+
+  // 21項目の一覧（成績一覧表の形）。前の回を選ぶと、上がった・下がった項目に印をつける
+  function renderStudentItems(cls, students, recsOf) {
+    if (!DATA.occasions.length) return '<p>この年度の回答がまだありません。</p>';
+    const oi = Number($('stuOcc').value);
+    const baseVal = $('stuBase').value;
+    const bi = baseVal === '' ? null : Number(baseVal);
+    const comps = DATA.competencies;
+
+    let h = header('クラスの生徒の変容（21項目一覧）', cls.label + '　／　' + DATA.occasions[oi] + (bi !== null && bi !== oi ? '（くらべる回：' + DATA.occasions[bi] + '）' : ''));
+    h += '<table class="compact"><thead><tr><th rowspan="2" style="width:28px">番号</th><th rowspan="2" class="name">氏名</th>' +
+      CATS.map(cat => `<th colspan="${CAT_IDX[cat].length}" style="background:${CAT_COLOR[cat]};color:#fff">${esc(CAT_SHORT[cat])}</th>`).join('') +
+      '<th colspan="4">平均</th></tr><tr>' +
+      // 見出しが高くなりすぎないよう、かっこ書きは省く（例：レジリエンス（挫折回復力）→ レジリエンス）
+      ALL_IDX.map(i => `<th class="ih"><b>${i + 1}</b>${esc(comps[i].name.replace(/（.*?）/g, ''))}</th>`).join('') +
+      CATS.map(cat => `<th class="ih" style="color:${CAT_COLOR[cat]};word-break:keep-all;font-size:6.5pt">${cat}</th>`).join('') + '<th class="ih">総合</th></tr></thead><tbody>';
+
+    const compare = bi !== null && bi !== oi;
+    const classRecs = [], baseRecs = [];
+    students.forEach(s => {
+      const mine = recsOf(s.number);
+      const r = mine.find(x => x.t === oi);
+      const b = compare ? mine.find(x => x.t === bi) : null;
+      if (r) classRecs.push(r);
+      if (b) baseRecs.push(b);
+      h += `<tr><td>${esc(s.p.no)}</td><td class="name">${esc(s.name)}${s.inRoster ? '' : ' <span class="muted">（名簿外）</span>'}</td>`;
+      if (!r) { h += `<td colspan="${ALL_IDX.length + 4}" class="muted">未回答</td></tr>`; return; }
+      ALL_IDX.forEach(i => {
+        const v = r.s[i] || null;
+        const bv = b && b.s[i] ? b.s[i] : null;
+        h += `<td style="${heat(v)}">${v === null ? '<span class="muted">—</span>' : v}${compare && v !== null && bv !== null && v !== bv ? diffHtml(v - bv, 0, true) : ''}</td>`;
+      });
+      ['Thinking', 'Communication', 'Leadership', 'all'].forEach(m => {
+        const v = valueOf(r, m), bv = b ? valueOf(b, m) : null;
+        h += `<td style="${heat(v)};font-weight:bold">${fmt(v)}${compare && v !== null && bv !== null ? diffHtml(v - bv, 2, true) : ''}</td>`;
+      });
+      h += '</tr>';
+    });
+    h += '</tbody><tfoot><tr><td colspan="2">クラス平均</td>' +
+      ALL_IDX.map(i => { const a = avgOf(classRecs, 'c' + i).avg; return `<td style="${heat(a)}">${a === null ? '—' : a.toFixed(1)}</td>`; }).join('') +
+      ['Thinking', 'Communication', 'Leadership', 'all'].map(m => {
+        const a = avgOf(classRecs, m).avg, ba = compare ? avgOf(baseRecs, m).avg : null;
+        return `<td style="${heat(a)}">${fmt(a)}${compare && a !== null && ba !== null ? diffHtml(a - ba, 2, true) : ''}</td>`;
+      }).join('') + '</tr></tfoot></table>';
+    h += `<div class="note">回答者 ${classRecs.length}人／${students.length}人。数字は4段階の自己評価` +
+      (compare ? '。▲▼は「くらべる回」からの変化（その回にも答えた生徒だけ）' : '') + '。色：オレンジ＝低い、黄＝中間、緑＝高い。</div>';
+    return h;
+  }
+
+  // ===== 表示・印刷 =====
+  function render() {
+    if (!DATA) return;
+    const landscape = currentTab === 'students' && $('stuMetric').value === 'items';
+    $('pageCss').textContent = `@page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 10mm; }`;
+    $('paper').classList.toggle('landscape', landscape);
+    let html;
+    try {
+      html = currentTab === 'summary' ? renderSummary() : currentTab === 'trend' ? renderTrend() : renderStudents();
+    } catch (e) {
+      console.error(e);
+      html = '<p>表示中にエラーが起きました：' + esc(e.message) + '</p>';
+    }
+    if (!DATA.responses.length) html = header('レポート') + '<p>この年度の回答がまだありません。</p>';
+    $('report').innerHTML = html;
+  }
+
+  function printReport() { window.print(); }
+
+  // ダイアログの中から印刷できないブラウザ向け：別のタブに同じ内容を出して印刷する
+  function openInNewTab() {
+    const w = window.open('', '_blank');
+    if (!w) { alert('ポップアップがブロックされました。アドレスバー右のマークから許可してください。'); return; }
+    w.document.write('<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>資質・能力21 レポート</title><style>' +
+      $('pageCss').textContent + 'body{margin:0}' + $('reportCss').textContent + '</style></head><body><div class="rp">' +
+      $('report').innerHTML + '</div></body></html>');
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+  }
+
+  loadYear(null);
+</script>
+</body>
+</html>
