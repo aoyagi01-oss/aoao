@@ -635,7 +635,7 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.7';
+    const APP_VERSION = '2026-10-24.8';
 
     // Apps Script の画面では <html lang="ja"> の指定が消えてしまう。日本語の指定がないと、
     // 端末によっては漢字が中国語の字形で表示・印刷されるため、ここで入れ直す
@@ -3092,19 +3092,16 @@ renderGrowthSection(record);
         // ── チャートPNG取得 ──
         // 結果を出した直後はグラフがまだアニメーション中で、途中の絵が取りこまれてしまうため、完成した形で描き直してから取る
         chartInstances.concat(growthChartInstance ? [growthChartInstance] : []).forEach(ch => { ch.stop(); ch.update('none'); });
+        // PDFでの大きさ（px）と項目名の文字の大きさを決めて、描き直した画像を使う
+        await loadPrintFonts();
+        const PDF_RADAR = { 'chart-compare': [340, 14], 'chart-select5': [300, 14], 'chart-thinking': [232, 11.5], 'chart-communication': [232, 11.5], 'chart-leadership': [232, 11.5] };
         const chartImgs = {};
-        if (pdfMode === 'COMPARE') {
-          const c = document.getElementById('chart-compare');
-          if (c) chartImgs['chart-compare'] = c.toDataURL('image/png');
-        } else if (pdfMode === 'ALL') {
-          ['chart-thinking','chart-communication','chart-leadership'].forEach(id => {
-            const c = document.getElementById(id);
-            if (c) chartImgs[id] = c.toDataURL('image/png');
-          });
-        } else {
-          const c = document.getElementById('chart-select5');
-          if (c) chartImgs['chart-select5'] = c.toDataURL('image/png');
-        }
+        const ids = pdfMode === 'COMPARE' ? ['chart-compare'] : pdfMode === 'ALL' ? ['chart-thinking', 'chart-communication', 'chart-leadership'] : ['chart-select5'];
+        ids.forEach(id => {
+          const ch = chartOf(id);
+          if (ch) chartImgs[id] = radarImageForPdf(ch, PDF_RADAR[id][0], PDF_RADAR[id][1]);
+          else { const c = document.getElementById(id); if (c) chartImgs[id] = c.toDataURL('image/png'); }
+        });
 
         // ── 画面テキストデータ収集 ──
         const titleText      = document.getElementById('result-title-display').textContent;
@@ -3260,8 +3257,6 @@ renderGrowthSection(record);
           chartSec.innerHTML = secHead('カテゴリー別 診断レーダーチャート');
           const catColors = { 'chart-thinking':'#2c5f8a', 'chart-communication':'#3d7a5c', 'chart-leadership':'#6b4c93' };
           const catLabels = { 'chart-thinking':'Thinking（思考・探究）', 'chart-communication':'Communication（発信・表現・協働）', 'chart-leadership':'Leadership（主体性・実行力）' };
-          const chartW = Math.floor((INNER - 12) / 3);
-          const chartH = Math.min(chartW, 210);
           const row = document.createElement('div');
           row.style.cssText = 'display:flex; gap:6px;';
           Object.keys(chartImgs).forEach(id => {
@@ -3269,7 +3264,7 @@ renderGrowthSection(record);
             col.style.cssText = `flex:1;border:1px solid #e6dfd0;border-top:3px solid ${catColors[id]};padding:5px;text-align:center;background:#fdfbf6;box-sizing:border-box;`;
             col.innerHTML = `
               <div style="font-size:8px;font-weight:800;color:${catColors[id]};margin-bottom:3px;line-height:1.3;">${catLabels[id]}</div>
-              <img src="${chartImgs[id]}" style="width:${chartW}px;height:${chartH}px;object-fit:contain;display:block;margin:0 auto;">
+              <img src="${chartImgs[id]}" style="width:232px;height:232px;max-width:100%;object-fit:contain;display:block;margin:0 auto;">
             `;
             row.appendChild(col);
           });
@@ -3278,7 +3273,7 @@ renderGrowthSection(record);
           chartSec.innerHTML = secHead('選択5項目 レーダーチャート');
           const cdiv = document.createElement('div');
           cdiv.style.cssText = 'text-align:center;border:1px solid #e6dfd0;padding:10px;background:#fdfbf6;';
-          cdiv.innerHTML = `<img src="${chartImgs['chart-select5']}" style="width:230px;height:230px;object-fit:contain;display:inline-block;">`;
+          cdiv.innerHTML = `<img src="${chartImgs['chart-select5']}" style="width:300px;height:300px;object-fit:contain;display:inline-block;">`;
           chartSec.appendChild(cdiv);
         }
         page.appendChild(chartSec);
@@ -3885,6 +3880,93 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
     }
 
     // exportToPDF も同じスナップショット処理を経由する
+    // レーダーチャートの項目名の改行位置（言葉の途中で切れないように）
+    const RADAR_LABEL_LINES = {
+      '論理的思考力': ['論理的', '思考力'],
+      '学び続ける力': ['学び', '続ける力'],
+      '傾聴力・共感力': ['傾聴力・', '共感力'],
+      '対話力・質問力': ['対話力・', '質問力'],
+      '多角的・多面的視点': ['多角的・', '多面的視点'],
+      '深く掘り下げる力': ['深く', '掘り下げる力'],
+      '目標への段取り力': ['目標への', '段取り力'],
+      '主体的行動力': ['主体的', '行動力'],
+      '自己管理能力': ['自己', '管理能力'],
+      'レジリエンス（挫折回復力）': ['レジリエンス', '（挫折回復力）'],
+      'リーダーシップ': ['リーダー', 'シップ']
+    };
+
+    // レーダーチャートの共通設定。labelSize は項目名の文字の大きさ（数値、またはグラフに応じて決める関数）
+    function buildRadarOptions(labelSize) {
+      const size = ctx => typeof labelSize === 'function' ? labelSize(ctx) : labelSize;
+      return {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 1,
+        scales: {
+          r: {
+            min: 0,
+            max: 4,
+            ticks: {
+              stepSize: 1,
+              font: ctx => ({ size: Math.max(9, size(ctx) - 3), weight: 'bold' }),
+              color: '#a89b7f',
+              backdropColor: 'transparent'
+            },
+            grid: { color: '#e6dfd0' },
+            angleLines: { color: '#e6dfd0' },
+            pointLabels: {
+              font: ctx => ({ size: size(ctx), weight: 'bold', family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif", lineHeight: 1.15 }),
+              color: '#2a2420',
+              padding: 6,
+              // 長い名前は、言葉の切れ目で2行に分ける（名前そのものは変えない。改行する位置だけ）
+              callback: function(label) {
+                if (RADAR_LABEL_LINES[label]) return RADAR_LABEL_LINES[label];
+                const breakPoints = ['・', '（'];
+                for (const bp of breakPoints) {
+                  const idx = label.indexOf(bp);
+                  if (idx > 0 && idx < label.length - 1) {
+                    return [label.slice(0, idx), label.slice(idx)];
+                  }
+                }
+                if (label.length > 5) {
+                  const mid = Math.ceil(label.length / 2);
+                  return [label.slice(0, mid), label.slice(mid)];
+                }
+                return label;
+              }
+            }
+          }
+        }
+      };
+    }
+
+    // PDF用：画面のグラフを縮めて貼ると項目名が読めないほど小さくなるため、
+    // PDFに載せる大きさ（size px）で、項目名を labelSize px にして描き直した画像を作る
+    function radarImageForPdf(chart, size, labelSize) {
+      const holder = document.createElement('div');
+      holder.style.cssText = `position:fixed;left:-9999px;top:0;width:${size}px;height:${size}px;`;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      canvas.style.cssText = `width:${size}px;height:${size}px;`;
+      holder.appendChild(canvas);
+      document.body.appendChild(holder);
+      const options = buildRadarOptions(labelSize);
+      // 左右の端の項目名が切れないよう、まわりに余白をとる
+      Object.assign(options, { responsive: false, animation: false, devicePixelRatio: 3, layout: { padding: { left: 12, right: 12, top: 4, bottom: 4 } }, plugins: { legend: { display: false } } });
+      const copy = new Chart(canvas.getContext('2d'), {
+        type: 'radar',
+        data: { labels: chart.data.labels.slice(), datasets: chart.data.datasets.map(d => Object.assign({}, d, { data: d.data.slice() })) },
+        options: options
+      });
+      const url = canvas.toDataURL('image/png');
+      copy.destroy();
+      holder.remove();
+      return url;
+    }
+    function chartOf(canvasId) {
+      return chartInstances.find(ch => ch.canvas && ch.canvas.id === canvasId) || null;
+    }
+
     function renderChart(scores, targetComps, mode, peerScores) {
       // グラフの文字に使うフォントは、先に読み込んでおく（読みこむ前に描くと別のフォントで描かれる）
       if (document.fonts && document.fonts.load) document.fonts.load('700 12px "BIZ UDPGothic"', '論理的思考力').catch(() => null);
@@ -3895,47 +3977,9 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
       const wrapperAll     = document.getElementById('charts-wrapper-all');
       const wrapperSelect5 = document.getElementById('charts-wrapper-select5');
 
-      const chartOptions = {
-        responsive: true,
-        maintainAspectRatio: true,
-        aspectRatio: 1,
-        scales: {
-          r: {
-            min: 0,
-            max: 4,
-            ticks: {
-              stepSize: 1,
-              font: { size: 10, weight: 'bold' },
-              color: '#a89b7f',
-              backdropColor: 'transparent'
-            },
-            grid: { color: '#e6dfd0' },
-            angleLines: { color: '#e6dfd0' },
-            pointLabels: {
-              font: { size: 9, weight: 'bold', family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif" },
-              color: '#2a2420',
-              padding: 12,
-              callback: function(label) {
-                const breakPoints = ['・', '（'];
-                for (const bp of breakPoints) {
-                  const idx = label.indexOf(bp);
-                  if (idx > 0 && idx < label.length - 1) {
-                    return [label.slice(0, idx), label.slice(idx)];
-                  }
-                }
-                if (label.length > 6) {
-                  const mid = Math.ceil(label.length / 2);
-                  return [label.slice(0, mid), label.slice(mid)];
-                }
-                return label;
-              }
-            }
-          }
-        },
-        plugins: {
-          legend: { display: mode === 'COMPARE' }
-        }
-      };
+      // 画面では、グラフの幅に合わせて項目名を12〜14pxで描く
+      const chartOptions = buildRadarOptions(ctx => Math.max(11, Math.min(14, Math.round(ctx.chart.width / 24))));
+      chartOptions.plugins = { legend: { display: mode === 'COMPARE' } };
 
       if (mode === 'COMPARE') {
         // 自己×他己の重ねチャート
@@ -3971,7 +4015,7 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
                 }
               ]
             },
-            options: { ...chartOptions, plugins: { legend: { display: true, labels: { font: { family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif", size: 11, weight: 'bold' }, color: '#2a2420' } } } }
+            options: { ...chartOptions, plugins: { legend: { display: true, labels: { font: { family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif", size: 13, weight: 'bold' }, color: '#2a2420' } } } }
           });
           chartInstances.push(chart);
         }
