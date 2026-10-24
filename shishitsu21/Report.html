@@ -43,6 +43,9 @@
   .rp .hl > div { flex: 1 1 240px; border: 1px solid #cfc6b0; padding: 4px 6px; font-size: 8.5pt; line-height: 1.5; page-break-inside: avoid; }
   .rp .diff { font-size: 6.5pt; margin-left: 1px; }
   .rp .block { page-break-inside: avoid; break-inside: avoid; }
+  .rp .spage { page-break-after: always; break-after: page; }
+  .rp .spage:last-child { page-break-after: auto; break-after: auto; }
+  .rp .summary { font-size: 9.5pt; line-height: 1.7; border: 1px solid #cfc6b0; background: #fdfbf6; padding: 6px 8px; margin: 6px 0; }
 </style>
 <style>
   body { margin: 0; background: #e9e5dc; font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif; color: #2a2420; }
@@ -80,6 +83,7 @@
     <button id="tab-summary" class="active" onclick="switchTab('summary')">① クラス集計</button>
     <button id="tab-trend" onclick="switchTab('trend')">② 学年・クラスの推移</button>
     <button id="tab-students" onclick="switchTab('students')">③ クラスの生徒の変容</button>
+    <button id="tab-growth" onclick="switchTab('growth')">④ 生徒個人の成長</button>
   </div>
 
   <div class="row">
@@ -123,6 +127,17 @@
         <label for="stuOcc">実施回</label> <select id="stuOcc" onchange="render()"></select>
         <label for="stuBase">前の回とくらべる</label> <select id="stuBase" onchange="render()"></select>
       </span>
+    </div>
+  </div>
+
+  <!-- ④ 生徒個人の成長 -->
+  <div class="panel" id="panel-growth">
+    <div class="row">
+      <label for="growClass">クラス</label>
+      <select id="growClass" onchange="onGrowClass()"></select>
+      <label for="growStudent">生徒</label>
+      <select id="growStudent" onchange="render()"></select>
+      <label><input type="checkbox" id="growClassAvg" onchange="render()"> クラス平均も載せる</label>
     </div>
   </div>
 
@@ -290,11 +305,27 @@
     keepSelect('stuOcc', occOpts, DATA.occasions.length ? String(DATA.occasions.length - 1) : '');
     keepSelect('stuBase', '<option value="">くらべない</option>' + occOpts, DATA.occasions.length > 1 ? String(DATA.occasions.length - 2) : '');
     onStuMetric(true);
+
+    keepSelect('growClass', CLASSES.map(c => `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join(''), CLASSES.length ? CLASSES[0].key : '');
+    fillGrowStudents();
+  }
+
+  function fillGrowStudents() {
+    const key = $('growClass').value;
+    const list = STUDENTS.filter(s => s.p && s.p.classKey === key);
+    keepSelect('growStudent', '<option value="*">クラス全員（1人1ページ）</option>' +
+      list.map(s => `<option value="${esc(s.number)}">${esc(s.p.no)}　${esc(s.name)}${s.inRoster ? '' : '（名簿外）'}</option>`).join(''),
+      list.length ? list[0].number : '*');
+  }
+
+  function onGrowClass() {
+    fillGrowStudents();
+    render();
   }
 
   function switchTab(tab) {
     currentTab = tab;
-    ['summary', 'trend', 'students'].forEach(t => {
+    ['summary', 'trend', 'students', 'growth'].forEach(t => {
       $('tab-' + t).classList.toggle('active', t === tab);
       $('panel-' + t).classList.toggle('active', t === tab);
     });
@@ -382,13 +413,13 @@
     });
     series.forEach(s => {
       const pts = s.values.map((v, i) => v === null ? null : [x(i), y(v)]).filter(Boolean);
-      if (pts.length > 1) g += `<polyline fill="none" stroke="${s.color}" stroke-width="${s.width || 2}" points="${pts.map(p => p.join(',')).join(' ')}"/>`;
-      pts.forEach(p => { g += `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${s.color}"/>`; });
+      if (pts.length > 1) g += `<polyline fill="none" stroke="${s.color}" stroke-width="${s.width || 2}"${s.dash ? ' stroke-dasharray="5 3"' : ''} points="${pts.map(p => p.join(',')).join(' ')}"/>`;
+      if (!s.dash) pts.forEach(p => { g += `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${s.color}"/>`; });
     });
     return `<svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">${g}</svg>`;
   }
   function legend(series) {
-    return '<div class="legend">' + series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('') + '</div>';
+    return '<div class="legend">' + series.map(s => `<span><i style="${s.dash ? `background:repeating-linear-gradient(90deg,${s.color} 0 5px,transparent 5px 8px)` : 'background:' + s.color}"></i>${esc(s.name)}</span>`).join('') + '</div>';
   }
   // 小さな折れ線（生徒ごとの推移）
   function sparkline(values) {
@@ -431,7 +462,7 @@
     const selected = CLASSES.filter(c => keys.has(c.key));
     if (!selected.length) return '<p>上の「クラス」で、表示するクラスにチェックを入れてください。</p>';
 
-    const cols = selected.map(c => ({ label: c.label, recs: recs.filter(r => classOf(r) === c.key) }));
+    const cols = selected.map(c => ({ label: c.label, key: c.key, grade: c.grade, recs: recs.filter(r => classOf(r) === c.key) }));
     if ($('sumGrade').checked) {
       [...new Set(selected.map(c => c.grade))].forEach(g => {
         const gl = CLASSES.find(c => c.grade === g).gradeLabel;
@@ -442,7 +473,7 @@
 
     const occLabel = occVal === 'all' ? 'すべての実施回' : DATA.occasions[Number(occVal)];
     let h = header('クラス集計', '実施回：' + occLabel);
-    h += '<table><thead><tr><th colspan="2">項目</th>' + cols.map(c => `<th${c.ref ? ' style="background:#e6e1d4"' : ''}>${esc(c.label)}</th>`).join('') + '</tr>';
+    h += '<table class="compact"><thead><tr><th colspan="2">項目</th>' + cols.map(c => `<th${c.ref ? ' style="background:#e6e1d4"' : ''}>${esc(c.label)}</th>`).join('') + '</tr>';
     h += '<tr><th colspan="2">回答' + (occVal === 'all' ? '数（延べ）' : '者数') + '</th>' + cols.map(c => `<th>${c.recs.length}</th>`).join('') + '</tr></thead><tbody>';
     CATS.forEach(cat => {
       CAT_IDX[cat].forEach((i, k) => {
@@ -458,20 +489,47 @@
     h += '</tbody></table>';
 
     h += '<div class="block"><h2>カテゴリー別の平均</h2>' + legend(CATS.map(c => ({ name: CAT_SHORT[c], color: CAT_COLOR[c] }))) +
-      barChart(cols.map(c => ({ label: c.label, values: CATS.map(cat => avgOf(c.recs, cat).avg) })), 700, 170) + '</div>';
+      barChart(cols.map(c => ({ label: c.label, values: CATS.map(cat => avgOf(c.recs, cat).avg) })), 700, 150) + '</div>';
 
-    // クラスごとの「高い項目・低い項目」
-    h += '<div class="block"><h2>クラスごとの特徴（高い項目・低い項目）</h2><div class="hl">';
+    // クラスごとの「ひとことまとめ」と「高い項目・低い項目」
+    h += '<div class="block"><h2>クラスごとのまとめ</h2><div class="hl">';
     cols.filter(c => !c.ref).forEach(c => {
       const items = ALL_IDX.map(i => ({ i, a: avgOf(c.recs, 'c' + i).avg })).filter(x => x.a !== null).sort((p, q) => q.a - p.a);
       if (!items.length) { h += `<div><b>${esc(c.label)}</b><br><span class="muted">回答がありません</span></div>`; return; }
       const top = items.slice(0, 3), low = items.slice(-3).reverse().filter(x => top.indexOf(x) === -1);
       const line = list => list.map(x => `${esc(DATA.competencies[x.i].name)}（${x.a.toFixed(2)}）`).join('、');
-      h += `<div><b>${esc(c.label)}</b>（${c.recs.length}件）<br><span class="up">高い：</span>${line(top)}<br><span class="down">低い：</span>${line(low)}</div>`;
+      h += `<div><b>${esc(c.label)}</b>（${c.recs.length}件）<br>${esc(classSummary(c, recs, occVal))}<br>` +
+        `<span class="up">高い項目：</span>${line(top)}<br><span class="down">低い項目：</span>${line(low)}</div>`;
     });
     h += '</div></div>';
     h += '<div class="note">数値は4段階の自己評価の平均です（色：オレンジ＝低い、黄＝中間、緑＝高い）。同じ生徒が同じ回に何度か送った場合は、最後に送ったものだけを使っています。</div>';
     return h;
+  }
+
+  // クラスの「ひとことまとめ」：総合平均と学年全体の差、いちばん高い・低いカテゴリー、前の回からの変化
+  function classSummary(col, recs, occVal) {
+    const parts = [];
+    const all = avgOf(col.recs, 'all').avg;
+    if (all === null) return '';
+    const grade = avgOf(recs.filter(r => gradeOf(r) === col.grade), 'all').avg;
+    const gl = CLASSES.find(c => c.grade === col.grade).gradeLabel + '全体';
+    const cmp = d => Math.abs(d) < 0.05 ? 'とほぼ同じです' : `より${Math.abs(d).toFixed(2)}${d > 0 ? '高め' : '低め'}です`;
+    parts.push(`総合平均は${all.toFixed(2)}で、${gl}（${grade.toFixed(2)}）${cmp(all - grade)}。`);
+    const cats = CATS.map(cat => ({ cat, a: avgOf(col.recs, cat).avg })).filter(x => x.a !== null).sort((p, q) => q.a - p.a);
+    if (cats.length > 1 && cats[0].a - cats[cats.length - 1].a >= 0.05) {
+      parts.push(`カテゴリーでは${cats[0].cat}（${cats[0].a.toFixed(2)}）が最も高く、${cats[cats.length - 1].cat}（${cats[cats.length - 1].a.toFixed(2)}）が低めです。`);
+    }
+    if (occVal !== 'all') {
+      // その組で回答のある、いちばん近い前の回とくらべる
+      for (let t = Number(occVal) - 1; t >= 0; t--) {
+        const prev = avgOf(RESP.filter(r => r.t === t && classOf(r) === col.key), 'all').avg;
+        if (prev === null) continue;
+        const d = all - prev;
+        parts.push(`前の回（${short(DATA.occasions[t], 16)}：${prev.toFixed(2)}）から${Math.abs(d) < 0.05 ? 'ほぼ横ばいです' : `${Math.abs(d).toFixed(2)}${d > 0 ? '上がりました' : '下がりました'}`}。`);
+        break;
+      }
+    }
+    return parts.join('');
   }
 
   // ===== ② 推移 =====
@@ -608,6 +666,85 @@
     return h;
   }
 
+  // ===== ④ 生徒個人の成長 =====
+  // 1人1ページ。グラフ・21項目の表・変化のまとめ。クラス全員を選ぶと、名簿順に1人1ページずつ続けて出す
+  function renderGrowth() {
+    const key = $('growClass').value;
+    const cls = CLASSES.find(c => c.key === key);
+    if (!cls) return '<p>クラスがありません。名簿を登録するか、回答が集まってから開いてください。</p>';
+    const pick = $('growStudent').value;
+    const classStudents = STUDENTS.filter(s => s.p && s.p.classKey === key);
+    const classRecs = RESP.filter(r => classOf(r) === key);
+    const targets = pick === '*' ? classStudents.filter(s => classRecs.some(r => r.n === s.number)) : classStudents.filter(s => s.number === pick);
+    if (!targets.length) return '<p>このクラスには、この年度の回答がまだありません。</p>';
+    const occIdx = DATA.occasions.map((t, i) => i).filter(i => classRecs.some(r => r.t === i));
+    return targets.map(s => `<div class="spage">${growthPage(s, cls, occIdx, classRecs)}</div>`).join('');
+  }
+
+  function growthPage(s, cls, occIdx, classRecs) {
+    const withAvg = $('growClassAvg').checked;
+    const mine = occIdx.map(oi => RESP.find(r => r.n === s.number && r.t === oi) || null);
+    const labels = occIdx.map(oi => DATA.occasions[oi]);
+    const v = (r, m) => r ? valueOf(r, m) : null;
+    let h = `<h1>成長の記録　${esc(s.name)} さん</h1><div class="sub">${DATA.year}年度　／　${esc(cls.label)} ${esc(s.p.no)}番　／　作成日 ${esc(DATA.generatedAt)}</div>`;
+    if (MODE_NOTE) h += `<div class="warnline">${esc(MODE_NOTE)}</div>`;
+
+    const answered = mine.map((r, k) => r ? k : -1).filter(k => k >= 0);
+    if (!answered.length) return h + '<p>この年度の回答がまだありません。</p>';
+
+    // ── まとめの文章 ──
+    const sentences = [`この年度は${occIdx.length}回のうち${answered.length}回ふりかえりに回答しています。`];
+    if (answered.length === 1) {
+      sentences.push('記録が1回分なので、次の回から変化が見えるようになります。');
+    } else {
+      const f = mine[answered[0]], l = mine[answered[answered.length - 1]];
+      const fl = short(labels[answered[0]], 16), ll = short(labels[answered[answered.length - 1]], 16);
+      const d = v(l, 'all') - v(f, 'all');
+      sentences.push(`総合平均は、最初の「${fl}」の${v(f, 'all').toFixed(2)}から、最新の「${ll}」では${v(l, 'all').toFixed(2)}になりました（` +
+        (Math.abs(d) < 0.05 ? 'ほぼ横ばい' : `${d > 0 ? '+' : ''}${d.toFixed(2)}`) + '）。');
+      const catD = CATS.map(cat => ({ cat, d: v(l, cat) - v(f, cat) })).sort((p, q) => q.d - p.d);
+      if (catD[0].d >= 0.05) sentences.push(`カテゴリーでは${CAT_SHORT[catD[0].cat]}がいちばん伸びています（+${catD[0].d.toFixed(2)}）。`);
+      const itemD = ALL_IDX.filter(i => f.s[i] > 0 && l.s[i] > 0).map(i => ({ i, d: l.s[i] - f.s[i] }));
+      const ups = itemD.filter(x => x.d > 0).sort((p, q) => q.d - p.d);
+      const downs = itemD.filter(x => x.d < 0);
+      if (ups.length) sentences.push(`上がった項目は${ups.length}項目で、特に${ups.slice(0, 3).map(x => `「${DATA.competencies[x.i].name}」（${f.s[x.i]}→${l.s[x.i]}）`).join('、')}が伸びています。`);
+      sentences.push(downs.length ? `下がった項目は${downs.length}項目です。自分の見方が厳しくなったことも考えられるので、本人と話してみてください。` : '下がった項目はありません。');
+    }
+    h += `<div class="summary">${sentences.map(esc).join('')}</div>`;
+
+    // ── グラフ ──
+    const series = [{ name: '総合平均', color: '#a8402c', width: 3, values: mine.map(r => v(r, 'all')) }]
+      .concat(CATS.map(cat => ({ name: cat, color: CAT_COLOR[cat], values: mine.map(r => v(r, cat)) })));
+    if (withAvg) series.push({ name: 'クラスの総合平均', color: '#9a8f78', dash: true, values: occIdx.map(oi => avgOf(classRecs.filter(r => r.t === oi), 'all').avg) });
+    h += '<div class="block">' + legend(series) + lineChart(labels, series, 720, 230, '') + '</div>';
+
+    // ── 21項目の表 ──
+    const lastAns = mine[answered[answered.length - 1]], firstAns = mine[answered[0]];
+    const latestOi = occIdx[answered[answered.length - 1]];
+    h += '<table class="compact"><thead><tr><th colspan="2">項目</th>' +
+      labels.map((t, k) => `<th>${k + 1}<br><span style="font-weight:normal;font-size:7.5pt">${esc(short(t, 12))}</span></th>`).join('') +
+      '<th>最初→最新</th>' + (withAvg ? '<th>クラス平均<br><span style="font-weight:normal;font-size:7.5pt">（最新の回）</span></th>' : '') + '</tr></thead><tbody>';
+    const latestClass = classRecs.filter(r => r.t === latestOi);
+    CATS.forEach(cat => {
+      CAT_IDX[cat].forEach((i, k) => {
+        const d = answered.length > 1 && firstAns.s[i] > 0 && lastAns.s[i] > 0 ? lastAns.s[i] - firstAns.s[i] : null;
+        h += '<tr>' + (k === 0 ? `<td class="cat" rowspan="${CAT_IDX[cat].length}" style="background:${CAT_COLOR[cat]}">${cat}</td>` : '') +
+          `<td class="name">${i + 1}. ${esc(DATA.competencies[i].name)}</td>` +
+          mine.map(r => { const x = r && r.s[i] > 0 ? r.s[i] : null; return `<td style="${heat(x)}">${x === null ? '<span class="muted">—</span>' : x}</td>`; }).join('') +
+          `<td>${diffHtml(d, 0)}</td>` + (withAvg ? `<td>${fmt(avgOf(latestClass, 'c' + i).avg)}</td>` : '') + '</tr>';
+      });
+    });
+    [['all', '総合平均']].concat(CATS.map(c => [c, c + ' 平均'])).forEach(([m, lb], k) => {
+      const d = answered.length > 1 ? v(lastAns, m) - v(firstAns, m) : null;
+      h += `<tr class="${k === 0 ? 'sum' : ''}"><td colspan="2" class="name"><b>${esc(lb)}</b></td>` +
+        mine.map(r => `<td style="${heat(v(r, m))};font-weight:bold">${fmt(v(r, m))}</td>`).join('') +
+        `<td>${diffHtml(d)}</td>` + (withAvg ? `<td>${fmt(avgOf(latestClass, m).avg)}</td>` : '') + '</tr>';
+    });
+    h += '</tbody></table>';
+    h += '<div class="note">数字は4段階の自己評価（色：オレンジ＝低い、黄＝中間、緑＝高い）。—：その回は未回答。「最初→最新」は、答えた最初の回と最新の回の差です。</div>';
+    return h;
+  }
+
   // ===== 表示・印刷 =====
   function render() {
     if (!DATA) return;
@@ -616,7 +753,7 @@
     $('paper').classList.toggle('landscape', landscape);
     let html;
     try {
-      html = currentTab === 'summary' ? renderSummary() : currentTab === 'trend' ? renderTrend() : renderStudents();
+      html = currentTab === 'summary' ? renderSummary() : currentTab === 'trend' ? renderTrend() : currentTab === 'students' ? renderStudents() : renderGrowth();
     } catch (e) {
       console.error(e);
       html = '<p>表示中にエラーが起きました：' + esc(e.message) + '</p>';
