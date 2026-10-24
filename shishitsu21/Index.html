@@ -69,9 +69,20 @@
     .level-dots span.filled-communication { background: #3d7a5c; }
     .level-dots span.filled-leadership { background: #6b4c93; }
 
+    /* === 印刷・PDF保存：結果をA4 1枚にまとめた紙面（#print-root）だけを印刷する === */
+    #print-root { display: none; }
+    @media print {
+      /* 余白を0にして紙面の中で8mmあける（ブラウザが余白に日付やURLを印刷しないように） */
+      @page { size: A4 portrait; margin: 0; }
+      body.printing { background: #fdfbf6 !important; padding: 0 !important; min-height: 0 !important; }
+      body.printing > *:not(#print-root) { display: none !important; }
+      body.printing #print-root { display: block !important; padding: 8mm; }
+      body.printing #print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 pb-12">
+  <div id="print-root"></div>
 
   <!-- Header -->
   <header class="bg-gradient-to-r from-indigo-700 via-purple-700 to-sky-600 text-white shadow-md sticky top-0 z-50">
@@ -380,10 +391,14 @@
             <h2 class="report-serif text-3xl sm:text-4xl font-bold text-[#2a2420] leading-snug" id="result-title-display">探究アセスメント診断チャート</h2>
             <p class="text-sm font-bold text-[#7a6f5c] mt-2" id="result-student-info"></p>
           </div>
-          <div class="flex items-center gap-2 self-start md:self-auto no-print">
-            <button onclick="exportToPDF()" class="text-sm font-bold bg-[#2a2420] text-[#fbf8f1] hover:bg-[#3d352c] px-4 py-2.5 rounded-sm transition flex items-center gap-1.5">
-              <i data-lucide="printer" class="w-4 h-4"></i> PDFで保存・印刷
-            </button>
+          <div class="flex flex-wrap items-center gap-2 self-start md:self-auto no-print">
+            <div class="flex flex-col items-start gap-1">
+              <button onclick="exportToPDF('print')" class="text-sm font-bold bg-[#2a2420] text-[#fbf8f1] hover:bg-[#3d352c] px-4 py-2.5 rounded-sm transition flex items-center gap-1.5">
+                <i data-lucide="printer" class="w-4 h-4"></i> 印刷・PDFで保存
+              </button>
+              <span class="text-[10px] text-[#7a6f5c] leading-snug">PDFにするときは、印刷画面の「送信先」で<br>「PDFに保存」を選びます。</span>
+              <button onclick="exportToPDF('image')" class="text-[10px] font-bold text-[#7a6f5c] underline hover:text-[#2a2420]">印刷画面が出ないとき：画像のPDFをダウンロード</button>
+            </div>
             <button onclick="switchTab('assess')" class="text-sm font-bold text-[#7a6f5c] hover:text-[#2a2420] flex items-center gap-1 px-3 py-2.5 transition">
               <i data-lucide="arrow-left" class="w-4 h-4"></i> 修正・再評価する
             </button>
@@ -618,7 +633,12 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.3';
+    const APP_VERSION = '2026-10-24.4';
+
+    // グラフは画面の3倍の細かさで描いておく（PDFに貼ったときにぼやけないように）
+    if (typeof Chart !== 'undefined') {
+      Chart.defaults.devicePixelRatio = Math.max(3, window.devicePixelRatio || 1);
+    }
 
     // Category metadata configuration
     const CATEGORY_CONFIG = {
@@ -2334,9 +2354,12 @@ renderGrowthSection(record);
       lucide.createIcons();
     }
 
-    // ===== PDF出力: html2canvas + jsPDF（A4縦1枚） =====
-    async function exportToPDF() {
-      const btn = document.querySelector('button[onclick="exportToPDF()"]');
+    // ===== PDF出力（A4縦1枚） =====
+    // method='print'：ブラウザの印刷で出す。文字がデータのままPDFに入るので、拡大してもくっきりする（ふだんはこちら）
+    // method='image'：紙面を画像にしてPDFファイルを作る（印刷画面が出ない環境のための予備。文字は画像になる）
+    async function exportToPDF(method) {
+      method = method === 'image' ? 'image' : 'print';
+      const btn = document.querySelector(`button[onclick="exportToPDF('${method}')"]`);
       const originalBtnHtml = btn ? btn.innerHTML : '';
 
       const pdfRoot = document.createElement('div');
@@ -2359,6 +2382,8 @@ renderGrowthSection(record);
         const pdfMode   = isCompare ? 'COMPARE' : isAll ? 'ALL' : 'SELECT5';
 
         // ── チャートPNG取得 ──
+        // 結果を出した直後はグラフがまだアニメーション中で、途中の絵が取りこまれてしまうため、完成した形で描き直してから取る
+        chartInstances.concat(growthChartInstance ? [growthChartInstance] : []).forEach(ch => { ch.stop(); ch.update('none'); });
         const chartImgs = {};
         if (pdfMode === 'COMPARE') {
           const c = document.getElementById('chart-compare');
@@ -2712,11 +2737,17 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
         }
 
         pdfRoot.appendChild(page);
+        if (document.fonts && document.fonts.ready) await document.fonts.ready;
         await new Promise(r => setTimeout(r, 200));
 
-        // ── html2canvasで実際の高さでキャプチャ ──
+        if (method === 'print') {
+          printPdfPage(page);
+          return;
+        }
+
+        // ── html2canvasで実際の高さでキャプチャ（3倍の細かさで撮る）──
         const canvas = await html2canvas(page, {
-          scale: 2, useCORS: true, allowTaint: false,
+          scale: 3, useCORS: true, allowTaint: false,
           backgroundColor: '#fdfbf6', logging: false,
           width: PAGE_W,
           height: page.scrollHeight,  // 実際の高さに合わせる
@@ -2734,14 +2765,14 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
         if (imgH <= A4H - MARGIN * 2) {
           // 1ページに収まる場合：上下中央寄せ
           const yOff = Math.max(MARGIN, (A4H - imgH) / 2);
-          pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', MARGIN, yOff, printW, imgH);
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', MARGIN, yOff, printW, imgH);
         } else {
           // 収まらない場合：縮小してmarginありで貼る（切れ防止）
           const scale  = (A4H - MARGIN * 2) / imgH;
           const scaledW = printW * scale;
           const scaledH = imgH * scale;
           const xOff   = MARGIN + (printW - scaledW) / 2;
-          pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', xOff, MARGIN, scaledW, scaledH);
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', xOff, MARGIN, scaledW, scaledH);
         }
 
         const namePart  = studentInfo.trim().replace(/\s+/g, '_') || '探究アセスメント';
@@ -2751,6 +2782,7 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
 
       } catch (err) {
         console.error('PDF生成エラー:', err);
+        document.body.classList.remove('printing');
         alert('PDFの生成に失敗しました。ページを再読み込みしてから再度お試しください。');
       } finally {
         if (document.body.contains(pdfRoot)) document.body.removeChild(pdfRoot);
@@ -2760,6 +2792,28 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
           lucide.createIcons();
         }
       }
+    }
+
+    // 作った紙面（幅800px）を、A4の印刷範囲（余白8mm → 194mm×281mm）に収まる大きさに縮めて印刷する。
+    // 画像にしないので、文字もグラフの線もくっきり出る
+    function printPdfPage(page) {
+      const PX_PER_MM = 96 / 25.4;
+      const availW = 194 * PX_PER_MM, availH = 281 * PX_PER_MM;
+      const zoom = Math.min(availW / page.offsetWidth, availH / page.scrollHeight) * 0.98;
+      const root = document.getElementById('print-root');
+      root.innerHTML = '';
+      root.appendChild(page);
+      page.style.zoom = zoom;
+      document.body.classList.add('printing');
+      const cleanup = () => {
+        document.body.classList.remove('printing');
+        root.innerHTML = '';
+        window.removeEventListener('afterprint', cleanup);
+      };
+      window.addEventListener('afterprint', cleanup);
+      window.print();
+      // afterprint が来ないブラウザ向けに、少し待ってから元に戻す
+      setTimeout(cleanup, 1000);
     }
 
     // Render History function
