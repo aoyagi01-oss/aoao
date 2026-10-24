@@ -10,12 +10,20 @@
  * 5. 画面右上「デプロイ」→「新しいデプロイ」をクリック
  *    - 種類の選択: 「ウェブアプリ」
  *    - 説明: 任意（例: 生徒用アプリ配布）
- *    - 実行ユーザー: 「アクセスしているユーザー」（＝生徒本人のGoogleアカウントで実行される）
+ *    - 実行ユーザー: 「自分」（＝このスプレッドシートの持ち主の権限で書き込む）
  *    - アクセスできるユーザー: 「〇〇（学校のドメイン名）内の全員」
  *      ※これにより、学校のGoogleアカウントでログインしないとアプリを開けなくなる
+ *    ※スプレッドシート自体は生徒と共有しない（先生だけが開ける状態にしておく）。
+ *      生徒はアプリ経由で自分の回答を送るだけで、他の生徒の回答は見られない。
  * 6. 「デプロイ」をクリックし、発行された「ウェブアプリのURL」を生徒に共有する
  *    （このURLをブックマーク・Google Classroom等で配れば、以後ファイル配布は不要になる）
  * 7. スプレッドシートを再読み込みすると、メニューバーに「探究アセスメント」が追加される
+ * 8. メニュー「探究アセスメント」→「実施回を設定する」で、生徒が選ぶ実施回の名前を登録する
+ *
+ * ▼コードを貼り直したとき
+ * 「デプロイ」→「デプロイを管理」→ 鉛筆マーク →「バージョン：新バージョン」→「デプロイ」を押すと、
+ * 生徒用URLを変えずに新しいコードに切り替わる。
+ * メニュー「探究アセスメント」→「版を確認」と、生徒画面のいちばん下に出る版が同じなら貼り直し完了。
  *
  * ▼出席番号のルール
  * 半角4桁のうち、1桁目=学年、2桁目=組、3〜4桁目=出席番号　という前提で集計します。
@@ -26,7 +34,16 @@
  * - 「クラス集計」: メニューから手動実行した時点の、学校全体／学年別／クラス別の項目別平均
  * - 「個人推移」　: 生徒ごとに提出履歴を時系列で並べた一覧（同一生徒の複数回答を追跡できる）
  * - 「レポート_◯◯」: 実施回（タイトル or 日付）を選んで作成する、要約文＋グラフのレポート
+ * - 「実施回」　　: 生徒が選ぶ実施回の一覧（B列にチェックが入っている回だけ生徒画面に出る）
+ *
+ * ▼集計に使う回答
+ * 「5項目選択」「自己×他己比較」モードは生徒が自分で選んだ5項目だけを答えるため、平均が高めに出やすい。
+ * そのためクラス集計・各レポートは「全21項目」モードの回答だけで計算する
+ * （全21項目の回答が1件もないときに限り、5項目モードの回答で計算し、その旨をレポートに書く）。
  */
+
+// 生徒画面（Index）の APP_VERSION と同じ値にそろえる。貼り直しの確認に使う
+const APP_VERSION = '2026-10-24';
 
 const SHEET_NAME = '回答';
 const CLASS_SUMMARY_SHEET = 'クラス集計';
@@ -80,8 +97,9 @@ const JSON_COLUMNS = [7, 12, 15, 16]; // 折りたたむJSON列
  */
 function appendResponseRow(data, senderEmail) {
   // 同時送信でも行が混ざったり、重複判定をすり抜けたりしないよう、書き込み中はロックする
+  // クラス全員がほぼ同時に送信しても待ちきれずに失敗しないよう、待ち時間は長めにとる
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  lock.waitLock(30000);
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(SHEET_NAME);
@@ -91,22 +109,28 @@ function appendResponseRow(data, senderEmail) {
       sheet.getRange(1, 1, 1, RESPONSE_HEADER.length).setValues([RESPONSE_HEADER]);
       formatResponseSheet(sheet);
     }
-    // 「サーバーには届いたが応答が返らなかった」記録を再送信しても、同じ記録IDの行は追加しない
-    if (isDuplicateRecordId(sheet, data.id)) return;
+    // 「サーバーには届いたが応答が返らなかった」記録を再送信しても、同じ記録の行は追加しない
+    if (isDuplicateRecord(sheet, data)) return;
     sheet.appendRow(buildResponseRow(data, senderEmail));
   } finally {
     lock.releaseLock();
   }
 }
 
-/** 「回答」シートのJ列（記録ID）に、同じIDが既にあるかを調べる */
-function isDuplicateRecordId(sheet, recordId) {
+/**
+ * 「回答」シートに同じ記録が既にあるかを調べる。
+ * 記録IDは送信した瞬間の時刻（ミリ秒）なので、別の生徒と偶然重なることがある。
+ * 記録ID（J列）と出席番号（C列）の両方が一致したときだけ重複とみなす。
+ */
+function isDuplicateRecord(sheet, data) {
+  const recordId = data.id;
   if (recordId === undefined || recordId === null || recordId === '') return false;
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return false;
-  const ids = sheet.getRange(2, 10, lastRow - 1, 1).getValues();
-  const target = String(recordId);
-  return ids.some(r => String(r[0]) === target);
+  const rows = sheet.getRange(2, 3, lastRow - 1, 8).getValues(); // C列〜J列
+  const targetId = String(recordId);
+  const targetNumber = String(data.studentNumber || '');
+  return rows.some(r => String(r[7]) === targetId && String(r[0]) === targetNumber);
 }
 
 /**
@@ -252,20 +276,112 @@ function doPost(e) {
 }
 
 /**
+ * アプリを開いている生徒のGoogleアカウントを返す。
+ * 「実行ユーザー: 自分」でも、生徒が同じ学校ドメインのアカウントでログインしていれば取得できる
+ * （ドメイン外のアカウントなどで取得できないときは空文字）。
+ */
+function getViewerEmail() {
+  try {
+    return Session.getActiveUser().getEmail() || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
  * Webアプリ版の生徒アプリから google.script.run 経由で呼ばれる送信用エンドポイント。
- * デプロイ設定「実行ユーザー: アクセスしているユーザー」の場合、
- * Session.getActiveUser().getEmail() で生徒本人のGoogleアカウントが取得できる
- * （ドメイン制限デプロイのときのみ確実に取得できる。制限なしの場合は空文字になることがある）。
  */
 function submitAssessmentToServer(data) {
-  let senderEmail = '';
-  try {
-    senderEmail = Session.getActiveUser().getEmail() || '';
-  } catch (e) {
-    senderEmail = '';
-  }
-  appendResponseRow(data, senderEmail);
+  appendResponseRow(data, getViewerEmail());
   return { ok: true };
+}
+
+/**
+ * 生徒用：自分のアカウントから送った記録だけを返す（生徒画面の「成長の経過」で、
+ * 端末に残っていない過去の記録も比べられるようにするため）。
+ * 他の生徒の記録は返さない。アカウントが分からないときは何も返さない。
+ * ※google.script.run は日付(Date)を返せないため、日付は文字列にして返す。
+ */
+function getMyHistory() {
+  const email = getViewerEmail().toLowerCase();
+  if (!email) return [];
+  return loadResponses()
+    .filter(r => String(r.senderEmail).toLowerCase() === email)
+    .map(r => ({
+      id: Number(r.recordId) || String(r.recordId),
+      date: r.date instanceof Date ? r.date.toISOString() : String(r.date || ''),
+      studentNumber: r.studentNumber,
+      title: String(r.title || ''),
+      mode: String(r.mode || ''),
+      scores: r.scores
+    }))
+    .filter(r => r.id && r.date);
+}
+
+/* =====================================================================
+ * 実施回の一覧（生徒は自由入力ではなく、ここに登録した実施回から選ぶ）
+ * 「実施回」シート：A列=実施回の名前、B列=受付中（チェックが入っている回だけ生徒画面に出る）
+ * ===================================================================== */
+
+const OCCASION_LIST_SHEET = '実施回';
+const OCCASION_CACHE_KEY = 'openOccasions';
+
+/** 生徒画面用：受付中の実施回の名前を、シートの上から順に返す（1件もなければ空配列＝自由入力） */
+function getOpenOccasions() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(OCCASION_CACHE_KEY);
+  if (cached) return JSON.parse(cached);
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OCCASION_LIST_SHEET);
+  let names = [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    names = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues()
+      .filter(r => r[1] === true && String(r[0]).trim() !== '')
+      .map(r => normalizeTitle(r[0]));
+  }
+  // 生徒が一斉に開いてもシートを毎回読まないよう、1分だけ覚えておく
+  cache.put(OCCASION_CACHE_KEY, JSON.stringify(names), 60);
+  return names;
+}
+
+/** 「実施回」シートに登録されているすべての実施回の名前（受付中かどうかは問わない） */
+function getRegisteredOccasionNames() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OCCASION_LIST_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+    .filter(r => String(r[0]).trim() !== '')
+    .map(r => normalizeTitle(r[0]));
+}
+
+/** 「実施回」シートが書きかえられたら、生徒画面にすぐ反映されるよう覚えておいた一覧を捨てる */
+function onEdit(e) {
+  if (e && e.range && e.range.getSheet().getName() === OCCASION_LIST_SHEET) {
+    CacheService.getScriptCache().remove(OCCASION_CACHE_KEY);
+  }
+}
+
+/** メニュー用：「実施回」シートを開く（なければ作る） */
+function showOccasionListSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(OCCASION_LIST_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(OCCASION_LIST_SHEET);
+    sheet.getRange(1, 1, 1, 3).setValues([['実施回の名前', '受付中', 'メモ']])
+      .setFontWeight('bold').setBackground('#f0ece3');
+    sheet.getRange(2, 2, 199, 1).insertCheckboxes(); // 先にチェックボックスを入れる（入れると値が外れるため）
+    sheet.getRange(2, 1, 1, 2).setValues([['第1回 ふりかえり', true]]);
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 320);
+    sheet.setColumnWidth(3, 320);
+  }
+  sheet.activate();
+  CacheService.getScriptCache().remove(OCCASION_CACHE_KEY);
+  SpreadsheetApp.getUi().alert(
+    '「実施回」シートの使い方\n\n' +
+    '・A列に実施回の名前を書きます（例：第2回 中間発表のふりかえり）。\n' +
+    '・B列にチェックを入れた回だけが、生徒画面の選択肢に出ます。終わった回はチェックを外してください。\n' +
+    '・チェックが1つもないときは、これまでどおり生徒がタイトルを自由に入力します。\n' +
+    '・生徒画面には、開き直したときに反映されます。');
 }
 
 /**
@@ -279,26 +395,27 @@ function doGet(e) {
 }
 
 /**
- * 教師用：集約先のスプレッドシートのURLを返す（生徒用アプリから「集計シートを開く」ボタンで使用）。
- * ※このURL自体には認証情報は含まれない。実際にシートを開けるかどうかは、
- *   Googleアカウントに対するスプレッドシートの共有設定（閲覧・編集権限）で制御される。
- *   アプリ側では合言葉による簡易的なクリックガードのみを行っている。
- */
-function getSpreadsheetUrl() {
-  return SpreadsheetApp.getActiveSpreadsheet().getUrl();
-}
-
-/**
  * スプレッドシートを開いたときにメニューを追加する
  */
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('探究アセスメント')
+    .addItem('実施回を設定する', 'showOccasionListSheet')
+    .addSeparator()
     .addItem('集計レポートを更新', 'generateReport')
     .addItem('わかりやすいレポートを作成（実施回ごと）', 'showOccasionReportDialog')
     .addItem('生徒個人の成長レポートを作成', 'showPersonalGrowthDialog')
     .addItem('学年・クラスの推移レポートを作成', 'generateGradeClassTrendReport')
+    .addSeparator()
+    .addItem('版を確認', 'showAppVersion')
     .addToUi();
+}
+
+function showAppVersion() {
+  SpreadsheetApp.getUi().alert(
+    'このスプレッドシートのプログラムの版：' + APP_VERSION + '\n\n' +
+    '生徒画面のいちばん下に出る版と同じなら、貼り直しとデプロイは完了しています。\n' +
+    '違うときは「デプロイ」→「デプロイを管理」→ 鉛筆マーク →「新バージョン」→「デプロイ」を押してください。');
 }
 
 /**
@@ -344,6 +461,33 @@ function loadResponses() {
 }
 
 /**
+ * 平均の計算に使う回答を選ぶ。
+ * 5項目モード（SELECT5/COMPARE）は生徒が自分で選んだ項目だけを答えるため、平均が高めに出やすい。
+ * 全21項目モードの回答があればそれだけを使い、1件もないときだけ全回答を使う。
+ * @return {{records: Array, fullOnly: boolean, note: string}} note はレポートに書き添える説明（不要なら空文字）
+ */
+function selectRecordsForAggregate(records) {
+  const full = records.filter(r => r.mode === 'ALL');
+  if (full.length > 0) {
+    const excluded = records.length - full.length;
+    return {
+      records: full,
+      fullOnly: true,
+      note: excluded > 0
+        ? `※「全21項目」モードの回答だけで集計しています（5項目モードの回答${excluded}件は、生徒が自分で選んだ項目だけのため平均に含めていません）。`
+        : ''
+    };
+  }
+  return {
+    records: records,
+    fullOnly: false,
+    note: records.length > 0
+      ? '※「全21項目」モードの回答がないため、5項目モードの回答で集計しています。5項目は生徒が自分で選んでいるため、平均は高めに出やすい点にご注意ください。'
+      : ''
+  };
+}
+
+/**
  * メニュー実行用：「クラス集計」「個人推移」の2シートを最新データで再生成する
  */
 function generateReport() {
@@ -354,15 +498,20 @@ function generateReport() {
     return;
   }
 
-  buildClassSummarySheet(records);
-  buildTrendSheet(records);
-  ui.alert(`集計レポートを更新しました（対象: ${records.length}件の回答）。\n「${CLASS_SUMMARY_SHEET}」「${TREND_SHEET}」の各シートをご確認ください。`);
+  const target = selectRecordsForAggregate(records);
+  buildClassSummarySheet(target.records, target.note);
+  buildTrendSheet(records); // 個人推移は1回答1行の一覧なので、モード列つきで全回答を並べる
+  ui.alert(`集計レポートを更新しました（クラス集計の対象: ${target.records.length}件／全回答: ${records.length}件）。\n` +
+    (target.note ? target.note + '\n' : '') +
+    `「${CLASS_SUMMARY_SHEET}」「${TREND_SHEET}」の各シートをご確認ください。`);
 }
 
 /**
  * 学校全体／学年別／クラス別の項目別平均を「クラス集計」シートに書き出す
+ * @param {Array} records 集計に使う回答（selectRecordsForAggregate で選んだもの）
+ * @param {string} [note] 表の下に書き添える説明
  */
-function buildClassSummarySheet(records) {
+function buildClassSummarySheet(records, note) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(CLASS_SUMMARY_SHEET);
   if (sheet) {
@@ -451,12 +600,8 @@ sortedGrades.forEach(g => {
   sheet.getRange(1, 1, rows.length, header.length).setValues(rows);
   sheet.getRange(1, 1, 1, header.length).setFontWeight('bold').setBackground('#f0ece3');
 
-  // 回答数をセルのメモ（ホバーで表示）として設定
-  notesRows.forEach((noteRow, i) => {
-    noteRow.forEach((note, j) => {
-      if (note) sheet.getRange(2 + i, 1 + j, 1, 1).setNote(note);
-    });
-  });
+  // 回答数をセルのメモ（ホバーで表示）として、まとめて1回で設定する（クラスが多くても速く終わるように）
+  sheet.getRange(2, 1, notesRows.length, header.length).setNotes(notesRows);
 
   const scoreRange = sheet.getRange(2, 3, COMPETENCIES.length, groups.length);
   scoreRange.setNumberFormat('0.00');
@@ -475,8 +620,12 @@ sortedGrades.forEach(g => {
   sheet.setFrozenColumns(2);
   autoFitTableColumns(sheet, 1, header.length, 260);
 
+  if (note) {
+    sheet.getRange(rows.length + 2, 1).setValue(note).setFontColor('#a8402c').setFontWeight('bold');
+  }
+
   // ── カテゴリー別平均比較グラフ（学校全体／学年／クラスをまとめて比較）──
-  const chartStartRow = rows.length + 3;
+  const chartStartRow = rows.length + 4;
   sheet.getRange(chartStartRow, 1).setValue('カテゴリー別 平均レベル比較（グラフ用データ）').setFontWeight('bold');
   const catHeader = ['グループ', CATEGORY_LABEL.Thinking, CATEGORY_LABEL.Communication, CATEGORY_LABEL.Leadership];
   const catRows = [catHeader];
@@ -585,17 +734,18 @@ function buildTrendSheet(records) {
  *  3. さらに、タイトルに頼らず「実施日」を基準に選ぶ方法も用意した（本セクション）。
  *     近い日付（3日以内）は自動的にひとまとまりで提示され、離れた日付も
  *     チェックボックスで自由に組み合わせて1つのレポートに集計できる。
- * これでも解決しない場合の根本対策として、生徒側アプリのタイトル欄を自由入力ではなく、
- * 教師があらかじめ用意した「実施回」選択式（プルダウン）に変更することも可能（別途ご相談ください）。
+ * 根本対策として、「実施回」シートに実施回を登録すると、生徒はタイトルを入力せずに一覧から選ぶ
+ * （showOccasionListSheet / getOpenOccasions）。表記ゆれが起きるのは、登録前の回答と自由入力の回答だけになる。
  * ===================================================================== */
 
 const OCCASION_SHEET_PREFIX = 'レポート_';
 
 /**
- * タイトル文字列を正規化する（全角/半角スペースの統一・前後の空白除去）
+ * タイトル文字列を正規化する（全角英数字→半角、全角/半角スペースの統一、前後の空白除去）
+ * 例: '第１回　ふりかえり ' → '第1回 ふりかえり'
  */
 function normalizeTitle(title) {
-  const cleaned = String(title || '').replace(/[　\s]+/g, ' ').trim();
+  const cleaned = String(title || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
   return cleaned || '（タイトル未設定）';
 }
 
@@ -623,9 +773,11 @@ function levenshteinDistance(a, b) {
 /**
  * 正規化済みタイトルの一覧を、表記ゆれの可能性がある者同士でグルーピングする
  * @param {Array<{title:string, count:number}>} list
+ * @param {Set<string>} [keepApart] 「実施回」シートに登録済みの名前。登録済みの名前どうしは
+ *        （「第1回」と「第2回」のように似ていても）別の回なので、同じグループにしない
  * @return {Array<{variants: Array<{title:string, count:number}>, totalCount: number}>}
  */
-function clusterTitles(list) {
+function clusterTitles(list, keepApart) {
   const items = list.slice().sort((a, b) => b.count - a.count);
   const used = new Array(items.length).fill(false);
   const clusters = [];
@@ -637,6 +789,7 @@ function clusterTitles(list) {
     for (let j = i + 1; j < items.length; j++) {
       if (used[j]) continue;
       const a = items[i].title, b = items[j].title;
+      if (keepApart && keepApart.has(a) && keepApart.has(b)) continue;
       const dist = levenshteinDistance(a, b);
       const threshold = Math.max(2, Math.floor(Math.max(a.length, b.length) * 0.2));
       if (dist > 0 && dist <= threshold) {
@@ -664,7 +817,7 @@ function getDistinctTitlesForDialog() {
     counts[t] = (counts[t] || 0) + 1;
   });
   const list = Object.keys(counts).map(t => ({ title: t, count: counts[t] }));
-  return clusterTitles(list);
+  return clusterTitles(list, new Set(getRegisteredOccasionNames()));
 }
 
 /**
@@ -960,8 +1113,8 @@ function generateOccasionReport(criteria, reportName) {
     throw new Error('対象の実施回が選択されていません。');
   }
 
-  const allRecords = loadResponses();
-  const records = allRecords.filter(r => {
+  const loadedRecords = loadResponses();
+  const occasionRecords = loadedRecords.filter(r => {
     if (mode === 'date') {
       const key = toDateKey(r.date);
       return key !== null && targetValues.indexOf(key) !== -1;
@@ -969,9 +1122,14 @@ function generateOccasionReport(criteria, reportName) {
     return targetValues.indexOf(normalizeTitle(r.title)) !== -1;
   });
 
-  if (records.length === 0) {
+  if (occasionRecords.length === 0) {
     throw new Error('選択した実施回のデータが見つかりませんでした。');
   }
+
+  // 今回分も、比べる相手の「全期間平均」も、同じモードの回答どうしで計算する
+  const target = selectRecordsForAggregate(occasionRecords);
+  const records = target.records;
+  const allRecords = target.fullOnly ? loadedRecords.filter(r => r.mode === 'ALL') : loadedRecords;
 
   const displayTitle = (reportName || targetValues[0]).trim() || targetValues[0];
 
@@ -1102,6 +1260,7 @@ function generateOccasionReport(criteria, reportName) {
         : `（表記ゆれの可能性がある${targetValues.length}種類のタイトルをまとめて集計しています）`
     );
   }
+  if (target.note) summarySentences.push(target.note);
   summarySentences.push('一人ひとりの成長のペースは様々です。この結果を、次の探究活動に向けた生徒との対話のきっかけとしてご活用ください。');
 
   // ── シート作成 ──
@@ -1364,15 +1523,14 @@ function generatePersonalGrowthReport(studentNumber) {
     throw new Error('生徒が選択されていません。');
   }
 
-  const allRecords = loadResponses();
-  const records = allRecords
-    .filter(r => r.studentNumber === target)
-    .slice()
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  if (records.length === 0) {
+  const studentRecords = loadResponses().filter(r => r.studentNumber === target);
+  if (studentRecords.length === 0) {
     throw new Error('対象の生徒の記録が見つかりませんでした。');
   }
+
+  // 5項目モードは回ごとに項目が違うため、推移は全21項目の記録どうしで比べる
+  const selection = selectRecordsForAggregate(studentRecords);
+  const records = selection.records.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
 
   const studentName = records[records.length - 1].studentName || '';
 
@@ -1427,6 +1585,7 @@ function generatePersonalGrowthReport(studentNumber) {
       }
     }
   }
+  if (selection.note) summarySentences.push(selection.note);
   summarySentences.push('数値の変化だけでなく、本人がどんな経験を通じてそう感じるようになったのか、対話のきっかけとしてこのレポートをご活用ください。');
 
   // ── シート作成 ──
@@ -1579,35 +1738,45 @@ const TREND_REPORT_SHEET = '推移レポート（学年・クラス）';
  * （実施回の選択ダイアログ等は挟まず、蓄積された全データを対象に一括生成する）
  */
 function generateGradeClassTrendReport() {
-  const records = loadResponses();
+  const loadedRecords = loadResponses();
   const ui = SpreadsheetApp.getUi();
-  if (records.length === 0) {
+  if (loadedRecords.length === 0) {
     ui.alert('集計対象のデータがまだありません。「回答」シートにデータが蓄積されてから再実行してください。');
     return;
   }
 
-  // ── 実施回（タイトル）ごとにグループ化し、表記ゆれのあるタイトル同士は自動で統合する ──
+  // どの実施回も同じモードの回答どうしで比べる（回によって5項目モードが混ざると線が上下してしまうため）
+  const selection = selectRecordsForAggregate(loadedRecords);
+  const records = selection.records;
+
+  // ── 実施回（タイトル）ごとにグループ化する ──
+  // 似たタイトルの自動統合はしない（「第1回」と「第2回」のように1文字違いの別の回が
+  // 1つにまとめられてしまうため）。表記ゆれは「回答」シートのタイトルを直してそろえる。
   const byTitle = {};
   records.forEach(r => {
     const t = normalizeTitle(r.title);
     if (!byTitle[t]) byTitle[t] = [];
     byTitle[t].push(r);
   });
-  const titleList = Object.keys(byTitle).map(t => ({ title: t, count: byTitle[t].length }));
-  const clusters = clusterTitles(titleList);
 
-  const occasions = clusters.map(cluster => {
-    let occRecords = [];
-    cluster.variants.forEach(v => { occRecords = occRecords.concat(byTitle[v.title]); });
+  const occasions = Object.keys(byTitle).map(title => {
+    const occRecords = byTitle[title];
     const times = occRecords.map(r => new Date(r.date).getTime()).filter(t => !isNaN(t));
     const avgTime = times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0;
-    return { label: cluster.variants[0].title, records: occRecords, sortKey: avgTime };
+    return { label: title, records: occRecords, sortKey: avgTime };
   }).sort((a, b) => a.sortKey - b.sortKey);
 
   if (occasions.length < 2) {
     ui.alert('実施回が1回分しかないため、推移グラフを作成するには少なくとも2回分の異なる実施回のデータが必要です。');
     return;
   }
+
+  // 表記ゆれの可能性がある実施回の組（お知らせするだけで、まとめはしない）。
+  // 「実施回」シートに登録した名前どうし（第1回と第2回など）は別の回なので知らせない
+  const similarPairs = clusterTitles(occasions.map(o => ({ title: o.label, count: o.records.length })),
+    new Set(getRegisteredOccasionNames()))
+    .filter(c => c.variants.length > 1)
+    .map(c => c.variants.map(v => `「${v.title}」`).join(' と '));
 
   // ── 学年・クラスのグループを洗い出す ──
   const grades = new Set();
@@ -1683,6 +1852,9 @@ const gradeGroups = schoolGroups.concat(sortedGrades.map(g => ({ grade: g, label
     .setFontSize(18).setFontWeight('bold').setFontColor('#2a2420');
   sheet.getRange('A2').setValue(`対象実施回数: ${occasions.length}回　／　作成日: ${Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy年M月d日')}`)
     .setFontSize(10).setFontColor('#7a6f5c');
+  if (selection.note) {
+    sheet.getRange('A3').setValue(selection.note).setFontSize(10).setFontColor('#a8402c').setFontWeight('bold');
+  }
 
   // 学年別データ＋折れ線グラフ
   const gradeDataRow = 4;
@@ -1737,5 +1909,8 @@ const gradeGroups = schoolGroups.concat(sortedGrades.map(g => ({ grade: g, label
   sheet.setFrozenRows(1);
   sheet.activate();
 
-  ui.alert(`推移レポートを作成しました（対象実施回: ${occasions.length}回、学年数: ${gradeGroups.length}、クラス数: ${classGroups.length}）。\n「${TREND_REPORT_SHEET}」シートをご確認ください。`);
+  ui.alert(`推移レポートを作成しました（対象実施回: ${occasions.length}回、学年数: ${gradeGroups.length}、クラス数: ${classGroups.length}）。\n「${TREND_REPORT_SHEET}」シートをご確認ください。` +
+    (similarPairs.length
+      ? `\n\n次の実施回は名前が似ています。同じ回なら「回答」シートのタイトル（E列）を同じ名前に直してから、もう一度作成してください。\n・${similarPairs.join('\n・')}`
+      : ''));
 }

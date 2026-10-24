@@ -6,8 +6,8 @@
   <title>探究的な学びを通じて身に付けたい資質・能力21 ふりかえりアプリ（総合的な探究の時間）</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Chart.js CDN（バージョン固定。固定しないと、新しい版が出たときに突然グラフが崩れることがある） -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
   <!-- Lucide Icons（バージョン固定・確実な読み込みのためonload付き） -->
   <script src="https://unpkg.com/lucide@0.383.0/dist/umd/lucide.min.js" onload="if(typeof lucide!=='undefined')lucide.createIcons();"></script>
   <!-- html2canvas: 画面のスクリーンショットをcanvasに変換 -->
@@ -99,10 +99,6 @@
           <i data-lucide="history" class="w-4 h-4"></i>
           <span class="text-[9px] leading-none whitespace-nowrap">過去の記録</span>
         </button>
-        <button onclick="openTeacherSheet()" id="btn-open-sheet" class="hidden flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition min-w-[48px]" title="先生用：集計シートを開く（合言葉が必要です）">
-          <i data-lucide="table-2" class="w-4 h-4"></i>
-          <span class="text-[9px] leading-none whitespace-nowrap">先生用</span>
-        </button>
       </div>
     </div>
   </header>
@@ -177,7 +173,16 @@
               </div>
             </div>
           </div>
-          <div>
+          <!-- 先生が「実施回」シートに実施回を登録しているときは一覧から選ぶ（集計で回がばらばらにならないように） -->
+          <div id="occasion-select-wrap" class="hidden">
+            <label for="assessment-occasion" class="block text-xs font-bold text-slate-500 mb-1">
+              今回のふりかえり（実施回） <span class="text-rose-500">*</span>
+            </label>
+            <select id="assessment-occasion" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base bg-white">
+              <option value="">選んでください</option>
+            </select>
+          </div>
+          <div id="title-input-wrap">
             <label class="block text-xs font-bold text-slate-500 mb-1">探究テーマ / アセスメントタイトル</label>
             <input type="text" id="assessment-title" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base" placeholder="例: 後期探究プロジェクト（観光と地域活性化）の振り返り">
           </div>
@@ -272,8 +277,8 @@
             <i data-lucide="message-square-quote" class="w-5 h-5 text-indigo-600"></i>
             探究学習全体の振り返り記述・自由メモ
           </h3>
-          <p class="text-xs text-slate-500 mb-3">今回の探究活動で一番成長を感じたこと、直面した困難と乗り越え方、次の探究で意識したいことを記入してください。（入力文は表現のブラッシュアップが自動で行われます）</p>
-          <textarea id="reflection-text" rows="4" class="w-full p-4 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-medium text-base leading-relaxed" placeholder="例: アンケート調査の分析ですごく多角的な視点が身についたとおもう。だけど発表の時に表現力がたりなくて上手く伝わらなかった。次は図解をふやして頑張りたい。"></textarea>
+          <p class="text-xs text-slate-500 mb-3">今回の探究活動で一番成長を感じたこと、直面した困難と乗り越え方、次の探究で意識したいことを、自分の言葉で記入してください。</p>
+          <textarea id="reflection-text" rows="4" class="w-full p-4 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-medium text-base leading-relaxed" placeholder="例: アンケート調査の分析で、いろいろな立場から考える視点が身についたと思う。でも発表の時はうまく伝わらなかったので、次は図解を増やしてみたい。"></textarea>
         </div>
 
         <!-- Submit & Back Action Buttons -->
@@ -512,7 +517,6 @@
           <h4 class="report-serif font-bold text-[#2a2420] text-xl">ふりかえり記述</h4>
 
           <div class="border border-[#e6dfd0] p-6 sm:p-7 relative">
-            <div class="text-xs font-bold text-[#a8402c] mb-3">整文・ブラッシュアップ後の文章</div>
             <p id="result-reflection-refined" class="report-serif text-[#2a2420] text-lg md:text-xl whitespace-pre-wrap leading-relaxed">（入力されていません）</p>
           </div>
         </div>
@@ -581,31 +585,6 @@
       </div>
     </div>
 
-    <!-- 先生用：集計シートを開くための合言葉入力モーダル -->
-    <div id="teacher-password-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div class="bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-sm w-full space-y-4">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-            <i data-lucide="lock" class="w-5 h-5 text-indigo-600"></i>
-          </div>
-          <div>
-            <h3 class="font-extrabold text-slate-800 text-base">先生用機能</h3>
-            <p class="text-xs text-slate-500 mt-0.5">合言葉を入力してください</p>
-          </div>
-        </div>
-        <input type="password" id="teacher-password-input" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base" placeholder="合言葉" autocomplete="off" onkeydown="if(event.key==='Enter')confirmTeacherPassword()">
-        <p id="teacher-password-error" class="hidden text-xs font-bold text-rose-600">合言葉が違います。もう一度お試しください。</p>
-        <div class="flex gap-3 pt-1">
-          <button onclick="cancelTeacherPassword()" class="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition">
-            キャンセル
-          </button>
-          <button onclick="confirmTeacherPassword()" class="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition">
-            開く
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- 削除確認モーダル -->
     <div id="delete-confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
       <div class="bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-sm w-full space-y-4">
@@ -632,7 +611,12 @@
 
   </main>
 
+  <footer class="max-w-5xl mx-auto px-4 mt-8 text-right text-[10px] text-slate-400">版 <span id="app-version"></span></footer>
+
   <script>
+    // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
+    const APP_VERSION = '2026-10-24';
+
     // Category metadata configuration
     const CATEGORY_CONFIG = {
       Thinking: {
@@ -1365,6 +1349,11 @@ const COMPETENCY_SHORT_DESC = {
         return;
       }
 
+      if (isOccasionSelectActive() && !document.getElementById('assessment-occasion').value) {
+        showError('今回のふりかえり（実施回）を選んでください。', 'assessment-occasion');
+        return;
+      }
+
       if (currentMode === 'SELECT5' && selected5Ids.length !== 5) {
         showError('ふりかえる資質・能力をちょうど5つ選択してください。');
         return;
@@ -1445,7 +1434,7 @@ const COMPETENCY_SHORT_DESC = {
       selected5Ids   = [];
 
       // フォームを空に
-      ['student-number','student-name','assessment-title','reflection-text'].forEach(id => {
+      ['student-number','student-name','assessment-title','assessment-occasion','reflection-text'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
@@ -1463,84 +1452,47 @@ const COMPETENCY_SHORT_DESC = {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    // ===== 先生用：集計スプレッドシートを開く機能 =====
-    // 合言葉（簡易的なクリックガード。正式なアクセス制御はスプレッドシート側の共有設定で行われる）
-    const TEACHER_SHEET_PASSWORD = 'nishikihs';
-    let teacherSheetUrl = '';
-
-    // Webアプリとして動作している場合のみ、起動時にスプレッドシートURLを取得してボタンを表示する
-    function initTeacherSheetButton() {
-      const btn = document.getElementById('btn-open-sheet');
-      if (!btn) return;
+    // ===== 実施回の選択 =====
+    // 先生が「実施回」シートで受付中にした回があれば、タイトルの自由入力の代わりに一覧から選ばせる
+    function initOccasionSelect() {
       if (typeof google === 'undefined' || !google.script || !google.script.run) return;
-
       google.script.run
-        .withSuccessHandler((url) => {
-          teacherSheetUrl = url || '';
-          if (teacherSheetUrl) {
-            btn.classList.remove('hidden');
-            btn.classList.add('flex');
-          }
+        .withSuccessHandler((names) => {
+          if (!names || names.length === 0) return; // 登録がなければ自由入力のまま
+          const select = document.getElementById('assessment-occasion');
+          names.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+          });
+          if (names.length === 1) select.value = names[0];
+          document.getElementById('occasion-select-wrap').classList.remove('hidden');
+          document.getElementById('title-input-wrap').classList.add('hidden');
         })
         .withFailureHandler((err) => {
-          console.error('スプレッドシートURLの取得に失敗しました:', err);
+          console.error('実施回の読み込みに失敗しました（自由入力で続けます）:', err);
         })
-        .getSpreadsheetUrl();
+        .getOpenOccasions();
     }
 
-    function openTeacherSheet() {
-      const modal = document.getElementById('teacher-password-modal');
-      const input = document.getElementById('teacher-password-input');
-      const errorEl = document.getElementById('teacher-password-error');
-      if (!modal) return;
-      if (errorEl) errorEl.classList.add('hidden');
-      if (input) input.value = '';
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-      lucide.createIcons();
-      if (input) setTimeout(() => input.focus(), 50);
+    function isOccasionSelectActive() {
+      return !document.getElementById('occasion-select-wrap').classList.contains('hidden');
     }
 
-    function cancelTeacherPassword() {
-      const modal = document.getElementById('teacher-password-modal');
-      if (modal) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
+    function getAssessmentTitle(fallback) {
+      if (isOccasionSelectActive()) {
+        return document.getElementById('assessment-occasion').value || fallback;
       }
+      return document.getElementById('assessment-title').value.trim() || fallback;
     }
 
-    function confirmTeacherPassword() {
-      const input = document.getElementById('teacher-password-input');
-      const errorEl = document.getElementById('teacher-password-error');
-      const entered = input ? input.value : '';
-
-      if (entered !== TEACHER_SHEET_PASSWORD) {
-        if (errorEl) errorEl.classList.remove('hidden');
-        if (input) { input.value = ''; input.focus(); }
-        return;
-      }
-
-      cancelTeacherPassword();
-
-      if (teacherSheetUrl) {
-        window.open(teacherSheetUrl, '_blank');
-      } else {
-        alert('スプレッドシートのURLを取得できませんでした。ページを再読み込みしてから、もう一度お試しください。');
-      }
-    }
-
-    // Helper: proofreading function
+    // ふりかえり記述の整形：前後の空白を取り、文末に句点がなければ付けるだけにする
+    // （以前は「頑張りたい→臨みたい」などの言いかえもしていたが、生徒の言葉の意味が変わるためやめた）
     function proofreadText(text) {
       if (!text || text.trim() === '') return '';
       let res = text.trim();
-      res = res.replace(/すごく/g, '非常に');
-      res = res.replace(/だけど/g, 'ですが');
-      res = res.replace(/とおもう/g, 'と考える');
-      res = res.replace(/おもう/g, '考える');
-      res = res.replace(/ふやして/g, '増やして');
-      res = res.replace(/たりなくて/g, '足らず');
-      res = res.replace(/頑張りたい/g, '臨みたい');
-      if (!/[。！？!?]$/.test(res)) res += '。';
+      if (!/[。！？!?」』）)]$/.test(res)) res += '。';
       return res;
     }
 
@@ -2028,7 +1980,7 @@ const COMPETENCY_SHORT_DESC = {
       const targetList    = COMPETENCIES.filter(c => selected5Ids.includes(c.id));
       const studentNumber = document.getElementById('student-number').value.trim();
       const studentName   = document.getElementById('student-name').value.trim();
-      const title         = document.getElementById('assessment-title').value.trim() || '自己×他己比較アセスメント';
+      const title         = getAssessmentTitle('自己×他己比較アセスメント');
       const reflection    = document.getElementById('reflection-text').value.trim();
 
       // 平均スコアを計算
@@ -2069,7 +2021,7 @@ const COMPETENCY_SHORT_DESC = {
     function saveAssessment() {
       const studentNumber = document.getElementById('student-number').value.trim();
       const studentName = document.getElementById('student-name').value.trim();
-      const title = document.getElementById('assessment-title').value.trim() || '探究アセスメント振り返り';
+      const title = getAssessmentTitle('探究アセスメント振り返り');
       const reflection = document.getElementById('reflection-text').value.trim();
 
       const targetList = currentMode === 'ALL'
@@ -2600,7 +2552,6 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
             const refBox = document.createElement('div');
             refBox.style.cssText = 'border:1px solid #e6dfd0;padding:8px 12px;background:#fdfbf6;';
             refBox.innerHTML = `
-              <div style="font-size:7.5px;font-weight:700;color:#a8402c;margin-bottom:4px;">整文・ブラッシュアップ後の文章</div>
               <div style="font-family:'Shippori Mincho B1',serif;font-size:${reflectionForPdf.fontSize}px;color:#2a2420;line-height:1.6;white-space:pre-wrap;">${escapeHtml(reflectionForPdf.text)}</div>
             `;
             refSec.appendChild(refBox);
@@ -2658,7 +2609,6 @@ if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
             const refBox = document.createElement('div');
             refBox.style.cssText = 'border:1px solid #e6dfd0;padding:7px 10px;background:#fdfbf6;';
             refBox.innerHTML = `
-              <div style="font-size:7px;font-weight:700;color:#a8402c;margin-bottom:3px;">整文・ブラッシュアップ後の文章</div>
               <div style="font-family:'Shippori Mincho B1',serif;font-size:9.5px;color:#2a2420;line-height:1.65;white-space:pre-wrap;">${escapeHtml(reflectionText)}</div>
             `;
             refSec.appendChild(refBox);
@@ -3516,6 +3466,29 @@ function fmtGrowthDate(iso, withYear) {
     withYear ? { year: 'numeric', month: 'numeric', day: 'numeric' } : { month: 'numeric', day: 'numeric' });
 }
 
+// 先生のシートに保存されている、自分のアカウントから送った記録（null＝まだ読み込んでいない）
+let serverHistory = null;
+let serverHistoryLoading = false;
+
+function loadServerHistory(onLoaded) {
+  if (serverHistory !== null || serverHistoryLoading) return;
+  if (typeof google === 'undefined' || !google.script || !google.script.run) return;
+  serverHistoryLoading = true;
+  google.script.run
+    .withSuccessHandler((list) => {
+      serverHistory = Array.isArray(list) ? list : [];
+      serverHistoryLoading = false;
+      if (serverHistory.length > 0) onLoaded();
+    })
+    .withFailureHandler((err) => {
+      // 読めなくても、端末に残っている記録だけで比べる
+      console.error('シートの記録の読み込みに失敗しました:', err);
+      serverHistory = [];
+      serverHistoryLoading = false;
+    })
+    .getMyHistory();
+}
+
 function renderGrowthSection(record) {
   const section = document.getElementById('growth-section');
   if (!section) return;
@@ -3529,6 +3502,22 @@ function renderGrowthSection(record) {
 
   // 同じ出席番号の「全21項目」記録を日付順に並べ、表示中の記録までを対象にする
   const same = history.filter(r => r.mode === 'ALL' && r.studentNumber === record.studentNumber && r.id !== record.id);
+  // 先生のシートに残っている自分の記録も加える（端末を替えた・端末の保存がいっぱいで消えた記録も比べられる）。
+  // シートの記録は自分のアカウントで送ったものだけなので、進級して出席番号が変わってもつながる
+  if (serverHistory) {
+    const known = new Set(same.map(r => r.id).concat([record.id]));
+    serverHistory.forEach(r => {
+      if (r.mode === 'ALL' && !known.has(r.id)) { same.push(r); known.add(r.id); }
+    });
+  } else {
+    loadServerHistory(() => {
+      // 読み込み中に別の記録を開いていなければ、シートの記録も入れて描き直す
+      if (growthState.current && growthState.current.id === record.id &&
+          !document.getElementById('view-result').classList.contains('hidden')) {
+        renderGrowthSection(record);
+      }
+    });
+  }
   same.push(record);
   same.sort((a, b) => new Date(a.date) - new Date(b.date));
   const series = same.slice(0, same.findIndex(r => r.id === record.id) + 1);
@@ -3643,7 +3632,8 @@ function onGrowthCompareChange() {
       initCurrentDate();
       setAssessmentMode('ALL');
       updateStepIndicator(1);
-      initTeacherSheetButton();
+      initOccasionSelect();
+      document.getElementById('app-version').textContent = APP_VERSION;
       // ページ全体のLucideアイコンを初期化（ヘッダーの静的アイコンも含む）
       if (typeof lucide !== 'undefined') {
         lucide.createIcons();
