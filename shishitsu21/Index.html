@@ -1,0 +1,3654 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>探究的な学びを通じて身に付けたい資質・能力21 ふりかえりアプリ（総合的な探究の時間）</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons（バージョン固定・確実な読み込みのためonload付き） -->
+  <script src="https://unpkg.com/lucide@0.383.0/dist/umd/lucide.min.js" onload="if(typeof lucide!=='undefined')lucide.createIcons();"></script>
+  <!-- html2canvas: 画面のスクリーンショットをcanvasに変換 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- jsPDF: クライアントサイドでPDFを生成 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Shippori+Mincho+B1:wght@500;700;800&display=swap');
+    body {
+      font-family: 'Zen Maru Gothic', sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 8px;
+    }
+
+    /* === Result screen: "探究成長記録証" certificate styling === */
+    .report-serif {
+      font-family: 'Shippori Mincho B1', serif;
+    }
+    #view-result {
+      background-color: #fbf8f1;
+      background-image:
+        linear-gradient(#fbf8f1 0px, transparent 0px);
+    }
+    .report-card {
+      background-color: #fdfbf6;
+      border: 1px solid #e6dfd0;
+    }
+    .report-rule {
+      border-top: 1px solid #d8cfb8;
+    }
+    .report-rule-thick {
+      border-top: 3px double #c9bd9c;
+    }
+    .seal-badge {
+      font-family: 'Shippori Mincho B1', serif;
+      background: #a8402c;
+      color: #fdf3ea;
+      transform: rotate(-4deg);
+      box-shadow: 0 2px 0 rgba(0,0,0,0.08);
+      border: 1.5px solid rgba(253,243,234,0.5);
+    }
+    .level-dots span {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #e2dccb;
+      display: inline-block;
+    }
+    .level-dots span.filled-thinking { background: #2c5f8a; }
+    .level-dots span.filled-communication { background: #3d7a5c; }
+    .level-dots span.filled-leadership { background: #6b4c93; }
+
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 pb-12">
+
+  <!-- Header -->
+  <header class="bg-gradient-to-r from-indigo-700 via-purple-700 to-sky-600 text-white shadow-md sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex flex-row justify-between items-center gap-3">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 mb-0.5">
+          <span class="bg-white/20 text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wider whitespace-nowrap">金沢錦丘中学校・高等学校</span>
+          <span class="text-[10px] text-indigo-100 whitespace-nowrap">21の資質・能力準拠</span>
+        </div>
+        <h1 class="text-base sm:text-lg font-black flex items-start gap-1.5 leading-snug">
+          <i data-lucide="compass" class="w-5 h-5 shrink-0 mt-0.5"></i>
+          <span>探究的な学びを通じて身に付けたい資質・能力21<br>ふりかえりアプリ（総合的な探究の時間）</span>
+        </h1>
+      </div>
+      <div id="nav-buttons" class="flex gap-1.5 shrink-0">
+        <button onclick="goHomeWithConfirm()" class="flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition min-w-[48px]" title="最初の画面に戻る">
+          <i data-lucide="home" class="w-4 h-4"></i>
+          <span class="text-[9px] leading-none whitespace-nowrap">最初から</span>
+        </button>
+        <button onclick="switchTab('assess')" id="btn-assess" class="flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 bg-white text-indigo-800 font-bold rounded-xl shadow hover:bg-indigo-50 transition min-w-[56px]">
+          <i data-lucide="edit-3" class="w-4 h-4"></i>
+          <span class="text-[9px] leading-none whitespace-nowrap">ふりかえり</span>
+        </button>
+        <button onclick="switchTab('history')" id="btn-history" class="flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 bg-white/20 text-white font-bold rounded-xl hover:bg-white/30 transition min-w-[48px]">
+          <i data-lucide="history" class="w-4 h-4"></i>
+          <span class="text-[9px] leading-none whitespace-nowrap">過去の記録</span>
+        </button>
+        <button onclick="openTeacherSheet()" id="btn-open-sheet" class="hidden flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition min-w-[48px]" title="先生用：集計シートを開く（合言葉が必要です）">
+          <i data-lucide="table-2" class="w-4 h-4"></i>
+          <span class="text-[9px] leading-none whitespace-nowrap">先生用</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-5xl mx-auto px-4 mt-6">
+
+    <!-- Step Indicator Bar -->
+    <div id="step-indicator-bar" class="mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 no-print">
+      <div class="flex items-center justify-between max-w-xl mx-auto relative">
+        <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-200 -z-0"></div>
+        <div id="progress-line" class="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-indigo-600 transition-all duration-300 -z-0" style="width: 0%;"></div>
+
+        <!-- Step 1 Dot -->
+        <div class="relative z-10 flex flex-col items-center gap-1 bg-white px-2">
+          <div id="step-dot-1" class="w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-md transition-all">1</div>
+          <span id="step-label-1" class="text-xs font-black text-indigo-900">基本入力</span>
+        </div>
+
+        <!-- Step 2 Dot -->
+        <div class="relative z-10 flex flex-col items-center gap-1 bg-white px-2">
+          <div id="step-dot-2" class="w-9 h-9 rounded-full bg-slate-200 text-slate-500 font-bold text-sm flex items-center justify-center transition-all">2</div>
+          <span id="step-label-2" class="text-xs font-bold text-slate-400">評価</span>
+        </div>
+
+        <!-- Step 3 Dot -->
+        <div class="relative z-10 flex flex-col items-center gap-1 bg-white px-2">
+          <div id="step-dot-3" class="w-9 h-9 rounded-full bg-slate-200 text-slate-500 font-bold text-sm flex items-center justify-center transition-all">3</div>
+          <span id="step-label-3" class="text-xs font-bold text-slate-400">診断チャート</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 1: Assessment View -->
+    <div id="view-assess" class="space-y-6">
+
+      <!-- STEP 1 CONTAINER -->
+      <div id="assess-step-1" class="space-y-6">
+        <!-- Date, Student Info & Title Card -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
+          <h2 class="text-lg font-black text-slate-800 flex items-center gap-2 pb-3 border-b border-slate-100">
+            <i data-lucide="user-check" class="w-5 h-5 text-indigo-600"></i>
+            1. 生徒情報・基本設定の入力
+          </h2>
+
+          <!-- Error Alert Box -->
+          <div id="step1-error-message" class="hidden bg-rose-50 border border-rose-200 text-rose-700 p-3.5 rounded-xl text-xs font-bold items-center gap-2">
+            <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 text-rose-500"></i>
+            <span id="step1-error-text"></span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1">
+                出席番号 (半角英数字4文字) <span class="text-rose-500">*</span>
+              </label>
+              <input type="text" id="student-number" maxlength="4" inputmode="text" autocapitalize="characters" autocomplete="off" oninput="this.value=this.value.toUpperCase()" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base" placeholder="例: 1215 / 1B15">
+              <span class="text-[10px] text-slate-400 font-medium">※半角4文字（高校: 1年2組15番→1215／中学: 1年B組15番→1B15）</span>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1">
+                氏名 (姓と名の間に全角スペース) <span class="text-rose-500">*</span>
+              </label>
+              <input type="text" id="student-name" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base" placeholder="例: 錦丘　太郎">
+              <span class="text-[10px] text-slate-400 font-medium">※姓と名の間に全角スペースを入れてください（例: 錦丘　太郎）</span>
+            </div>
+            <div class="flex flex-col justify-start">
+              <label class="block text-xs font-bold text-slate-500 mb-1">実施日</label>
+              <div class="flex items-center gap-2 text-sm text-slate-600 bg-slate-100 px-4 py-2.5 rounded-xl font-bold justify-center h-[44px]">
+                <i data-lucide="calendar" class="w-4 h-4 text-indigo-600"></i>
+                <span id="current-date-display"></span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">探究テーマ / アセスメントタイトル</label>
+            <input type="text" id="assessment-title" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base" placeholder="例: 後期探究プロジェクト（観光と地域活性化）の振り返り">
+          </div>
+        </div>
+
+        <!-- Mode Selection Card -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+          <h2 class="text-lg font-black text-slate-800 flex items-center gap-2 pb-3 border-b border-slate-100 mb-4">
+            <i data-lucide="sliders" class="w-5 h-5 text-indigo-600"></i>
+            2. ふりかえりモードの選択
+          </h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <button type="button" onclick="setAssessmentMode('ALL')" id="mode-btn-all" class="flex items-center gap-3 p-4 rounded-xl border-2 border-indigo-600 bg-indigo-50/50 text-indigo-900 font-bold transition text-left">
+              <div class="w-5 h-5 rounded-full border-2 border-indigo-600 flex items-center justify-center bg-white shrink-0">
+                <div id="mode-dot-all" class="w-2.5 h-2.5 rounded-full bg-indigo-600"></div>
+              </div>
+              <div>
+                <div class="text-sm font-extrabold">すべての資質・能力をふり返る</div>
+                <div class="text-xs text-slate-500 font-medium mt-0.5">全21項目を総合的にセルフアセスメント</div>
+              </div>
+            </button>
+            <button type="button" onclick="setAssessmentMode('SELECT5')" id="mode-btn-select5" class="flex items-center gap-3 p-4 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-bold hover:bg-slate-50 transition text-left">
+              <div class="w-5 h-5 rounded-full border-2 border-slate-300 flex items-center justify-center bg-white shrink-0">
+                <div id="mode-dot-select5" class="w-2.5 h-2.5 rounded-full bg-indigo-600 hidden"></div>
+              </div>
+              <div>
+                <div class="text-sm font-extrabold">自分で選択する5つの資質・能力をふり返る</div>
+                <div class="text-xs text-slate-500 font-medium mt-0.5">今回特に意識した・成長を感じた5項目を重点的にふりかえり</div>
+              </div>
+            </button>
+            <button type="button" onclick="setAssessmentMode('COMPARE')" id="mode-btn-compare" class="flex items-center gap-3 p-4 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-bold hover:bg-slate-50 transition text-left">
+              <div class="w-5 h-5 rounded-full border-2 border-slate-300 flex items-center justify-center bg-white shrink-0">
+                <div id="mode-dot-compare" class="w-2.5 h-2.5 rounded-full bg-teal-600 hidden"></div>
+              </div>
+              <div>
+                <div class="text-sm font-extrabold">自己×他己比較でふり返る</div>
+                <div class="text-xs text-slate-500 font-medium mt-0.5">5項目を自己評価→友人が他己評価→ギャップを可視化</div>
+              </div>
+            </button>
+          </div>
+
+          <!-- 5 items selection panel (Visible when SELECT5 mode is active) -->
+          <div id="select5-panel" class="hidden mt-4 pt-4 border-t border-slate-100">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <span class="text-xs font-bold text-indigo-900 flex items-center gap-1">
+                <i data-lucide="check-square" class="w-4 h-4 text-indigo-600"></i>
+                ふりかえる資質・能力を5つ選んでください（タップで選択・解除／最大5つまで）
+              </span>
+              <span id="select5-count-badge" class="text-xs font-black px-3 py-1 rounded-full bg-indigo-100 text-indigo-800">
+                選択中: <span id="select5-count">0</span> / 5
+              </span>
+            </div>
+            <div id="select5-limit-warning" class="hidden mb-3 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 items-center gap-1.5">
+              <i data-lucide="alert-circle" class="w-3.5 h-3.5 shrink-0"></i>
+              すでに5つ選択されています。追加するには、先にどれか1つの選択を解除してください。
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-72 overflow-y-auto p-2 border border-slate-200 rounded-xl bg-slate-50/50 custom-scrollbar" id="select5-grid">
+              <!-- Populated dynamically by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Next Step Button -->
+        <div class="text-center pt-2">
+          <button onclick="goToStep2()" class="px-8 py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white font-extrabold text-lg rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99] transition flex items-center gap-2 mx-auto">
+            次へ進む（評価入力へ） <i data-lucide="arrow-right" class="w-6 h-6"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2 CONTAINER -->
+      <div id="assess-step-2" class="hidden space-y-6">
+        <!-- Back Button & Header Summary -->
+        <div class="bg-indigo-900 text-white p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <span class="text-xs font-bold text-indigo-200 bg-white/20 px-2.5 py-0.5 rounded-full" id="step2-info-badge"></span>
+            <h2 class="text-xl font-black mt-1">資質・能力のセルフアセスメント</h2>
+          </div>
+          <button onclick="goToStep1()" class="text-xs font-bold bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-xl transition flex items-center gap-1">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i> 基本設定に戻る
+          </button>
+        </div>
+
+        <!-- Assessment Form / Competency Cards Container -->
+        <div class="space-y-6" id="competency-cards-container">
+          <!-- Cards inserted dynamically by JS -->
+        </div>
+
+        <!-- Overall Reflection Comments -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+          <h3 class="font-bold text-lg text-slate-800 flex items-center gap-2 mb-2">
+            <i data-lucide="message-square-quote" class="w-5 h-5 text-indigo-600"></i>
+            探究学習全体の振り返り記述・自由メモ
+          </h3>
+          <p class="text-xs text-slate-500 mb-3">今回の探究活動で一番成長を感じたこと、直面した困難と乗り越え方、次の探究で意識したいことを記入してください。（入力文は表現のブラッシュアップが自動で行われます）</p>
+          <textarea id="reflection-text" rows="4" class="w-full p-4 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 font-medium text-base leading-relaxed" placeholder="例: アンケート調査の分析ですごく多角的な視点が身についたとおもう。だけど発表の時に表現力がたりなくて上手く伝わらなかった。次は図解をふやして頑張りたい。"></textarea>
+        </div>
+
+        <!-- Submit & Back Action Buttons -->
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+          <button onclick="goToStep1()" class="w-full sm:w-auto px-6 py-3.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold text-base rounded-2xl transition flex items-center justify-center gap-2">
+            <i data-lucide="arrow-left" class="w-5 h-5"></i> 戻る
+          </button>
+          <button onclick="handleStep2Submit()" id="btn-step2-submit" class="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white font-extrabold text-lg rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99] transition flex items-center justify-center gap-2">
+            <i data-lucide="check-circle-2" class="w-6 h-6"></i> <span id="btn-step2-label">評価結果を保存して診断チャートを表示する</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2b: 他己評価フェーズ（COMPAREモードのみ表示） -->
+      <div id="assess-step-2b" class="hidden space-y-6">
+
+        <!-- 友人評価フォームエリア（id="peer-eval-form"） -->
+        <div id="peer-eval-form" class="space-y-6">
+          <!-- ヘッダー -->
+          <div class="bg-teal-900 text-white p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <span class="text-xs font-bold text-teal-200 bg-white/20 px-2.5 py-0.5 rounded-full" id="step2b-info-badge"></span>
+              <h2 class="text-xl font-black mt-1" id="step2b-title">友人による他己評価</h2>
+              <p class="text-xs text-teal-200 mt-1">友人が同じ5項目を評価します。<strong>本人は画面を見ないようにしてください。</strong></p>
+            </div>
+            <button onclick="backToSelfEval()" class="text-xs font-bold bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-xl transition flex items-center gap-1 shrink-0">
+              <i data-lucide="arrow-left" class="w-4 h-4"></i> 自己評価に戻る
+            </button>
+          </div>
+
+          <!-- 進捗インジケーター -->
+          <div class="bg-white p-4 rounded-2xl shadow-sm border border-teal-200/60">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-teal-800">評価者の進捗</span>
+              <span class="text-xs font-black text-teal-800"><span id="peer-current-num">1</span> / <span id="peer-total-num">1</span> 人目</span>
+            </div>
+            <div class="flex gap-1.5" id="peer-progress-dots"></div>
+          </div>
+
+          <!-- 友人名入力 -->
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-teal-200/60">
+            <label class="block text-xs font-bold text-slate-500 mb-1">あなたの名前（任意）</label>
+            <input type="text" id="peer-name" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold text-slate-800 text-base" placeholder="例: 田中さん">
+            <label class="block text-xs font-bold text-slate-500 mb-1 mt-3">ひとことメッセージ（任意）</label>
+            <textarea id="peer-message" rows="2" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium text-slate-800 text-sm" placeholder="例: いつも粘り強く調べていてすごいと思いました。"></textarea>
+          </div>
+
+          <!-- 他己評価カード -->
+          <div class="space-y-6" id="peer-cards-container"></div>
+
+          <!-- 友人が押すボタン：評価を保存する（1つだけ・シンプル） -->
+          <div id="peer-action-buttons" class="flex justify-center pt-1">
+            <button onclick="savePeerAndNext()" class="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-extrabold text-lg rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99] transition flex items-center justify-center gap-2">
+              <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+              <span id="btn-next-peer-label">評価を保存する</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 本人返却画面（id="peer-handoff-screen"、引き継ぎ後に表示） -->
+        <div id="peer-handoff-screen" class="hidden space-y-6">
+          <!-- 友人向け完了メッセージ -->
+          <div class="bg-teal-900 text-white rounded-2xl p-8 text-center space-y-4 shadow-xl">
+            <div class="text-5xl">✅</div>
+            <div>
+              <div class="text-2xl font-black" id="handoff-completed-text">全員の評価が完了しました</div>
+              <div class="text-teal-200 text-sm font-bold mt-1">ありがとうございました！</div>
+            </div>
+            <div class="bg-white/10 rounded-xl p-4 text-left space-y-1.5">
+              <div class="text-xs font-black text-yellow-300 tracking-wider">📱 本人への引き継ぎ</div>
+              <div class="text-base font-extrabold">端末を <span class="text-yellow-300">本人</span> に返してください</div>
+            </div>
+          </div>
+
+          <!-- 本人向けボタン -->
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-teal-200/60 text-center space-y-3">
+            <p class="text-sm font-bold text-slate-600">友人全員の評価が終わりました。</p>
+            <button onclick="finishPeerEval()" class="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-extrabold text-lg rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99] transition flex items-center justify-center gap-2 mx-auto">
+              <i data-lucide="bar-chart-2" class="w-6 h-6"></i>
+              自己×他己の比較結果を表示する
+            </button>
+            <p class="text-xs text-slate-400">（本人が押してください）</p>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+    <div id="view-result" class="hidden space-y-6">
+      <div class="report-card p-6 sm:p-10 rounded-sm shadow-sm relative">
+
+        <!-- Header: certificate-style title block -->
+        <div class="flex flex-col md:flex-row justify-between md:items-end gap-5 mb-8">
+          <div>
+            <p class="text-xs font-bold text-[#a8402c]/80 mb-2" id="result-date-badge"></p>
+            <h2 class="report-serif text-3xl sm:text-4xl font-bold text-[#2a2420] leading-snug" id="result-title-display">探究アセスメント診断チャート</h2>
+            <p class="text-sm font-bold text-[#7a6f5c] mt-2" id="result-student-info"></p>
+          </div>
+          <div class="flex items-center gap-2 self-start md:self-auto no-print">
+            <button onclick="exportToPDF()" class="text-sm font-bold bg-[#2a2420] text-[#fbf8f1] hover:bg-[#3d352c] px-4 py-2.5 rounded-sm transition flex items-center gap-1.5">
+              <i data-lucide="printer" class="w-4 h-4"></i> PDFで保存・印刷
+            </button>
+            <button onclick="switchTab('assess')" class="text-sm font-bold text-[#7a6f5c] hover:text-[#2a2420] flex items-center gap-1 px-3 py-2.5 transition">
+              <i data-lucide="arrow-left" class="w-4 h-4"></i> 修正・再評価する
+            </button>
+          </div>
+        </div>
+
+        <div class="report-rule-thick mb-8"></div>
+
+        <!-- Mode COMPARE: 自己×他己 重ねレーダーチャート（平均＋個別タブ） -->
+        <div id="charts-wrapper-compare" class="hidden space-y-4 avoid-break">
+          <h3 class="report-serif text-lg font-bold text-[#2a2420]">自己評価 × 他己評価 比較チャート</h3>
+
+          <!-- タブ切替（平均 + 個別） -->
+          <div class="flex flex-wrap gap-2" id="compare-chart-tabs">
+            <!-- Populated by JS -->
+          </div>
+
+          <!-- チャートエリア -->
+          <div class="border border-[#e6dfd0] p-5 max-w-xl mx-auto">
+            <div class="relative w-full aspect-square max-w-md mx-auto">
+              <canvas id="chart-compare"></canvas>
+            </div>
+            <div class="flex items-center justify-center gap-6 mt-3">
+              <div class="flex items-center gap-1.5"><span class="inline-block w-5 h-1 rounded-full" style="background:#2c5f8a"></span><span class="text-xs font-bold text-[#2a2420]">自己評価</span></div>
+              <div class="flex items-center gap-1.5"><span class="inline-block w-5 h-1 rounded-full border-dashed border-t-2" style="border-color:#a8402c;background:transparent"></span><span class="text-xs font-bold text-[#2a2420]">他己評価</span></div>
+            </div>
+          </div>
+
+          <!-- ギャップ分析テーブル -->
+          <div id="compare-gap-analysis" class="border border-[#e6dfd0] divide-y divide-[#e6dfd0] rounded-sm overflow-hidden"></div>
+
+          <!-- 友人メッセージ一覧 -->
+          <div id="compare-peer-messages" class="space-y-2"></div>
+        </div>
+
+        <!-- Mode ALL: 3 Category Radar Charts Grid -->
+        <div id="charts-wrapper-all" class="space-y-4 avoid-break">
+          <h3 class="report-serif text-lg font-bold text-[#2a2420]">カテゴリー別 診断レーダーチャート</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-0 md:divide-x divide-[#e6dfd0] border border-[#e6dfd0]">
+            <!-- Thinking Chart -->
+            <div class="p-4 flex flex-col items-center border-t-[3px]" style="border-top-color:#2c5f8a">
+              <div class="flex items-center gap-2 text-[#2c5f8a] font-extrabold text-sm mb-2">
+                <i data-lucide="brain" class="w-4 h-4"></i> Thinking（思考・探究）
+              </div>
+              <div class="relative w-full aspect-square max-w-[320px]">
+                <canvas id="chart-thinking"></canvas>
+              </div>
+            </div>
+            <!-- Communication Chart -->
+            <div class="p-4 flex flex-col items-center border-t-[3px]" style="border-top-color:#3d7a5c">
+              <div class="flex items-center gap-2 text-[#3d7a5c] font-extrabold text-sm mb-2">
+                <i data-lucide="messages-square" class="w-4 h-4"></i> Communication（発信・表現・協働）
+              </div>
+              <div class="relative w-full aspect-square max-w-[320px]">
+                <canvas id="chart-communication"></canvas>
+              </div>
+            </div>
+            <!-- Leadership Chart -->
+            <div class="p-4 flex flex-col items-center border-t-[3px]" style="border-top-color:#6b4c93">
+              <div class="flex items-center gap-2 text-[#6b4c93] font-extrabold text-sm mb-2">
+                <i data-lucide="rocket" class="w-4 h-4"></i> Leadership（主体性・実行力）
+              </div>
+              <div class="relative w-full aspect-square max-w-[320px]">
+                <canvas id="chart-leadership"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode SELECT5: Single Radar Chart -->
+        <div id="charts-wrapper-select5" class="hidden border border-[#e6dfd0] p-5 max-w-xl mx-auto">
+          <h3 class="report-serif text-base font-bold text-[#2a2420] mb-2 text-center">選択5項目 レーダーチャート</h3>
+          <div class="relative w-full aspect-square max-w-md mx-auto">
+            <canvas id="chart-select5"></canvas>
+          </div>
+        </div>
+
+        <!-- Summary Score List -->
+        <div class="space-y-3 pt-8 mt-8 report-rule">
+          <h3 class="report-serif text-lg font-bold text-[#2a2420]">各能力スコア一覧（Level 1〜4）</h3>
+          <div class="border border-[#e6dfd0] divide-y divide-[#e6dfd0]" id="result-score-list">
+            <!-- Score items populated by JS -->
+          </div>
+        </div>
+
+<!-- 成長の経過（全21項目モードのみ） -->
+<div id="growth-section" class="hidden mt-10 pt-8 report-rule space-y-4 avoid-break">
+  <h3 class="report-serif text-xl font-bold text-[#2a2420]">成長の経過（過去の自分との比較）</h3>
+  <div id="growth-empty" class="hidden border border-[#e6dfd0] p-5 text-sm font-bold text-[#7a6f5c] bg-[#fdfbf6]"></div>
+  <div id="growth-body" class="hidden space-y-5">
+    <p id="growth-summary" class="report-serif text-[#2a2420] text-base leading-relaxed border border-[#e6dfd0] p-5 bg-[#fdfbf6]"></p>
+    <div class="border border-[#e6dfd0] p-4 bg-[#fdfbf6]">
+      <div class="text-xs font-black text-[#2a2420] mb-2">平均レベルの推移</div>
+      <div class="relative w-full max-w-2xl mx-auto" style="height:320px"><canvas id="chart-growth"></canvas></div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 no-print">
+      <label for="growth-compare-select" class="text-xs font-bold text-[#7a6f5c]">比較する記録：</label>
+      <select id="growth-compare-select" class="px-3 py-1.5 border border-[#d8cfb8] rounded-sm text-xs font-bold bg-white" onchange="onGrowthCompareChange()"></select>
+    </div>
+    <div id="growth-diff-table" class="border border-[#e6dfd0] divide-y divide-[#e6dfd0]"></div>
+  </div>
+</div>
+
+        <!-- Diagnostic Feedback & Evaluation Text Section -->
+        <div id="diag-message-block" class="mt-10 pt-8 report-rule space-y-4 avoid-break relative">
+          <h3 class="report-serif text-xl font-bold text-[#2a2420]">アセスメント分析・評価メッセージ</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-0 md:divide-x divide-[#e6dfd0] border border-[#e6dfd0]">
+            <!-- Criterion 1: Current Strengths & Character -->
+            <div class="p-6 border-l-[3px]" style="border-left-color:#2c5f8a">
+              <div class="flex items-center gap-2.5 text-[#2a2420] font-black text-base mb-4 pb-2.5 border-b border-[#e6dfd0]">
+                <span class="report-serif text-[#2c5f8a] text-lg shrink-0">①</span>
+                現在のあなたらしさ（強みと探究スタイル）
+              </div>
+              <div id="feedback-current-self" class="space-y-3">
+                <!-- Generated dynamically by JS -->
+              </div>
+            </div>
+
+            <!-- Criterion 2: Towards Your Ideal Self -->
+            <div class="p-6 border-l-[3px] md:border-l-0" style="border-left-color:#a8402c">
+              <div class="flex items-center gap-2.5 text-[#2a2420] font-black text-base mb-4 pb-2.5 border-b border-[#e6dfd0]">
+                <span class="report-serif text-[#a8402c] text-lg shrink-0">②</span>
+                なりたい自分に向けて（さらなる成長へのヒント）
+              </div>
+              <div id="feedback-future-self" class="space-y-3">
+                <!-- Generated dynamically by JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Saved Reflection Comment (Refined version only) -->
+        <div class="mt-10 pt-8 report-rule space-y-3 avoid-break">
+          <h4 class="report-serif font-bold text-[#2a2420] text-xl">ふりかえり記述</h4>
+
+          <div class="border border-[#e6dfd0] p-6 sm:p-7 relative">
+            <div class="text-xs font-bold text-[#a8402c] mb-3">整文・ブラッシュアップ後の文章</div>
+            <p id="result-reflection-refined" class="report-serif text-[#2a2420] text-lg md:text-xl whitespace-pre-wrap leading-relaxed">（入力されていません）</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: History View -->
+    <div id="view-history" class="hidden space-y-6">
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <i data-lucide="history" class="w-5 h-5 text-indigo-600"></i>
+            これまでの探究アセスメント記録一覧
+          </h2>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="exportHistoryBackup()" id="btn-export-history" class="hidden text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition items-center gap-1.5">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              バックアップを保存
+            </button>
+            <button onclick="document.getElementById('history-import-input').click()" class="text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+              <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+              バックアップから復元
+            </button>
+            <input type="file" id="history-import-input" accept="application/json,.json" class="hidden" onchange="importHistoryBackup(this.files[0])">
+            <button onclick="resendAllUnsentToTeacher()" id="btn-resend-all" class="hidden text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 px-3 py-1.5 rounded-lg transition items-center gap-1.5">
+              <i data-lucide="send" class="w-3.5 h-3.5"></i>
+              <span id="btn-resend-all-label">未送信の記録を教師に送信</span>
+            </button>
+            <button onclick="toggleSelectAllHistory()" id="btn-select-all-history" class="text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition hidden">
+              すべて選択
+            </button>
+            <button onclick="deleteSelectedHistory()" id="btn-delete-history"
+              class="hidden text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 px-4 py-1.5 rounded-lg transition flex items-center gap-1.5">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span id="btn-delete-history-label">選択した記録を削除</span>
+            </button>
+          </div>
+        </div>
+        <p class="text-xs text-slate-400 mb-3 -mt-2">端末の故障・機種変更に備えて、定期的に「バックアップを保存」しておくことをおすすめします。</p>
+        <div id="history-list" class="space-y-2">
+          <!-- History items populated dynamically by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 最初から確認モーダル -->
+    <div id="restart-confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-sm w-full space-y-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+            <i data-lucide="rotate-ccw" class="w-5 h-5 text-amber-600"></i>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-slate-800 text-base">最初の画面に戻りますか？</h3>
+          </div>
+        </div>
+        <p class="text-sm text-slate-600">これまでの入力内容（評価・ふりかえり）はすべて失われますが、よろしいですか？</p>
+        <div class="flex gap-3 pt-1">
+          <button onclick="cancelGoHome()" class="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition">
+            キャンセル
+          </button>
+          <button onclick="confirmGoHome()" class="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition">
+            最初から始める
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 先生用：集計シートを開くための合言葉入力モーダル -->
+    <div id="teacher-password-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-sm w-full space-y-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+            <i data-lucide="lock" class="w-5 h-5 text-indigo-600"></i>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-slate-800 text-base">先生用機能</h3>
+            <p class="text-xs text-slate-500 mt-0.5">合言葉を入力してください</p>
+          </div>
+        </div>
+        <input type="password" id="teacher-password-input" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base" placeholder="合言葉" autocomplete="off" onkeydown="if(event.key==='Enter')confirmTeacherPassword()">
+        <p id="teacher-password-error" class="hidden text-xs font-bold text-rose-600">合言葉が違います。もう一度お試しください。</p>
+        <div class="flex gap-3 pt-1">
+          <button onclick="cancelTeacherPassword()" class="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition">
+            キャンセル
+          </button>
+          <button onclick="confirmTeacherPassword()" class="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition">
+            開く
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 削除確認モーダル -->
+    <div id="delete-confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-sm w-full space-y-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+            <i data-lucide="trash-2" class="w-5 h-5 text-rose-600"></i>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-slate-800 text-base">記録を削除しますか？</h3>
+            <p class="text-xs text-slate-500 mt-0.5" id="delete-confirm-count"></p>
+          </div>
+        </div>
+        <p class="text-sm text-slate-600">削除した記録は元に戻せません。本当に削除しますか？</p>
+        <div class="flex gap-3 pt-1">
+          <button onclick="cancelDeleteHistory()" class="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition">
+            キャンセル
+          </button>
+          <button onclick="confirmDeleteHistory()" class="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl transition">
+            削除する
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // Category metadata configuration
+    const CATEGORY_CONFIG = {
+      Thinking: {
+        name: "思考・探究（Thinking）",
+        badgeBg: "bg-blue-600",
+        badgeText: "text-blue-600",
+        cardBorder: "border-blue-200",
+        cardBg: "bg-blue-50/30",
+        chartBg: "rgba(37, 99, 235, 0.25)",
+        chartBorder: "#2563eb"
+      },
+      Communication: {
+        name: "発信・表現・協働（Communication）",
+        badgeBg: "bg-emerald-600",
+        badgeText: "text-emerald-600",
+        cardBorder: "border-emerald-200",
+        cardBg: "bg-emerald-50/30",
+        chartBg: "rgba(5, 150, 105, 0.25)",
+        chartBorder: "#059669"
+      },
+      Leadership: {
+        name: "主体性・実行力（Leadership）",
+        badgeBg: "bg-purple-600",
+        badgeText: "text-purple-600",
+        cardBorder: "border-purple-200",
+        cardBg: "bg-purple-50/30",
+        chartBg: "rgba(147, 51, 234, 0.25)",
+        chartBorder: "#9333ea"
+      }
+    };
+
+    // 21 Competencies rubric data
+   // 高校生向けの一言説明（選択画面・評価カードで表示）
+const COMPETENCY_SHORT_DESC = {
+  1: '「なぜそう言える？」を、根拠をもとに筋道立てて考える力',
+  2: '当たり前を疑って、「これって問題では？」に気づく力',
+  3: '原因を考えて、実際にできる解決策をつくる力',
+  4: '今までにない新しいアイデアを生み出す力',
+  5: '学んだことをふり返り、次の学びにつなげ続ける力',
+  6: '「なんだろう？」と興味をもって、自分から調べる力',
+  7: '意見や状況が変わったとき、考えややり方を切りかえられる力',
+  8: '仲間と力を合わせて、一人ではできない成果を出す力',
+  9: '資料・文章・言葉で、分かりやすく形にして伝える力',
+  10: '自分の考えや成果を、外の人に向けて届ける力',
+  11: '相手の話を最後まで聴いて、気持ちに寄りそう力',
+  12: 'よい質問で、相手と考えを深め合う力',
+  13: 'いろいろな立場や角度から、物事を見る力',
+  14: '「本当に？なぜ？」と、根本まで調べて考え抜く力',
+  15: 'ゴールから逆算して、計画を立てて順番に進める力',
+  16: '指示を待たず、自分から動きだす力',
+  17: '「もっと良くしたい」と高みをめざし続ける気持ち',
+  18: '時間・集中力・気持ちを、自分でコントロールする力',
+  19: '「自分はみんなの役に立っている」と感じられる気持ち',
+  20: '失敗や壁にぶつかっても、立ち直って再挑戦する力',
+  21: '目標を示して、みんなのやる気をまとめて引っ張る力'
+};
+   const COMPETENCIES = [
+      // Thinking (1-7)
+      {
+        id: 1,
+        categoryKey: "Thinking",
+        name: "論理的思考力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-blue-600" fill="none" stroke="currentColor" stroke-width="6"><rect x="10" y="38" width="22" height="24" rx="4" fill="currentColor" opacity="0.85"/><rect x="39" y="38" width="22" height="24" rx="4" fill="currentColor" opacity="0.65"/><rect x="68" y="38" width="22" height="24" rx="4" fill="currentColor" opacity="0.45"/><line x1="32" y1="50" x2="39" y2="50" stroke-width="4" stroke-linecap="round"/><polyline points="57,50 64,50" stroke-width="4" stroke-linecap="round"/><polyline points="60,44 68,50 60,56" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><line x1="29" y1="25" x2="29" y2="38" stroke-width="3" stroke-dasharray="2 2"/><line x1="50" y1="20" x2="50" y2="38" stroke-width="3" stroke-dasharray="2 2"/><line x1="71" y1="25" x2="71" y2="38" stroke-width="3" stroke-dasharray="2 2"/><text x="50" y="82" text-anchor="middle" font-size="11" font-weight="bold" fill="currentColor" stroke="none">根拠 → 結論</text></svg>`,
+        levels: {
+          1: "根拠と主張の関係を意識せず、根拠のあやしい情報をもとに判断していた。",
+          2: "アドバイスを受ければ、根拠をもとに筋道を立てて考えをまとめることができた。",
+          3: "自ら複数の事実やデータ（根拠）を組み合わせ、筋道の通った説得力ある結論を導くことができた。",
+          4: "自分と異なる意見の論理的矛盾を見抜き、客観的かつ高度な論理展開で結論を再構築できた。"
+        }
+      },
+      {
+        id: 2,
+        categoryKey: "Thinking",
+        name: "課題発見力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-blue-600" fill="none" stroke="currentColor" stroke-width="8"><circle cx="45" cy="45" r="28"/><line x1="65" y1="65" x2="90" y2="90" stroke-linecap="round"/><path d="M40 32 L40 48 M32 40 L48 40" stroke-width="6"/></svg>`,
+        levels: {
+          1: "与えられたテーマのまま作業を行い、何が問題なのか自発的に問いを立てられなかった。",
+          2: "身近な疑問に気づくことはできたが、探究可能な『問い』の形に整理するのに助言が必要だった。",
+          3: "現状の当たり前を疑い、社会や地域における本質的な課題を見出して具体的な探究テーマを設定できた。",
+          4: "表面的な現象の裏にある根本的な課題を独自の視点で発見し、新しい探究の切り口を提起できた。"
+        }
+      },
+      {
+        id: 3,
+        categoryKey: "Thinking",
+        name: "課題解決力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-blue-600" fill="none" stroke="currentColor" stroke-width="7"><path d="M50 15 A25 25 0 0 1 75 40 C75 55 62 62 60 70 L40 70 C38 62 25 55 25 40 A25 25 0 0 1 50 15 Z"/><rect x="40" y="75" width="20" height="10" rx="2" fill="currentColor"/><line x1="50" y1="5" x2="50" y2="10"/><line x1="80" y1="20" x2="75" y2="25"/><line x1="20" y1="20" x2="25" y2="25"/></svg>`,
+        levels: {
+          1: "課題に対して具体的な解決策を思いつけず、指示された手順を実行するのみだった。",
+          2: "一般的な解決策を出すことはできたが、現実的な課題や効果の検証まで手が回らなかった。",
+          3: "課題の原因を分析し、実行可能で効果的なアイデアやアクションプランを考案できた。",
+          4: "多角的なリスクや実現可能性まで考慮し、持続可能で地域社会等にも応用できる解決策を提案できた。"
+        }
+      },
+      {
+        id: 4,
+        categoryKey: "Thinking",
+        name: "創造力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-blue-600" fill="none" stroke="currentColor" stroke-width="7"><path d="M20 75 L35 35 L75 20 L60 60 Z"/><path d="M75 20 L85 10 M60 60 L85 85" stroke-linecap="round"/><circle cx="85" cy="15" r="4" fill="currentColor"/><circle cx="15" cy="85" r="4" fill="currentColor"/></svg>`,
+        levels: {
+          1: "既存の例やネットの情報をそのままなぞり、新しいアイデアを生み出せなかった。",
+          2: "既存の考えを少しアレンジすることはできたが、独創的な発想には至らなかった。",
+          3: "異分野の知識や発想を組み合わせ、これまでにないユニークな着眼点やアイデアを生み出した。",
+          4: "周囲が思いつかない画期的なアイデアを発案し、具体化・形にすることができた。"
+        }
+      },
+      {
+        id: 5,
+        categoryKey: "Thinking",
+        name: "学び続ける力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-blue-600" fill="none" stroke="currentColor" stroke-width="6.5"><path d="M50 70 C50 70 18 60 18 35 L18 25 C18 25 35 28 50 38 C65 28 82 25 82 25 L82 35 C82 60 50 70 50 70 Z"/><line x1="50" y1="38" x2="50" y2="70"/><polyline points="42,18 50,10 58,18" stroke-linecap="round" stroke-linejoin="round" fill="none"/><line x1="50" y1="10" x2="50" y2="25" stroke-linecap="round"/><path d="M30 82 Q50 76 70 82" stroke-linecap="round" stroke-dasharray="3 3"/></svg>`,
+        levels: {
+          1: "探究が終わると学びを振り返ることなく終了し、次の学習への意識を持てなかった。",
+          2: "今回の学びの反省点は分かったが、今後の高校生活や次の探究にどう活かすかは曖昧だった。",
+          3: "自分の成長や課題を客観的に自己評価し、次のステップに向けて主体的に学びを継続する姿勢を持てた。",
+          4: "探究で得た学びを他教科や将来の進路と結びつけ、生涯にわたって学び続ける意志と習慣を確立できた。"
+        }
+      },
+      {
+        id: 6,
+        categoryKey: "Thinking",
+        name: "知的好奇心",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-blue-600" fill="none" stroke="currentColor" stroke-width="6.5"><circle cx="43" cy="42" r="26"/><line x1="62" y1="62" x2="82" y2="82" stroke-linecap="round" stroke-width="8"/><text x="43" y="52" text-anchor="middle" font-size="28" font-weight="900" fill="currentColor" stroke="none">?</text></svg>`,
+        levels: {
+          1: "自分から興味関心を持とうとせず、言われた作業をこなすことに終始した。",
+          2: "自分の関心のある一部の話題には興味を示したが、新しい分野への探索には消極的だった。",
+          3: "疑問を持ったことに対して進んで調べたり質問したりし、知覚を積極的に広げようとした。",
+          4: "未知の分野に対しても強い探究心を抱き、専門書や最新ニュースを自発的に読み漁って知見を深めた。"
+        }
+      },
+      {
+        id: 7,
+        categoryKey: "Thinking",
+        name: "柔軟性",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-blue-600" fill="none" stroke="currentColor" stroke-width="6.5"><path d="M15 30 L40 30 Q55 30 55 45 Q55 60 40 60 L30 60" stroke-linecap="round" stroke-linejoin="round"/><polyline points="38,52 30,60 38,68" stroke-linecap="round" stroke-linejoin="round"/><path d="M45 60 Q60 60 60 75 L60 85" stroke-linecap="round"/><polyline points="54,78 60,85 66,78" stroke-linecap="round" stroke-linejoin="round"/><line x1="75" y1="25" x2="85" y2="25" stroke-linecap="round" stroke-width="4"/><line x1="80" y1="20" x2="80" y2="30" stroke-linecap="round" stroke-width="4"/><circle cx="80" cy="50" r="3" fill="currentColor" stroke="none"/><circle cx="80" cy="62" r="3" fill="currentColor" stroke="none"/><circle cx="80" cy="74" r="3" fill="currentColor" stroke="none"/></svg>`,
+        levels: {
+          1: "自分の考えに執着し、状況の変化や仲間からのアドバイスを受け入れられなかった。",
+          2: "計画変更や予期せぬ指摘に対して戸惑いを見せたが、最終的には意見を受け入れられた。",
+          3: "新しいデータや他者からの助言を受け入れ、自らの考えや計画を臨機応変に軌道修正できた。",
+          4: "想定外のトラブルや逆境をチャンスと捉え、柔軟な発想転換でより良い方向へ探究を昇華させた。"
+        }
+      },
+
+      // Communication (8-14)
+      {
+        id: 8,
+        categoryKey: "Communication",
+        name: "協働力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-emerald-600" fill="none" stroke="currentColor" stroke-width="6"><circle cx="50" cy="22" r="11"/><circle cx="20" cy="40" r="10"/><circle cx="80" cy="40" r="10"/><path d="M50 33 L50 55" stroke-linecap="round"/><path d="M20 50 L20 70" stroke-linecap="round"/><path d="M80 50 L80 70" stroke-linecap="round"/><line x1="20" y1="62" x2="50" y2="55" stroke-linecap="round"/><line x1="80" y1="62" x2="50" y2="55" stroke-linecap="round"/><line x1="20" y1="62" x2="50" y2="75" stroke-width="3" stroke-dasharray="3 2"/><line x1="80" y1="62" x2="50" y2="75" stroke-width="3" stroke-dasharray="3 2"/><circle cx="50" cy="75" r="5" fill="currentColor" stroke="none"/></svg>`,
+        levels: {
+          1: "個人作業にとどまり、チームの活動や役割分担に積極的に貢献できなかった。",
+          2: "自分の担当作業はこなしたが、他メンバーへの声かけやフォローにはあまり気を配れなかった。",
+          3: "互いの強みを活かし合い、課題に対してチーム全体で相乗効果を生み出しながら取り組んだ。",
+          4: "チームの多様な個性を引き出し、意見の衝突も前向きな協力関係に変えて目標を達成させた。"
+        }
+      },
+      {
+        id: 9,
+        categoryKey: "Communication",
+        name: "表現力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-emerald-600" fill="none" stroke="currentColor" stroke-width="7"><rect x="20" y="20" width="60" height="45" rx="5"/><polygon points="40,75 60,75 50,65" fill="currentColor"/><path d="M30 35 L70 35 M30 48 L55 48"/></svg>`,
+        levels: {
+          1: "伝えたい内容が整理されておらず、スライドや文章で相手に理解してもらうのが難しかった。",
+          2: "事実や結果を並べることはできたが、視覚的な読みやすさや構成の工夫に課題が残った。",
+          3: "構成・図解・言葉選びを工夫し、聞き手や読み手に直感的に伝わる発表資料・文章を作成できた。",
+          4: "相手の感情や知覚に訴えかける豊かな表現力を駆使し、探究の魅力を最大限に表現できた。"
+        }
+      },
+      {
+        id: 10,
+        categoryKey: "Communication",
+        name: "発信力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-emerald-600" fill="none" stroke="currentColor" stroke-width="7"><path d="M20 40 L50 25 L50 75 L20 60 Z" fill="currentColor"/><path d="M60 30 Q75 50 60 70 M70 20 Q90 50 70 80" stroke-linecap="round"/></svg>`,
+        levels: {
+          1: "自分の意見や探究の成果を人前で発信することに消極的で、声を届けることができなかった。",
+          2: "準備された原稿を読むことはできたが、自発的にメッセージを外へ伝える姿勢は弱かった。",
+          3: "聞き手の関心を惹くような話し方や提示方法を意識し、意欲的に自らの意見や成果を発信できた。",
+          4: "校内だけでなく外部や社会へ向けて自信を持って発信し、周囲の人の意識や行動に影響を与えた。"
+        }
+      },
+      {
+        id: 11,
+        categoryKey: "Communication",
+        name: "傾聴力・共感力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-emerald-600" fill="none" stroke="currentColor" stroke-width="6.5"><path d="M30 18 C14 18 14 42 14 42 C14 58 26 64 30 64 L30 80 L44 64 C58 64 60 52 60 42 C60 42 60 18 44 18 Z"/><path d="M70 38 C70 34 73 30 77 30 C81 30 84 33 84 37 C84 41 81 44 77 47 L70 54 L63 47 C59 44 56 41 56 37 C56 33 59 30 63 30 C67 30 70 34 70 38 Z" fill="currentColor" stroke="none" opacity="0.8"/></svg>`,
+        levels: {
+          1: "相手の話を最後まで聞かずに遮ったり、自分の主張ばかりを押し通そうとした。",
+          2: "相手の話を聞くことはできたが、表面的な理解にとどまり背景や感情に寄り添う姿勢が乏しかった。",
+          3: "相手の意見や想いに誠実に耳を傾け、相手の立場に共感しながら真意を深く理解することができた。",
+          4: "相手が口にしていない潜在的な意図や悩みを温かく聴き取り、安心して発言できる場の雰囲気を作った。"
+        }
+      },
+      {
+        id: 12,
+        categoryKey: "Communication",
+        name: "対話力・質問力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-emerald-600" fill="none" stroke="currentColor" stroke-width="6"><rect x="12" y="14" width="44" height="32" rx="8"/><polygon points="20,46 20,60 34,46" fill="currentColor" stroke="none"/><rect x="44" y="44" width="44" height="32" rx="8"/><polygon points="80,76 80,90 66,76" fill="currentColor" stroke="none"/><text x="34" y="36" text-anchor="middle" font-size="20" font-weight="900" fill="currentColor" stroke="none">?</text><text x="66" y="66" text-anchor="middle" font-size="20" font-weight="900" fill="currentColor" stroke="none">!</text></svg>`,
+        levels: {
+          1: "質問をする機会があっても何も問いかけられず、一方的な会話に終わってしまった。",
+          2: "確認のための事実質問（はい/いいえ）はできたが、議論を深めるような発展的な問いは出せなかった。",
+          3: "相手の考えを深める適切な質問を投げかけ、お互いの思考を高めあう質の高い対話を実現できた。",
+          4: "本質を突く鋭い問いかけによって議論のデッドロックを破り、新たな気づきやブレイクスルーを導いた。"
+        }
+      },
+      {
+        id: 13,
+        categoryKey: "Communication",
+        name: "多角的・多面的視点",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-emerald-600" fill="none" stroke="currentColor" stroke-width="6"><circle cx="50" cy="50" r="10" fill="currentColor" stroke="none"/><path d="M50 50 L50 14" stroke-linecap="round"/><ellipse cx="50" cy="12" rx="6" ry="4" fill="currentColor" stroke="none"/><path d="M50 50 L78 68" stroke-linecap="round"/><ellipse cx="79" cy="70" rx="6" ry="4" fill="currentColor" stroke="none" transform="rotate(30 79 70)"/><path d="M50 50 L22 68" stroke-linecap="round"/><ellipse cx="21" cy="70" rx="6" ry="4" fill="currentColor" stroke="none" transform="rotate(-30 21 70)"/><circle cx="50" cy="50" r="22" stroke-dasharray="4 3"/></svg>`,
+        levels: {
+          1: "自分自身の限られた固定観念や偏った一つの視点のみで物事を判断していた。",
+          2: "指摘されれば別の立場（立場・地域・年代等）があることに気づくが、自発的な検証は少なかった。",
+          3: "立場や利害関係の異なる多様な角度から課題を観察し、物事を客観的・立体的に捉え直した。",
+          4: "対立する複数の視点を俯瞰して分析し、双方のニーズを満たすような総合的な視点を提示できた。"
+        }
+      },
+      {
+        id: 14,
+        categoryKey: "Communication",
+        name: "深く掘り下げる力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-emerald-600" fill="none" stroke="currentColor" stroke-width="6"><line x1="50" y1="12" x2="50" y2="58" stroke-linecap="round" stroke-width="7"/><polyline points="42,52 50,62 58,52" stroke-linecap="round" stroke-linejoin="round" stroke-width="7"/><line x1="20" y1="70" x2="80" y2="70" stroke-linecap="round" stroke-width="4" stroke-dasharray="0"/><line x1="25" y1="80" x2="75" y2="80" stroke-linecap="round" stroke-width="3" opacity="0.6"/><line x1="32" y1="89" x2="68" y2="89" stroke-linecap="round" stroke-width="2.5" opacity="0.35"/></svg>`,
+        levels: {
+          1: "検索の最上位に出てきた事実のみで満足し、それ以上の深掘り調査や問いの探求を行わなかった。",
+          2: "疑問を感じた点について少し追加調査を行ったが、表面的な知識の収集にとどまった。",
+          3: "「なぜ？」「本当にそうか？」と根底にあるメカニズムや背景まで粘り強く追求して検証した。",
+          4: "一次情報や専門的なデータ・論文にまでアクセスし、誰もが納得する専門性の高い深い知見に到達した。"
+        }
+      },
+
+      // Leadership (15-21)
+      {
+        id: 15,
+        categoryKey: "Leadership",
+        name: "目標への段取り力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-purple-600" fill="none" stroke="currentColor" stroke-width="6"><rect x="18" y="12" width="64" height="76" rx="6"/><line x1="32" y1="32" x2="70" y2="32" stroke-linecap="round"/><line x1="32" y1="48" x2="70" y2="48" stroke-linecap="round"/><line x1="32" y1="64" x2="70" y2="64" stroke-linecap="round"/><polyline points="22,32 27,37 34,28" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/><polyline points="22,48 27,53 34,44" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/><line x1="22" y1="64" x2="29" y2="64" stroke-linecap="round" stroke-width="4" opacity="0.4"/></svg>`,
+        levels: {
+          1: "スケジュール感を持たずに作業を進め、締切直前になって慌てることになった。",
+          2: "大まかな計画は立てたが、途中の進捗管理や予備時間の確保ができず遅れが生じた。",
+          3: "最終目標から逆算して小目標やタスクの優先順位を整理し、順序立てて計画を進められた。",
+          4: "リスクを前もって予測した余裕あるプロセスを設計し、周囲の進捗まで考慮して完璧にコントロールした。"
+        }
+      },
+      {
+        id: 16,
+        categoryKey: "Leadership",
+        name: "主体的行動力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-purple-600" fill="none" stroke="currentColor" stroke-width="7"><path d="M50 15 L65 40 L90 45 L70 65 L75 90 L50 75 L25 90 L30 65 L10 45 L35 40 Z" fill="currentColor"/></svg>`,
+        levels: {
+          1: "先生やリーダーからの具体的な指示を待つばかりで、自分から動くことができなかった。",
+          2: "言われた作業は確実に行うが、自分から提案したり追加で動いたりすることは少なかった。",
+          3: "自分で判断して必要な行動（情報収集や関係者へのアプローチ等）を進んで実行に移した。",
+          4: "周囲を巻き込んで自発的にプロジェクトや調査を企画・推進し、圧倒的な行動力を見せた。"
+        }
+      },
+      {
+        id: 17,
+        categoryKey: "Leadership",
+        name: "向上心",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-purple-600" fill="none" stroke="currentColor" stroke-width="7"><path d="M20 70 L40 50 L60 60 L85 25"/><polyline points="70,25 85,25 85,40"/></svg>`,
+        levels: {
+          1: "「これくらいでいいや」と妥協し、質の向上を目指す情熱を持てなかった。",
+          2: "与えられた合格ラインは目指したが、より高い完成度を目指して試行錯誤することは少なかった。",
+          3: "「もっと良くできる」と妥協せず、発表資料や内容のブラッシュアップを何度も繰り返した。",
+          4: "常に自己最高のクオリティを追い求め、現状に甘んじることなく挑戦し続ける高い意欲を示した。"
+        }
+      },
+      {
+        id: 18,
+        categoryKey: "Leadership",
+        name: "自己管理能力",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-purple-600" fill="none" stroke="currentColor" stroke-width="7"><circle cx="50" cy="50" r="32"/><polyline points="50,28 50,50 68,50"/></svg>`,
+        levels: {
+          1: "感情や集中力の波が大きく、途中で投げ出したり時間を無駄にしてしまったりした。",
+          2: "自分のやる気の低下に気づくことはできたが、自力で気持ちを切り替えるのに時間がかかった。",
+          3: "時間や集中力、感情の状態を自分でコントロールし、一定のパフォーマンスを維持してやり遂げた。",
+          4: "ストレスや多忙な状況下でも安定したセルフマネジメントを行い、チーム全体を落ち着かせる存在となった。"
+        }
+      },
+      {
+        id: 19,
+        categoryKey: "Leadership",
+        name: "自己有用感",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-purple-600" fill="none" stroke="currentColor" stroke-width="6"><circle cx="50" cy="28" r="13"/><path d="M28 85 C28 62 38 55 50 55 C62 55 72 62 72 85 Z" fill="currentColor" stroke="none"/><line x1="50" y1="14" x2="50" y2="10" stroke-linecap="round" stroke-width="3"/><line x1="62" y1="17" x2="65" y2="13" stroke-linecap="round" stroke-width="3"/><line x1="38" y1="17" x2="35" y2="13" stroke-linecap="round" stroke-width="3"/><line x1="68" y1="28" x2="73" y2="28" stroke-linecap="round" stroke-width="3"/><line x1="32" y1="28" x2="27" y2="28" stroke-linecap="round" stroke-width="3"/><path d="M50 42 C50 39 52 36 55 36 C58 36 60 38 60 41 C60 44 57 46 55 48 L50 53 L45 48 C43 46 40 44 40 41 C40 38 42 36 45 36 C48 36 50 39 50 42 Z" fill="currentColor" stroke="none" opacity="0.75"/></svg>`,
+        levels: {
+          1: "「自分なんて役に立っていない」と卑下し、自分の貢献度を自覚することができなかった。",
+          2: "感謝されれば自分の役に立ちを感じられたが、自尊心を持って取り組むまでには至らなかった。",
+          3: "自分の役割や発言がチームや探究成果に寄与している実感を持ち、自信を持って行動できた。",
+          4: "自らの行動が他者や社会に価値を与えたことを深く実感し、自身の強みへの確固たる誇りを持てた。"
+        }
+      },
+      {
+        id: 20,
+        categoryKey: "Leadership",
+        name: "レジリエンス（挫折回復力）",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-purple-600" fill="none" stroke="currentColor" stroke-width="6.5"><polyline points="15,30 35,65 55,45 65,58" stroke-linecap="round" stroke-linejoin="round"/><path d="M65 58 Q72 72 65 80 Q58 88 50 82" stroke-linecap="round"/><path d="M65 40 L78 28" stroke-linecap="round" stroke-width="5"/><polyline points="68,40 78,40 78,28" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/></svg>`,
+        levels: {
+          1: "失敗や予想外の壁にぶつかるとすぐに落ち込み、立ち直るのに長い時間がかかった。",
+          2: "壁に当たった時に困惑したが、励ましやアドバイスを受けて徐々に作業を再開することができた。",
+          3: "失敗や予期せぬトラブルを学びに変え、落ち込まず前向きに方法を変えて再挑戦した。",
+          4: "困難な壁を最大の成長機会としてポジティブに捉え、チーム全体の士気を引き上げて突破した。"
+        }
+      },
+      {
+        id: 21,
+        categoryKey: "Leadership",
+        name: "リーダーシップ",
+        svg: `<svg viewBox="0 0 100 100" class="w-full h-full text-purple-600" fill="none" stroke="currentColor" stroke-width="7"><path d="M30 85 L30 45 L50 25 L70 45 L70 85 Z"/><polygon points="50,15 55,25 45,25" fill="currentColor"/><circle cx="50" cy="55" r="8" fill="currentColor"/></svg>`,
+        levels: {
+          1: "チームの議論や動きに関心を持たず、方向性を提示する行動も起こさなかった。",
+          2: "指示された係の業務はこなしたが、全員の意見をまとめたり導いたりすることは少なかった。",
+          3: "全体の目標・方向性を示し、メンバーの声を聞きながらグループの意欲とまとまりを高めた。",
+          4: "一人ひとりの持ち味を活かすビジョンを示して鼓舞し、最高のチーム成果へと牽引した。"
+        }
+      }
+    ];
+
+    // Enhanced Multi-Level Feedback Database for all 21 items
+    const COMPETENCY_FEEDBACK_DB = {
+      1: { // 論理的思考力
+        strength: {
+          4: "根拠と主張の関係を鋭く構造化し、反論が来ても論理の骨格が揺らがない確かな思考力の持ち主です。データや事実を積み重ねて自分の考えを高く組み上げる姿は、まさに探究者の理想像。この力を活かして、地域課題の解決策を論理的に提言する場面でも存在感を発揮できます。",
+          3: "事実や根拠を丁寧に組み合わせ、聞き手が納得しやすい筋道の通った説明ができています。論理的コミュニケーション力は、社会で活躍するうえで大きな武器になります。この強みを土台に、さらに複雑な課題にも挑戦していきましょう。"
+        },
+        growthTip: {
+          3: "自分のロジックの弱点を先回りして潰す「スチールマン思考」を試してみましょう。「この主張に反論するとしたらどこか？」と自問し、その反論をあえて最強の形で組み立ててから、自分の主張を再強化する訓練です。文部科学省が探究学習で重視する「批判的思考（クリティカルシンキング）」の核心であり、この習慣がつくと、発表や討論の場で揺るぎない説得力を発揮できるようになります。高校生のうちにこの思考の型を身につけておくと、大学の論文執筆や将来のビジネス・政策立案の場面でも必ず役に立ちます。",
+          2: "「なぜなら〜だから」という根拠の一言を、文章や発言に意識的に付け加える訓練から始めましょう。最初は少し不自然に感じるかもしれませんが、繰り返すうちに自然と根拠を持って話す習慣が身につきます。経済産業省の「社会人基礎力」では「考え抜く力」の中核に論理的思考が位置づけられており、データや事実で裏付けた主張ができる人材は、どんな職場・社会でも信頼されます。今の探究活動で少しずつ鍛えておくことが、将来の大きな自信につながります。",
+          1: "まず「自分の意見」と「その根拠となる事実」を別々に書き出すことから始めましょう。この区別ができると、「感想と論理」が混在した話し方から、筋の通った説明へと劇的に変わります。非認知能力研究では「批判的思考力」は訓練によって確実に伸びる力とされており、日常のニュースを見ながら「これは事実か意見か？」と自問する習慣も有効です。焦らず一歩ずつ積み上げていきましょう。"
+        }
+      },
+      2: { // 課題発見力
+        strength: {
+          4: "社会や地域の「当たり前」に潜む本質的な問題を鋭く見抜き、誰もが気づかなかった問いを立てられます。この力は、地域課題に取り組む課題解決型学習でこそ真価を発揮します。あなたの「問い」が新しい探究の扉を開き、周囲を動かす出発点になります。",
+          3: "日常の疑問を「探究可能な問い」へと昇華し、深掘りすべき焦点を的確に設定できています。社会の変化を敏感に捉え、「なぜ？」を問い続けるこの姿勢が、探究活動の豊かさを生み出します。"
+        },
+        growthTip: {
+          3: "見つけた問いを「◯◯によって△△は変化するか？」という仮説検証型に変換する練習をしましょう。問いの精度が上がると、情報収集の方向性が明確になり、探究の深さが一段と増します。文部科学省の学習指導要領では「実社会や実生活との関わりから問いを見いだす力」が探究学習の中核とされており、あなたはすでにその土台を持っています。次は「検証可能な問い」への磨き込みに挑戦してみましょう。地域の当事者や専門家に話を聞くフィールドワークも、問いの質を高める強力な手段です。",
+          2: "「なぜこうなっているのだろう？」という疑問をノートに書き出し、その原因を「人・モノ・仕組み・環境」などのカテゴリに分けて整理するトレーニングが効果的です。問いを立てる力は、社会人基礎力における「課題発見力」の出発点であり、将来あらゆる職種で必要とされます。身近な不思議を大切にし、「当たり前」に疑問を持ち続ける姿勢を育てましょう。",
+          1: "毎日のニュースや学校生活の中で「これっておかしくない？」「なんでこうなってるんだろう？」と感じた瞬間をメモする習慣をつけましょう。問いを立てる力は、鍛えれば確実に伸びる「学び続ける力」の土台です。非認知能力研究では「好奇心」が課題発見力の源泉とされており、日常の小さな疑問を大切にすることが、大きな探究テーマの発見へとつながります。"
+        }
+      },
+      3: { // 課題解決力
+        strength: {
+          4: "課題の構造を多角的に分析し、実現可能性・持続可能性まで視野に入れた高度な解決策を提示できます。地域社会や広いフィールドへの貢献を見据えた提案ができるこの力は、「持続可能な社会の発展に貢献したい」という学校の目指す生徒像そのものです。",
+          3: "課題の原因を構造的に捉え、効果的かつ現実的なアクションプランを考案できています。「なりたい自分」の実現に向けて何をなすべきかを考える力が、しっかりと育っています。"
+        },
+        growthTip: {
+          3: "解決策を考える際に「誰が・何を・いつ・どのくらいのコストで・どんな効果が生まれるか」を一覧できる実行計画表を作ってみましょう。アイデアを具体的な行動レベルに落とし込む力は、経済産業省の社会人基礎力「前に踏み出す力」の中核です。さらに、解決策の対象となる人たちの立場に立って「この策で本当に困りごとが解決されるか？」と検証する視点も持てると、提案の説得力が格段に増します。探究活動で鍛えたこの力は、将来の仕事やまちづくりの現場で必ず活きてきます。",
+          2: "「解決策を出す」だけで終わらず、「小さく試して検証する（プロトタイプ思考）」を取り入れてみましょう。完璧な計画を立てようとするよりも、まず小さな実験をして、うまくいったことといかなかったことを学ぶサイクルを回すことが重要です。失敗から学ぶこの姿勢は非認知能力研究で言う「グリット（情熱と粘り強さ）」の育成につながり、困難な目標に向かって諦めずに取り組む力の源泉になります。",
+          1: "他校・他地域・海外の成功事例を調べて「どんな工夫があったか」を分析することから始めましょう。解決のヒントは、すでに世界のどこかに存在することがほとんどです。優れた事例を学ぶことで「解決は可能だ」という自己効力感（セルフ・エフィカシー）が育ち、自分でも解決策を考える意欲が自然と高まります。"
+        }
+      },
+      4: { // 創造力
+        strength: {
+          4: "既存の枠組みを軽々と超え、周囲が「その手があったか！」と膝を打つ画期的なアイデアを生み出せます。異分野の知識を融合させ、新しい価値を創出するこの力は、変化の激しい時代に最も求められる資質です。",
+          3: "異なる分野の知見を掛け合わせ、自分ならではのユニークな視点やアイデアを形にできています。固定概念にとらわれず新しい発想を生み出す姿勢が、探究活動に生き生きとした彩りを与えています。"
+        },
+        growthTip: {
+          3: "「アイデアを生む」だけでなく「アイデアを伝える・具体化する」段階まで意識してみましょう。どんなに革新的な発想でも、相手に伝わらなければ力を発揮できません。「3分で説明できるか？」「実際に形（プロトタイプ）にできるか？」を自問しながら、創造力と実行力を連動させる練習をしましょう。文部科学省が探究学習で求める「新たな価値を創造しよりよい社会を実現しようとする態度」は、このアイデアを形にする力と深くつながっています。",
+          2: "ブレインストーミングで「実現可能かどうか」を一旦脇に置き、面白いアイデアを量で出す練習をしましょう。非認知能力研究では「楽観性（ポジティブ志向）」が創造力を解き放つ鍵とされており、「どうせ無理」という内なる批判を一時停止することが重要です。10個出したら、そこから組み合わせや応用を考えることで、実現可能なユニークなアイデアが生まれやすくなります。",
+          1: "「AとBを組み合わせたらどうなるか？」という発想法を日常的に試してみましょう。全く異なる2つの事柄を無理やり結びつけることで、新しいアイデアが生まれることがよくあります。創造力は特別な才能ではなく、日常的な「問い」と「組み合わせ」の訓練で誰でも育てられる力です。まずは好きなことや得意なことと、探究テーマを「つなげる」ことから始めてみましょう。"
+        }
+      },
+      5: { // 学び続ける力
+        strength: {
+          4: "探究の成功も失敗もすべて次の成長の糧に変え、自走し続ける高いメタ認知力の持ち主です。「生涯にわたり自律的に学び続ける」という錦丘高校が最も大切にする姿勢を、すでに体現しています。この力を核に、どんなフィールドでも成長し続けてください。",
+          3: "自らのプロセスを振り返り、次に向けた課題意識を持って学びを継続するメタ認知力が育っています。探究活動で得た学びを、次の探究や日常生活に繋げていく姿勢が素晴らしいです。"
+        },
+        growthTip: {
+          3: "「今回の探究で得た学びが、他の教科や自分の将来にどうつながるか」を言語化する習慣をつけましょう。非認知能力研究で注目される「時間的展望（過去・現在・未来を関連づける力）」は、学びを点でなく線として捉えることで育ちます。たとえば、探究で鍛えた論理力が数学の証明問題に活かせたり、協働力が部活動のチームワーク向上につながったりする気づきを積み重ねることで、「なりたい自分」への道筋がより鮮明に見えてきます。",
+          2: "活動が終わった後に「うまくいったこと・うまくいかなかったこと・次に試したいこと」を3行で書き留める「3行振り返り」を習慣にしてみましょう。これはメタ認知（自分の思考・行動を客観視する力）を育てる最も手軽な方法のひとつで、自己調整学習の研究でも有効性が示されています。小さな振り返りの積み重ねが、長期的な自律的成長を支える強力な土台になります。",
+          1: "「今回の活動で一番面白かった・驚いた瞬間はいつか？」という問いから振り返りを始めましょう。感情と学びを結びつけることで、記憶に残る振り返りができます。文部科学省の学習指導要領では「探究の意義や価値の理解として資質・能力の変容を自覚すること」が重視されており、楽しかった体験から始める振り返りは、その第一歩として最も有効です。"
+        }
+      },
+      6: { // 知的好奇心
+        strength: {
+          4: "未知の領域へ知の冒険を繰り広げ、専門書や最新ニュースまで自発的に読み込んでいく探究心の塊です。「考え抜く探究心を持ち続ける生徒」を目指す錦丘高校の理念に、あなたは深く応えています。その旺盛な好奇心が、周囲の人たちをも探究の世界へと引き込んでいきます。",
+          3: "興味の幅を広げ、気になったことを自発的に調べて知見を吸収するフットワークの軽さが光ります。正解のない時代において、「問い続ける姿勢」こそが最大の羅針盤です。"
+        },
+        growthTip: {
+          3: "自分の専門分野に加え、全く異なる分野の知識を意図的に取り込む「T字型学習」を試してみましょう。縦（深さ）は得意分野で伸ばしつつ、横（幅）を意識的に広げることで、異分野の知識が融合して新しいアイデアが生まれやすくなります。非認知能力研究では「好奇心の幅広さ」が創造力・課題発見力と強く相関することが示されており、興味の「横断」がイノベーションの種になります。まず週に1本、自分の専門と無関係なジャンルの記事を読む習慣からスタートしてみましょう。",
+          2: "気になったキーワードを見つけたら、検索上位の記事だけでなく、専門書・学術論文・公的機関のデータまで一歩踏み込んで調べてみましょう。一次情報に触れることで、メディアに媒介された情報の「ゆがみ」に気づく批判的思考力も同時に育ちます。この習慣は、文部科学省が探究学習で重視する「情報を収集・整理・分析する力」の実践トレーニングそのものです。",
+          1: "「何でだろう？」と感じた瞬間をスマホのメモに書き留め、週に一度だけ一つ深掘りする時間を設けてみましょう。非認知能力研究では「好奇心」は訓練によって育つと言われており、小さな疑問を大切にする習慣が、やがて大きな探究テーマの発見へとつながります。知識は使わなければ消えていきますが、好奇心という燃料があれば学び続ける力は一生続きます。"
+        }
+      },
+      7: { // 柔軟性
+        strength: {
+          4: "予期せぬ困難や方向転換も「面白いチャンス」と捉え、しなやかに進化させる強いレジリエンスの持ち主です。「変化が激しく正解のない時代に柔軟に対応する力」を求める錦丘高校の理想に、あなたはしっかりと応えています。",
+          3: "他者の意見や新しいデータを積極的に取り入れ、自分の考えを臨機応変にブラッシュアップできます。固定観念にとらわれず、多様な価値観を受け入れる姿勢が探究活動の幅を広げています。"
+        },
+        growthTip: {
+          3: "「デビルズ・アドボケート（悪魔の代弁者）」という思考法を試してみましょう。自分の立場と正反対の意見を意図的に最強の形で主張してみる演習です。これにより、自分の思考の死角を発見し、より多角的な視野を持てるようになります。文部科学省の学習指導要領では「互いのよさを生かしながら新たな価値を創造する態度」が重視されており、異なる視点を柔軟に受け入れるこの力が、チームでの価値創造を可能にします。",
+          2: "アドバイスをもらった時、「一度その視点で試してみる」という実験精神を意識的に持ちましょう。非認知能力研究では「認知的柔軟性（考え方を切り替える力）」はストレス耐性やレジリエンスと強く結びついており、「まず試してみる」姿勢を持てる人ほど、困難な状況を乗り越える力が高いとされています。他者の知恵を素直に受け取れる人は、確実に成長が早いです。",
+          1: "計画通りにいかない時、「失敗」と捉えるのではなく「新しいデータが得られた」と言葉を換えてみましょう。これは「リフレーミング（出来事の捉え方を変える）」という非認知能力の基本スキルです。探究学習は必ずしも計画通りに進まないからこそ価値があります。一人で抱え込まず、先生や仲間に相談しながら、柔軟に方向を変える経験を積んでいきましょう。"
+        }
+      },
+
+      8: { // 協働力
+        strength: {
+          4: "チームメンバーの多様な強みを見抜いて引き出し、チーム全体の相乗効果を生み出す「共創の触媒」です。「他者と協働しながら問題解決する力」を最重要視する錦丘高校の育成方針を、あなたは高いレベルで体現しています。あなたがいるチームは、確実に最大のパフォーマンスを発揮できます。",
+          3: "お互いの強みを尊重し合い、目標に向けて協力しながら成果を高め合える協働の姿勢が育っています。多様な価値観を持つ仲間と共に前進する力は、これからの社会でますます重要になります。"
+        },
+        growthTip: {
+          3: "チームで意見が割れた時に「止揚（アウフヘーベン）」の視点を持ちましょう。A意見とB意見の対立を解消するのではなく、両方の良い部分を高い次元で統合した第三の案を生み出す調整役です。経済産業省の社会人基礎力「チームで働く力」の中核は「創造力を発揮しながら価値を創出する協働」であり、単なる合意形成を超えた「共創」ができる人材が求められています。この力を意識的に鍛えることで、将来のどんな組織でもなくてはならない存在になれます。",
+          2: "自分の仕事を進めるだけでなく、「周りで困っている人はいないか」を定期的に見渡す習慣を持ちましょう。非認知能力研究では「共感性」と「協働力」は深く結びついており、他者の状況を察して声をかけられる人がチームの心理的安全性を高めます。「手伝えることある？」の一言が、チーム全体の信頼と生産性を劇的に高めることがあります。",
+          1: "まず自分の担当役割を責任を持ってやり遂げることが、協働の出発点です。信頼は行動の積み重ねで生まれます。自分が「この人は任せられる」と思えるメンバーを思い浮かべてみてください。その人が持っている「小さいけれど確実な行動」を真似することから始めましょう。"
+        }
+      },
+      9: { // 表現力
+        strength: {
+          4: "デザイン・構成・言葉選びのすべてに工夫が宿り、人の心を惹きつける表現の「ビジュアルストーリーテラー」です。「プレゼンテーションや文章による表現力を磨く」という学校の目標を、あなたは最高レベルで達成しています。",
+          3: "聞き手・読み手の立場に立ち、図解やメリハリを意識した分かりやすい資料や文章を作成できています。伝わる表現力は、あなたのアイデアや思いを社会に届ける大切な翼です。"
+        },
+        growthTip: {
+          3: "情報を「整理して伝える」から、「感情を動かして行動を促す」表現へとレベルアップしましょう。優れたプレゼンテーションには「ストーリー構造（課題→転換点→解決）」と「聴衆への問いかけ」が組み込まれています。TEDトークなどの優れたプレゼンを分析して「なぜ心が動くのか」を言語化する練習も非常に有効です。文部科学省が重視する「まとめ・表現する力」の高みは、情報の正確さを超えた、人を動かす表現力にあります。",
+          2: "「一番伝えたいこと1つ」を決めてからスライドや文章を組み立てる習慣をつけましょう。情報を詰め込もうとするほど、伝わる力は弱まります。「余白」と「強調」を意識したレイアウトは、読み手・聴き手の認知負荷を下げ、メッセージが心に届きやすくなります。表現力の本質は「削る勇気」にあります。",
+          1: "まず見出しをつけたり、重要部分を色や太字で強調したりする基本的な工夫から始めましょう。表現力は一朝一夕では身につきませんが、「読み手への配慮」という意識を持つだけで、資料の伝わりやすさは劇的に変わります。好きな本や教科書のレイアウトを観察して、「なぜこのデザインが読みやすいのか」を考える習慣も有効です。"
+        }
+      },
+      10: { // 発信力
+        strength: {
+          4: "自分の考えやグループの成果を社会や外部へ力強く届ける、言葉の「インフルエンサー」です。「国際社会で通用する高度なコミュニケーション能力」を目指す錦丘高校の方向性と、あなたの発信力はまさに合致しています。",
+          3: "人前での発表や発信に前向きで、届ける相手に応じた熱意あるコミュニケーションができています。自分の考えを外に向けて発信する勇気が、新しい出会いと変化を引き寄せます。"
+        },
+        growthTip: {
+          3: "「誰に・何を・なぜ伝えるか（目的・対象・メッセージ）」を発信の前に明確にする習慣をつけましょう。経済産業省の社会人基礎力では「発信力（自分の意見をわかりやすく伝える力）」が重要な要素とされています。さらに「このメッセージを受けた相手にどんな行動を起こしてほしいか（Call to Action）」まで設計できると、あなたの発信は単なる情報共有を超え、社会を動かす力を持ち始めます。",
+          2: "発表本番の前にリハーサルをして「声のトーン・スピード・アイコンタクト」を意識的に調整しましょう。非言語コミュニケーション（表情・姿勢・声量）が発信の説得力の大半を占めると言われています。「準備の質が発信の質を決める」という意識を持ち、一回一回の発表機会を真剣に準備することで、発信力は確実に伸びていきます。",
+          1: "まずグループ内で「自分の考えを一言で言う」練習からスタートしましょう。発信力は「場数」の積み重ねで育ちます。最初は緊張したり言葉が出なかったりするのは当然のことです。非認知能力研究では「自己効力感（自分にできると信じる力）」が発信力の土台であり、小さな成功体験を積み重ねることで、少しずつ「自分の声には価値がある」という確信が育っていきます。"
+        }
+      },
+      11: { // 傾聴力・共感力
+        strength: {
+          4: "相手の言葉の裏にある想いや悩みまで温かく受け止め、誰もが安心して話せる空間を自然と作り出す「傾聴のプロ」です。「他人に対して思いやりを持ち協働できる生徒」を目指す錦丘高校の理念を、あなたは日常の関わりの中で体現しています。",
+          3: "相手の主張に真摯に耳を傾け、異なる価値観を受け入れながら共感的に理解できる力が育っています。聴く力は、チームの関係性を深め、協働の質を高める根っこになります。"
+        },
+        growthTip: {
+          3: "「アクティブリスニング（能動的傾聴）」の技術を意識的に磨きましょう。具体的には、相手の話の要点を「つまり、◯◯ということですね」と返すリフレクション、「それはどういう意味ですか？」と深掘りするクラリフィケーション、「そう感じたんですね」と感情を言葉にするエモーショナルリフレクションの3つが基本です。非認知能力研究では「共感性」が高い人は、チームの心理的安全性を高め、メンバー全員のパフォーマンスを引き出すことが示されています。",
+          2: "相手が話している最中は、スマホやほかのことに気を取られず、最後まで聴き切る「全集中の傾聴」を意識しましょう。うなずきや相づちを入れながら「聴いていますよ」というシグナルを送ることが、相手の「もっと話したい」という気持ちを引き出します。人は「聴いてもらえた」と感じた時に初めて心を開き、本当に大切なことを話してくれます。",
+          1: "相手の目を見て最後まで話を聴く、という基本的な姿勢を大切にしましょう。「傾聴」は技術よりも心の向き方が大切です。「この人の話から何か学べることがある」という姿勢で聴くと、自然と集中力が高まります。聴く力は、コミュニケーションの全ての土台であり、探究活動でのインタビューや協働学習でも最も重要な力のひとつです。"
+        }
+      },
+      12: { // 対話力・質問力
+        strength: {
+          4: "本質を突く鋭い問いかけで議論に新たな風を吹き込み、深まる対話を主導できる「問いのスペシャリスト」です。「対話型学習を通して多角的に思考する力と合意形成するコミュニケーション力を磨く」という学校の学びの核心を、あなたは体現しています。",
+          3: "お互いの思考を刺激し合う深め合いの質問を投げかけ、建設的な議論を展開できています。良質な問いは、グループ全員の思考を高め、探究の方向性を豊かにします。"
+        },
+        growthTip: {
+          3: "「ソクラテス式問答法」を意識した対話を試みましょう。「なぜそう思うのか？」「その前提は本当に正しいか？」「別の可能性はないか？」という問いを重ねることで、対話の相手（そして自分自身）の思考の深みを引き出せます。これは文部科学省が重視する「考えるための技法（比較する・分類する・関連付ける）」の実践であり、探究活動でのグループディスカッションや、将来の会議・交渉の場でも強力な武器になります。",
+          2: "クローズドクエスチョン（はい/いいえで答えられる）よりも、オープンクエスチョン（「どう思う？」「なぜ？」「どんな方法が考えられる？」）を意識的に使いましょう。オープンな問いは対話を豊かにし、相手の思考を広げます。質問力を磨くには、「良い質問とはどんな質問か？」を自分自身に問い続けることが大切です。",
+          1: "わからないことや気になったことがあれば、「◯◯について詳しく教えてもらえますか？」と素直に聞くことから始めましょう。質問することへの恥ずかしさを乗り越えた先に、質問力の成長があります。「良い質問は良い探究の出発点」であり、勇気を持って問い続ける姿勢が、探究者としての最大の武器になります。"
+        }
+      },
+      13: { // 多角的・多面的視点
+        strength: {
+          4: "立場や年代、歴史的・地域的文脈など、多様な物差しで課題を俯瞰して立体的に理解できる「視点のマルチプライヤー」です。「多様な価値観を受け入れ、柔軟に対応する力」を求める錦丘高校の理想の生徒像に、あなたはしっかりと応えています。",
+          3: "一つの見方に固執せず、異なるステークホルダーの立場を考慮して考察できています。多面的な視点は、地域課題に向き合う探究活動においても、大きな強みになります。"
+        },
+        growthTip: {
+          3: "課題を分析する際に「ステークホルダーマップ（利害関係者の地図）」を作ることを習慣にしましょう。その課題に関わる人々を書き出し、それぞれの立場・利益・懸念を整理することで、見落としていた視点が浮かび上がります。文部科学省の学習指導要領では「社会との関わりの中で問いを見いだす力」が重視されており、多様な関係者の視点を統合して本質を見抜く力は、地域課題解決や政策立案の場で特に威力を発揮します。",
+          2: "「もし自分が〇〇の立場ならどう感じるか？」という思考実験を意図的に行いましょう。行政・企業・高齢者・子ども・外国人など、自分と異なる立場に「なりきる」練習が、多角的視点を育てます。非認知能力研究では「共感性」と「多角的思考」は密接に関連しており、他者の立場を想像する力が、より公正で効果的な課題解決につながります。",
+          1: "自分と反対の意見を持つ人の考えを「なるほど、そういう見方もある」と一旦受け止める練習をしましょう。すぐに賛成しなくてもいいのです。「受け止める」と「賛成する」は別のことです。多様な見方を受け入れる器を広げることが、多角的思考の第一歩になります。"
+        }
+      },
+      14: { // 深く掘り下げる力
+        strength: {
+          4: "表面的な情報に惑わされず、一次情報や専門論文・データまで掘り進める「ナレッジディガー」です。「考え抜く探究心を持った生徒を育てる」という錦丘高校の方針が、あなたの中で見事に開花しています。",
+          3: "「なぜ？」「本当にそうか？」と探求を繰り返し、表層的な理解を超えた深い洞察にたどり着けています。調べれば調べるほど視野が広がるこの感覚は、探究の醍醐味そのものです。"
+        },
+        growthTip: {
+          3: "「エクスプレイン・バック（説明し直す）」という学習法を取り入れてみましょう。深く学んだ内容を「小学生でも分かるように説明できるか？」と問いかけてみてください。ファインマン・テクニックとも呼ばれるこの方法は、自分の理解の穴を発見する最良の手段です。文部科学省が重視する「習得した知識を実社会で活用できる形に変換する力」は、この「分かりやすく語り直す」実践の中で磨かれます。",
+          2: "インターネット検索の1ページ目だけで終わらず、公的機関の統計・白書・学術論文にも目を向けてみましょう。「一次情報にあたる」習慣が身につくと、メディアの情報を批判的に読む力（メディアリテラシー）も同時に育ちます。これは非認知能力研究で言う「批判的思考力」の実践であり、情報に溢れた現代社会で最も重要なスキルのひとつです。",
+          1: "気になった現象に「なぜ？」を3回繰り返して調べる「3回のなぜ」を試してみましょう。1回目のなぜで表面が分かり、2回目で仕組みが見え、3回目で根本原因にたどり着きます。これはトヨタの「なぜなぜ分析」の基本でもあり、物事の本質を見抜く力を日常的に鍛えられます。"
+        }
+      },
+
+      15: { // 目標への段取り力
+        strength: {
+          4: "ゴールから逆算したタイムラインを完璧に設計し、予備リスクまで見通してチームを推進する「段取りのプロフェッショナル」です。「なりたい自分に向けて何をなすべきかを考える力」を最大限に活かし、探究活動に確かな成果をもたらしています。",
+          3: "タスクの優先順位を見極め、締め切りを守って順序立てて進められる計画性が育っています。「なりたい自分」の実現に向けて行動を逆算して組み立てる力が、確実に成長しています。"
+        },
+        growthTip: {
+          3: "「バックキャスティング（未来から逆算する）」思考をさらに深めましょう。「3年後・5年後にどうなっていたいか」から逆算して「今年やること」「今月やること」「今週やること」を設計する習慣は、自己調整学習の中核スキルです。また、予期せぬ遅延に備えたバッファ（余裕時間）を計画に組み込む「リスクバッファ設計」まで意識できると、チームの段取り全体を守れるプロジェクトマネージャー的存在になれます。",
+          2: "大きな目標を「今週やること」「今日やること」まで分解するWBS（作業分解構造図）を簡易版で作ってみましょう。タスクを小さく分けることで達成感を得やすくなり、非認知能力研究で言う「自己効力感」が高まります。チェックリストに✓を入れる行為も、小さな達成感の積み重ねとして脳のモチベーション回路を活性化させます。",
+          1: "提出期限や発表日をカレンダーに書き込み、その1週間前に「中間確認日」を設定することから始めましょう。「締め切りの逆算」という習慣が身につくだけで、提出直前の焦りや徹夜作業が大幅に減ります。計画力は才能ではなく習慣であり、小さな実践から確実に育てられる力です。"
+        }
+      },
+      16: { // 主体的行動力
+        strength: {
+          4: "誰も踏み出していない一歩を率先して踏み出し、自走力と行動力で周囲を引っ張る「探究のアクションスター」です。「自らのキャリアを常に意識し、なりたい自分の実現に向けてアクションを起こす生徒」を目指す錦丘高校の理念を、あなたは見事に体現しています。",
+          3: "指示待ちにならず、必要な情報収集や行動を自発的に起こしてプロジェクトを進められます。主体的に動く姿勢は、探究活動の質を高め、周囲にも良い影響を与えます。"
+        },
+        growthTip: {
+          3: "自分が動くだけでなく、「チームメンバーが動きやすい環境を作る」ことを意識しましょう。主体性の最高形は「一人で突き進む」ことではなく、「みんなが主体的になれる場を作ること」です。経済産業省の社会人基礎力「前に踏み出す力」では「働きかけ力（他人に働きかけ巻き込む力）」が重要な要素とされており、あなたの行動力がチーム全体を動かす原動力になる段階を目指しましょう。",
+          2: "「どうすればいいですか？」と聞く代わりに、「こうやってみようと思うのですがどう思いますか？」と提案してから相談する習慣をつけましょう。この小さな言葉の変化が、自分の思考を深め、相手からも「考えている人だ」という信頼を得られます。非認知能力研究では「自己効力感（自分にはできるという信念）」が主体的行動の源泉であり、小さな成功体験の積み重ねがその土台を作ります。",
+          1: "まず「自分ができる小さな役割を1つ見つけて引き受ける」ことから始めましょう。「誰かがやるだろう」という傍観者効果を打ち破る一歩が、主体性の出発点です。「自分から動いた」という体験が積み重なるほど、「自分には動く力がある」という自己認識が育ち、より大きな主体的行動への自信につながります。"
+        }
+      },
+      17: { // 向上心
+        strength: {
+          4: "「もっと良くできる」という妥協を許さない探究心で、常に自己超越を追い求める「クオリティの追求者」です。高い志と不断の努力でなりたい自分を目指し続けるこの姿勢は、錦丘高校が最も大切にする「自律的に学び続ける探究心」そのものです。",
+          3: "現状の出来栄えに甘んじず、より良い発表や分析を目指してブラッシュアップを重ねる情熱があります。向上心は、探究活動の質を高め続ける最大のエンジンです。"
+        },
+        growthTip: {
+          3: "「向上心」と「自己批判」は別物であることを意識しましょう。高い基準を持つことは大切ですが、達成できない自分を責め続けることは非認知能力研究で言う「セルフ・コンパッション（自分への優しさ）」の欠如につながります。「100点でなくても前回より確実に良くなっている」という成長の視点（グロースマインドセット）を持ちながら、スモールステップで着実に高みを目指しましょう。完璧主義は時に成長の妨げになります。",
+          2: "完成した資料や原稿を、信頼できる人に見せてフィードバックをもらうサイクルを作りましょう。「人の目を借りる」ことで、自分だけでは気づかない改善点が見つかります。フィードバックを「批判」ではなく「次の成長へのギフト」として受け取る姿勢（フィードバック・リテラシー）を育てることが、向上心を持続させる鍵です。",
+          1: "最後に提出する前に「あと一か所だけ改善するとしたらどこか？」という問いを自分に投げかけましょう。完璧を目指さなくていいのです。「最後のひと手間」を惜しまない姿勢の積み重ねが、やがて大きなクオリティの差となって現れます。向上心は習慣として育てるものです。"
+        }
+      },
+      18: { // 自己管理能力
+        strength: {
+          4: "感情や集中力を高度にコントロールし、過密なスケジュールでも安定したパフォーマンスを保つ「セルフマネジメントの達人」です。自分を律し、部活動・学習・探究を高いレベルで両立するこの力は、卒業後のどんな場面でも大きな強みになります。",
+          3: "自分のペースや感情の波を把握し、責任を持ってプロジェクトを完遂するセルフコントロール力があります。自己管理できる人は、周囲からの信頼を自然と集めていきます。"
+        },
+        growthTip: {
+          3: "自分の「集中できる条件」と「集中が崩れる条件」を把握するセルフモニタリングを深めましょう。「どの時間帯が最も集中できるか」「どんな環境だと作業が進むか」「何があると気が散るか」を記録して分析することで、最高の状態でパフォーマンスを発揮できる環境設計ができます。非認知能力研究では「自己調整力（メタ認知＋動機づけ＋行動制御）」が学習効果と人生の成功に最も強く影響する力のひとつとされており、高校生のうちにこの力を鍛えておくことは非常に価値があります。",
+          2: "「ポモドーロ・テクニック（25分集中→5分休憩）」のような時間管理の仕組みを取り入れてみましょう。集中と休憩を意識的に設計することで、長時間の作業でも安定したパフォーマンスが維持できます。また「スマホは手の届かない場所に置く」などの環境設計も、自己管理の重要な一部です。意志力だけに頼るのではなく、「意志力が不要な環境を作る」ことが持続可能な自己管理のコツです。",
+          1: "疲れた時は無理をせず、十分な睡眠と適度な気分転換を取ることを自分に許可しましょう。自己管理の土台は体と心の健康です。「休むことも努力のうち」という認識を持つことが、長期的に高いパフォーマンスを維持する秘訣です。非認知能力研究でも「感情調整力（自分の感情にうまく対処する能力）」が自己管理の基盤であることが示されており、自分のコンディションを大切にすることが全ての出発点です。"
+        }
+      },
+      19: { // 自己有用感
+        strength: {
+          4: "自分の活動がチームや地域社会に貢献している手応えを確かに感じ、自信に満ちて行動できる「確信の持ち主」です。「自己有用感が高く、他者と協働しながら問題解決する力を持った生徒」という錦丘高校の育成目標を、あなたは見事に達成しています。",
+          3: "自分の得意や行動がチームの成果に役立っている実感を持ち、誇りと責任感を持って取り組めています。自分の価値を感じながら動ける力は、探究活動を前向きに続けるための大切な源泉です。"
+        },
+        growthTip: {
+          3: "自己有用感をさらに高めるために、「自分が貢献した具体的な事例」を振り返りノートに書き留める習慣をつけましょう。「今日のグループ内で、自分のどんな行動が役に立ったか？」を言語化することで、自己有用感の根拠が明確になります。同時に、周囲の仲間の貢献にも気づいて感謝を伝える習慣が、チーム全体の自己有用感を高め、より良い協働環境を生み出します。非認知能力研究では「自尊感情（自分を価値ある存在と思う心）」は他者への貢献体験によって育まれることが示されています。",
+          2: "「今日、自分の行動でチームや誰かにどんなプラスがあったか」を毎日小さく振り返りましょう。最初は些細なことでも構いません。「発言して場が活発になった」「資料をわかりやすく整理できた」「困っていた人に声をかけた」という小さな貢献の積み重ねが、「自分にはできる・自分は必要とされている」という実感を育てていきます。",
+          1: "誰かから「ありがとう」と言われた体験、褒められた体験を思い出してみましょう。あなたはすでに誰かの役に立っているはずです。「自分には何もできない」という思い込みは事実ではありません。非認知能力研究では「自己効力感（自分にはできるという信念）」は成功体験の記憶から育つとされており、小さくても確かな貢献の記憶が、自己有用感の芽を育てます。"
+        }
+      },
+      20: { // レジリエンス（挫折回復力）
+        strength: {
+          4: "壁やトラブルにぶつかっても「最高の学びの機会」として即座に立ち直り、周囲を勇気づける「不屈の探究者」です。「変化が激しく正解のない時代に柔軟に対応する力をつけ、持続可能な社会の発展に貢献したい」という理想に、あなたの折れない心は不可欠な強みです。",
+          3: "予想外のアクシデントや失敗にも慌てず、前向きにやり方を変えて再挑戦できる打たれ強さがあります。挫折から立ち上がる経験の一つひとつが、あなたをより深みのある探究者に成長させています。"
+        },
+        growthTip: {
+          3: "失敗や挫折が起きた時に「原因帰属の視点」を意識しましょう。うまくいかなかった原因を「自分の能力のせい（内的・固定的）」ではなく「方法・タイミング・状況のせい（外的・変化可能）」として捉えることで、次の挑戦への意欲が保てます。非認知能力研究で注目される「グリット（情熱と粘り強さ）」の研究者アンジェラ・ダックワースは、「才能よりも努力の方が長期的な成果に2倍影響する」と主張しており、困難に直面した時こそグリットを発揮する絶好の機会です。",
+          2: "落ち込んだ時間を決めて「ここまで落ち込んだら次を考える」というルールを自分に設けてみましょう。悲しむことや落ち込むことは自然なことで、否定する必要はありません。ただ、一定時間が経ったら「じゃあ次はどうするか？」と未来の選択肢に意識を切り替えるスイッチを持つことが、レジリエンスを高める実践的な方法です。非認知能力研究では「楽観性（将来をポジティブに見て柔軟に対処する力）」がレジリエンスの核心とされています。",
+          1: "「失敗は探究につきもの」と割り切り、一人で抱え込まず先生や仲間に相談してみましょう。相談できることそのものが重要な力です。孤独に戦わず、助けを求めることは弱さではなく「社会的スキルの発揮」です。非認知能力研究では、信頼できる他者との繋がり（ソーシャルサポート）がレジリエンスを高める最も強力な要因のひとつとされています。"
+        }
+      },
+      21: { // リーダーシップ
+        strength: {
+          4: "明確なビジョンを掲げてチームの心理的安全性を高め、全員を主役にして目標へと導く「真のキャプテン」です。「自己有用感が高く、他者と協働しながら問題解決するリーダー」を育てるという錦丘高校の最終目標を、あなたは最高の形で示しています。",
+          3: "グループの目標を示し、メンバーの意見をまとめながら意欲を引き出すリーダーシップが育っています。チームを方向づけながら全員を巻き込む力は、これからの社会で求められる最も重要な資質の一つです。"
+        },
+        growthTip: {
+          3: "「サーバント・リーダーシップ（奉仕するリーダー）」という概念を探究してみましょう。リーダーとは「引っ張る人」ではなく「チームが最高のパフォーマンスを発揮できる環境を作る人」です。具体的には「メンバーの成長を促す問いかけ」「功績をメンバーに帰属させること」「失敗を責めない心理的安全性の確保」が実践の柱です。非認知能力研究でも「共感性の高いリーダーは、チームの生産性・幸福度・創造性を高める」ことが示されており、あなたのリーダーシップをさらに一段上に磨く鍵がここにあります。",
+          2: "毎回の話し合いの冒頭に「今日のゴール（何が決まれば成功か？）」を明確に提示することを習慣にしましょう。方向性を示す30秒のひと言が、チームの議論の密度を劇的に高めます。また、話し合いの終わりに「次のアクションと担当者の確認」を行うことで、「話し合ったけど何も決まらなかった」という状況を防げます。この小さなリードが、チームへの信頼を着実に積み上げていきます。",
+          1: "議論が脱線した時に「元のテーマに戻ろう」と声をかける、小さなリードから始めましょう。リーダーシップは役職や肩書きではなく、場に必要な行動を取る意志と勇気から生まれます。「誰かがやるだろう」ではなく「自分がやる」という意識の一歩が、リーダーとしての第一歩です。今の探究活動の中に、あなたがリードできる小さな場面を探してみましょう。"
+        }
+      }
+    };
+
+    // Application State Variables
+    let currentMode = 'ALL'; // 'ALL' or 'SELECT5' or 'COMPARE'
+    let selected5Ids = []; // User must actively choose exactly 5 items
+    let chartInstances = [];
+    let currentStep = 1;
+    let selfScoresTemp = {};   // COMPAREモードで自己評価を一時保存
+    let selfNotesTemp = {};    // COMPAREモードで自己評価時のメモを一時保存
+    let peerEvalsTemp  = [];   // COMPAREモードで複数の他己評価を蓄積 [{name, message, scores}]
+    const MAX_PEERS = 7;
+
+    // ===== 教師への自動送信設定 =====
+    // このアプリはGoogle Apps ScriptのWebアプリとして配信され、google.script.run経由で
+    // 同じプロジェクトのスプレッドシートに直接保存する（fetch/webhook方式は使用しない）。
+    // false にすると送信機能全体を無効化し、端末内保存のみで動作する（動作確認・単体配布用）。
+    const TEACHER_SUBMIT_ENABLED = true;
+
+    // 記録を教師のスプレッドシートへ送信する（Apps Script側のsubmitAssessmentToServerを呼び出す）
+    function sendRecordToTeacher(record) {
+      if (!TEACHER_SUBMIT_ENABLED || typeof google === 'undefined' || !google.script || !google.script.run) {
+        return Promise.resolve(false);
+      }
+      return new Promise((resolve) => {
+        google.script.run
+          .withSuccessHandler(() => resolve(true))
+          .withFailureHandler((err) => {
+            console.error('教師への送信に失敗しました:', err);
+            resolve(false);
+          })
+          .submitAssessmentToServer(record);
+      });
+    }
+
+    // localStorage内の該当記録の送信済みフラグを更新する
+    function markRecordSentInStorage(recordId, sent) {
+      markRecordsSentInStorage({ [recordId]: sent });
+    }
+
+    // localStorage内の複数記録の送信済みフラグを、1回の読み込み・書き込みでまとめて更新する
+    // （記録ごとに個別で読み書きすると、複数件を並行送信した際に互いの更新を
+    //   上書きしてしまう競合状態が起きるため、必ずこの一括更新を経由する）
+    function markRecordsSentInStorage(sentById) {
+      try {
+        const history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+        history.forEach(r => {
+          if (Object.prototype.hasOwnProperty.call(sentById, r.id)) {
+            r.sentToTeacher = sentById[r.id];
+          }
+        });
+        localStorage.setItem('nishiki_competency_history', JSON.stringify(history));
+      } catch (e) {
+        console.error('送信状態の更新に失敗:', e);
+      }
+    }
+
+    // 保存直後にバックグラウンドで送信を試みる（生徒の操作はブロックしない）
+    function trySendRecordToTeacher(record) {
+      sendRecordToTeacher(record).then(sent => {
+        markRecordSentInStorage(record.id, sent);
+        if (document.getElementById('view-history') && !document.getElementById('view-history').classList.contains('hidden')) {
+          renderHistory();
+        }
+      });
+    }
+
+    // 当日の日付を自動セットする関数
+    function initCurrentDate() {
+      const dateDisplay = document.getElementById('current-date-display');
+      if (dateDisplay) {
+        const today = new Date();
+        dateDisplay.textContent = today.toLocaleDateString('ja-JP', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      }
+    }
+
+    // DOMが構築されたらすぐに日付を設定（window.onloadより早く確実）
+    document.addEventListener('DOMContentLoaded', function() {
+      initCurrentDate();
+    });
+
+    // Navigation & Wizard Steps handling
+    function updateStepIndicator(step) {
+      currentStep = step;
+      const dot1 = document.getElementById('step-dot-1');
+      const dot2 = document.getElementById('step-dot-2');
+      const dot3 = document.getElementById('step-dot-3');
+      const label1 = document.getElementById('step-label-1');
+      const label2 = document.getElementById('step-label-2');
+      const label3 = document.getElementById('step-label-3');
+      const progressLine = document.getElementById('progress-line');
+
+      // nullガード：要素が存在しない場合は何もしない
+      if (!dot1 || !dot2 || !dot3 || !label1 || !label2 || !label3) return;
+
+      // Reset styles
+      [dot1, dot2, dot3].forEach(d => {
+        d.className = "w-9 h-9 rounded-full bg-slate-200 text-slate-500 font-bold text-sm flex items-center justify-center transition-all";
+      });
+      [label1, label2, label3].forEach(l => {
+        l.className = "text-xs font-bold text-slate-400";
+      });
+
+      if (step === 1) {
+        dot1.className = "w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-md transition-all";
+        label1.className = "text-xs font-black text-indigo-900";
+        if (progressLine) progressLine.style.width = '0%';
+      } else if (step === 2) {
+        dot1.className = "w-9 h-9 rounded-full bg-indigo-200 text-indigo-800 font-bold text-sm flex items-center justify-center transition-all";
+        dot2.className = "w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-md transition-all";
+        label1.className = "text-xs font-bold text-indigo-800";
+        label2.className = "text-xs font-black text-indigo-900";
+        if (progressLine) progressLine.style.width = '50%';
+      } else if (step === 3) {
+        dot1.className = "w-9 h-9 rounded-full bg-indigo-200 text-indigo-800 font-bold text-sm flex items-center justify-center transition-all";
+        dot2.className = "w-9 h-9 rounded-full bg-indigo-200 text-indigo-800 font-bold text-sm flex items-center justify-center transition-all";
+        dot3.className = "w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-md transition-all";
+        label1.className = "text-xs font-bold text-indigo-800";
+        label2.className = "text-xs font-bold text-indigo-800";
+        label3.className = "text-xs font-black text-indigo-900";
+        if (progressLine) progressLine.style.width = '100%';
+      }
+    }
+
+    function goToStep1() {
+      document.getElementById('assess-step-1').classList.remove('hidden');
+      document.getElementById('assess-step-2').classList.add('hidden');
+      document.getElementById('assess-step-2b').classList.add('hidden');
+      updateStepIndicator(1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function goToStep2() {
+      const studentNumber = document.getElementById('student-number').value.trim();
+      const studentName = document.getElementById('student-name').value.trim();
+      const errorBox = document.getElementById('step1-error-message');
+      const errorText = document.getElementById('step1-error-text');
+
+      const showError = (msg, focusId) => {
+        if (errorBox && errorText) {
+          errorText.textContent = msg;
+          errorBox.classList.remove('hidden');
+          errorBox.classList.add('flex');
+        }
+        if (focusId) {
+          const el = document.getElementById(focusId);
+          if (el) el.focus();
+        }
+      };
+
+      if (errorBox) {
+        errorBox.classList.add('hidden');
+        errorBox.classList.remove('flex');
+      }
+
+      if (!studentNumber) {
+        showError('出席番号（半角英数字4文字）を入力してください。', 'student-number');
+        return;
+      }
+
+      if (!/^\d[A-Za-z0-9]\d{2}$/.test(studentNumber)) {
+        showError('出席番号は半角4文字で入力してください。（高校の例: 1215／中学の例: 1B15。1文字目と3・4文字目は数字、2文字目は数字か英字）', 'student-number');
+        return;
+      }
+
+      if (!studentName) {
+        showError('氏名を入力してください。', 'student-name');
+        return;
+      }
+
+      // 姓と名の間に全角スペースがあるかをチェック
+      const hasFullWidthSpace = /　/.test(studentName);
+      const nameParts = studentName.split(/　+/).filter(Boolean);
+      if (!hasFullWidthSpace || nameParts.length < 2) {
+        showError('氏名は姓と名の間に「全角スペース」を入れて入力してください。（例: 錦丘　太郎）', 'student-name');
+        return;
+      }
+
+      if (currentMode === 'SELECT5' && selected5Ids.length !== 5) {
+        showError('ふりかえる資質・能力をちょうど5つ選択してください。');
+        return;
+      }
+
+      if (currentMode === 'COMPARE' && selected5Ids.length !== 5) {
+        showError('比較する資質・能力をちょうど5つ選択してください。');
+        return;
+      }
+
+      // Update Header Info Badge on Step 2
+      const badge = document.getElementById('step2-info-badge');
+      if (badge) {
+        const modeText = currentMode === 'ALL' ? '全21項目評価モード'
+          : currentMode === 'COMPARE' ? '自己×他己比較モード（Step1: 自己評価）'
+          : '選択5項目評価モード';
+        badge.textContent = `${studentNumber} ${studentName} 様 （${modeText}）`;
+      }
+
+      document.getElementById('assess-step-1').classList.add('hidden');
+      document.getElementById('assess-step-2').classList.remove('hidden');
+      updateStepIndicator(2);
+
+      // COMPAREモードはStep2で自己評価→他己評価へ進む専用ラベルに変更
+      const submitLabel = document.getElementById('btn-step2-label');
+      if (submitLabel) {
+        submitLabel.textContent = currentMode === 'COMPARE'
+          ? '自己評価を確定して、友人による他己評価を始める'
+          : '評価結果を保存して診断チャートを表示する';
+      }
+
+      renderCompetencyCards();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 最初の画面に戻る（入力内容消失の確認付き。ネイティブのconfirm()ではなく
+    // アプリ内の見た目に合わせたモーダルを使う）
+    function goHomeWithConfirm() {
+      // Step1にいる場合（何も入力されていない可能性が高い）はそのまま遷移
+      const step2Visible  = !document.getElementById('assess-step-2').classList.contains('hidden');
+      const step2bVisible = !document.getElementById('assess-step-2b').classList.contains('hidden');
+      const resultVisible = !document.getElementById('view-result').classList.contains('hidden');
+
+      const needsConfirm  = step2Visible || step2bVisible || resultVisible;
+
+      if (needsConfirm) {
+        const modal = document.getElementById('restart-confirm-modal');
+        if (modal) {
+          modal.classList.remove('hidden');
+          modal.classList.add('flex');
+          lucide.createIcons();
+          return;
+        }
+      }
+
+      performGoHome();
+    }
+
+    function cancelGoHome() {
+      const modal = document.getElementById('restart-confirm-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    function confirmGoHome() {
+      cancelGoHome();
+      performGoHome();
+    }
+
+    // 実際のリセット処理（確認不要な場合／確認モーダルでOKした場合の両方から呼ばれる）
+    function performGoHome() {
+      // 状態をリセット
+      selfScoresTemp = {};
+      selfNotesTemp  = {};
+      peerEvalsTemp  = [];
+      selected5Ids   = [];
+
+      // フォームを空に
+      ['student-number','student-name','assessment-title','reflection-text'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+
+      // Step1を表示、他は隠す
+      document.getElementById('assess-step-1').classList.remove('hidden');
+      document.getElementById('assess-step-2').classList.add('hidden');
+      document.getElementById('assess-step-2b').classList.add('hidden');
+
+      // モードをALLにリセット
+      setAssessmentMode('ALL');
+      updateStepIndicator(1);
+      switchTab('assess');
+      initCurrentDate(); // 実施日を再表示
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ===== 先生用：集計スプレッドシートを開く機能 =====
+    // 合言葉（簡易的なクリックガード。正式なアクセス制御はスプレッドシート側の共有設定で行われる）
+    const TEACHER_SHEET_PASSWORD = 'nishikihs';
+    let teacherSheetUrl = '';
+
+    // Webアプリとして動作している場合のみ、起動時にスプレッドシートURLを取得してボタンを表示する
+    function initTeacherSheetButton() {
+      const btn = document.getElementById('btn-open-sheet');
+      if (!btn) return;
+      if (typeof google === 'undefined' || !google.script || !google.script.run) return;
+
+      google.script.run
+        .withSuccessHandler((url) => {
+          teacherSheetUrl = url || '';
+          if (teacherSheetUrl) {
+            btn.classList.remove('hidden');
+            btn.classList.add('flex');
+          }
+        })
+        .withFailureHandler((err) => {
+          console.error('スプレッドシートURLの取得に失敗しました:', err);
+        })
+        .getSpreadsheetUrl();
+    }
+
+    function openTeacherSheet() {
+      const modal = document.getElementById('teacher-password-modal');
+      const input = document.getElementById('teacher-password-input');
+      const errorEl = document.getElementById('teacher-password-error');
+      if (!modal) return;
+      if (errorEl) errorEl.classList.add('hidden');
+      if (input) input.value = '';
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons();
+      if (input) setTimeout(() => input.focus(), 50);
+    }
+
+    function cancelTeacherPassword() {
+      const modal = document.getElementById('teacher-password-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    function confirmTeacherPassword() {
+      const input = document.getElementById('teacher-password-input');
+      const errorEl = document.getElementById('teacher-password-error');
+      const entered = input ? input.value : '';
+
+      if (entered !== TEACHER_SHEET_PASSWORD) {
+        if (errorEl) errorEl.classList.remove('hidden');
+        if (input) { input.value = ''; input.focus(); }
+        return;
+      }
+
+      cancelTeacherPassword();
+
+      if (teacherSheetUrl) {
+        window.open(teacherSheetUrl, '_blank');
+      } else {
+        alert('スプレッドシートのURLを取得できませんでした。ページを再読み込みしてから、もう一度お試しください。');
+      }
+    }
+
+    // Helper: proofreading function
+    function proofreadText(text) {
+      if (!text || text.trim() === '') return '';
+      let res = text.trim();
+      res = res.replace(/すごく/g, '非常に');
+      res = res.replace(/だけど/g, 'ですが');
+      res = res.replace(/とおもう/g, 'と考える');
+      res = res.replace(/おもう/g, '考える');
+      res = res.replace(/ふやして/g, '増やして');
+      res = res.replace(/たりなくて/g, '足らず');
+      res = res.replace(/頑張りたい/g, '臨みたい');
+      if (!/[。！？!?]$/.test(res)) res += '。';
+      return res;
+    }
+
+    // Mode Switcher function
+    function setAssessmentMode(mode) {
+      currentMode = mode;
+      const btnAll     = document.getElementById('mode-btn-all');
+      const btnSelect5 = document.getElementById('mode-btn-select5');
+      const btnCompare = document.getElementById('mode-btn-compare');
+      const dotAll     = document.getElementById('mode-dot-all');
+      const dotSelect5 = document.getElementById('mode-dot-select5');
+      const dotCompare = document.getElementById('mode-dot-compare');
+      const panelSelect5 = document.getElementById('select5-panel');
+
+      const inactive = "flex items-center gap-3 p-3.5 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-bold hover:bg-slate-50 transition text-left";
+      const activeIndigo = "flex items-center gap-3 p-3.5 rounded-xl border-2 border-indigo-600 bg-indigo-50/50 text-indigo-900 font-bold transition text-left";
+      const activeTeal   = "flex items-center gap-3 p-3.5 rounded-xl border-2 border-teal-600 bg-teal-50/50 text-teal-900 font-bold transition text-left";
+
+      btnAll.className     = mode === 'ALL'     ? activeIndigo : inactive;
+      btnSelect5.className = mode === 'SELECT5' ? activeIndigo : inactive;
+      btnCompare.className = mode === 'COMPARE' ? activeTeal   : inactive;
+
+      dotAll.classList.toggle('hidden',     mode !== 'ALL');
+      dotSelect5.classList.toggle('hidden', mode !== 'SELECT5');
+      dotCompare.classList.toggle('hidden', mode !== 'COMPARE');
+
+      // SELECT5 / COMPARE どちらも項目選択パネルを表示
+      if (mode === 'SELECT5' || mode === 'COMPARE') {
+        panelSelect5.classList.remove('hidden');
+        renderSelect5Grid();
+      } else {
+        panelSelect5.classList.add('hidden');
+      }
+
+      // Step2が表示されている場合のみカードを再描画（入力中の値を不必要にリセットしない）
+      if (!document.getElementById('assess-step-2').classList.contains('hidden')) {
+        renderCompetencyCards();
+      }
+    }
+    function toggleSelect5Item(id) {
+      const idx = selected5Ids.indexOf(id);
+      const warningBox = document.getElementById('select5-limit-warning');
+
+      if (idx > -1) {
+        selected5Ids.splice(idx, 1);
+        if (warningBox) {
+          warningBox.classList.add('hidden');
+          warningBox.classList.remove('flex');
+        }
+      } else {
+        if (selected5Ids.length >= 5) {
+          // 5つ選択済みの場合は追加せず、警告を表示して終了（勝手な入れ替えはしない）
+          if (warningBox) {
+            warningBox.classList.remove('hidden');
+            warningBox.classList.add('flex');
+          }
+          return;
+        }
+        selected5Ids.push(id);
+        if (warningBox) {
+          warningBox.classList.add('hidden');
+          warningBox.classList.remove('flex');
+        }
+      }
+      renderSelect5Grid();
+      renderCompetencyCards();
+    }
+
+    // Render 5 items picker grid
+    function renderSelect5Grid() {
+      const grid = document.getElementById('select5-grid');
+      const countDisplay = document.getElementById('select5-count');
+      const countBadge = document.getElementById('select5-count-badge');
+      if (!grid || !countDisplay) return;
+
+      countDisplay.textContent = selected5Ids.length;
+      if (countBadge) {
+        countBadge.className = selected5Ids.length === 5
+          ? "text-xs font-black px-3 py-1 rounded-full bg-emerald-100 text-emerald-800"
+          : "text-xs font-black px-3 py-1 rounded-full bg-indigo-100 text-indigo-800";
+      }
+      grid.innerHTML = '';
+
+      COMPETENCIES.forEach(comp => {
+        const isSelected = selected5Ids.includes(comp.id);
+        const itemBtn = document.createElement('button');
+        itemBtn.type = 'button';
+        itemBtn.onclick = () => toggleSelect5Item(comp.id);
+
+        itemBtn.className = isSelected
+          ? "flex items-center gap-2 p-2 rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-950 font-bold text-xs text-left shadow-xs transition"
+          : "flex items-center gap-2 p-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium text-xs text-left hover:bg-slate-100 transition";
+
+        itemBtn.innerHTML = `
+          <div class="w-6 h-6 shrink-0">${comp.svg}</div>
+          <div class="flex-1 min-w-0">
+  <div class="font-bold leading-snug">${comp.id}. ${comp.name}</div>
+  <div class="text-[10px] font-medium text-slate-500 leading-snug mt-0.5">${COMPETENCY_SHORT_DESC[comp.id] || ''}</div>
+</div>
+          ${isSelected ? '<i data-lucide="check-circle-2" class="w-4 h-4 text-indigo-600 shrink-0"></i>' : ''}
+        `;
+        grid.appendChild(itemBtn);
+      });
+
+      lucide.createIcons();
+    }
+
+    // Render Competency Cards for input
+    function renderCompetencyCards() {
+      const container = document.getElementById('competency-cards-container');
+      if (!container) return;
+
+      const targetList = currentMode === 'ALL'
+        ? COMPETENCIES
+        : COMPETENCIES.filter(c => selected5Ids.includes(c.id));
+
+      if (targetList.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white p-8 rounded-2xl text-center border border-slate-200">
+            <p class="text-slate-500 font-bold">5つの資質・能力を選択してください。</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = '';
+
+      targetList.forEach(comp => {
+        const catConfig = CATEGORY_CONFIG[comp.categoryKey] || {};
+        const card = document.createElement('div');
+        card.className = `bg-white p-6 rounded-2xl shadow-sm border ${catConfig.cardBorder || 'border-slate-200'} space-y-4`;
+
+        let levelsHtml = '';
+        [1, 2, 3, 4].forEach(lvl => {
+          levelsHtml += `
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-200/80 hover:bg-slate-50 transition cursor-pointer bg-white">
+              <input type="radio" name="comp-level-${comp.id}" value="${lvl}" class="mt-1 w-4 h-4 text-indigo-600 border-slate-300 focus:ring-indigo-500">
+              <div>
+                <span class="text-xs font-black px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 mr-1.5">Level ${lvl}</span>
+                <span class="text-sm font-medium text-slate-700">${comp.levels[lvl]}</span>
+              </div>
+            </label>
+          `;
+        });
+
+        card.innerHTML = `
+          <div class="flex items-center gap-4 pb-3 border-b border-slate-100">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 p-2.5 rounded-2xl ${catConfig.cardBg || 'bg-slate-50'} border ${catConfig.cardBorder || 'border-slate-200'} flex items-center justify-center shrink-0">
+              ${comp.svg}
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-black text-white ${catConfig.badgeBg || 'bg-slate-600'} px-2.5 py-0.5 rounded-full">No. ${comp.id}</span>
+                <span class="text-xs font-bold text-slate-400">${catConfig.name || ''}</span>
+              </div>
+              <h3 class="text-xl font-black text-slate-800 mt-1">${comp.name}</h3>
+              <p class="text-xs font-medium text-slate-500 mt-1 leading-snug">${COMPETENCY_SHORT_DESC[comp.id] || ''}</p>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-xs font-bold text-slate-500">この項目の自己評価レベルを選択してください</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              ${levelsHtml}
+            </div>
+          </div>
+
+          <div class="pt-2">
+            <label class="block text-xs font-bold text-slate-500 mb-1">具体的に工夫したこと・成長を感じた場面のメモ（任意）</label>
+            <input type="text" id="comp-note-${comp.id}" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500" placeholder="例: 発表スライドの構成図案を工夫して相手に褒められた">
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+
+      lucide.createIcons();
+    }
+
+    // Step2のボタン押下処理（通常 or COMPAREで分岐）
+    function handleStep2Submit() {
+      if (currentMode === 'COMPARE') {
+        goToPeerEval();
+      } else {
+        saveAssessment();
+      }
+    }
+
+    // COMPAREモード: 自己評価スコアを保存して他己評価フェーズへ
+    function goToPeerEval() {
+      const targetList = COMPETENCIES.filter(c => selected5Ids.includes(c.id));
+
+      selfScoresTemp = {};
+      selfNotesTemp = {};
+      let allSelected = true;
+      targetList.forEach(comp => {
+        const r = document.querySelector(`input[name="comp-level-${comp.id}"]:checked`);
+        if (!r) allSelected = false;
+        selfScoresTemp[comp.id] = r ? parseInt(r.value, 10) : 3;
+        if (selfScoresTemp[comp.id] < 1 || selfScoresTemp[comp.id] > 4) selfScoresTemp[comp.id] = 3;
+
+        const noteInput = document.getElementById(`comp-note-${comp.id}`);
+        if (noteInput && noteInput.value.trim()) {
+          selfNotesTemp[comp.id] = noteInput.value.trim();
+        }
+      });
+
+      if (!allSelected) {
+        alert('すべての項目でレベルを選択してから保存してください。');
+        return;
+      }
+
+      peerEvalsTemp = []; // リセット
+
+      // 前回の他己評価で「引き継ぎ画面」を表示したままになっている場合に備え、入力フォームを表示状態に戻す
+      const peerFormEl = document.getElementById('peer-eval-form');
+      const peerHandoffEl = document.getElementById('peer-handoff-screen');
+      if (peerFormEl) peerFormEl.classList.remove('hidden');
+      if (peerHandoffEl) peerHandoffEl.classList.add('hidden');
+
+      document.getElementById('assess-step-2').classList.add('hidden');
+      document.getElementById('assess-step-2b').classList.remove('hidden');
+
+      const sn = document.getElementById('student-number').value.trim();
+      const nm = document.getElementById('student-name').value.trim();
+      const badge = document.getElementById('step2b-info-badge');
+      if (badge) badge.textContent = `${sn} ${nm} 様の自己×他己比較モード`;
+
+      renderPeerPhaseUI(targetList, 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 他己評価フェーズのUIを更新（進捗・タイトル）
+    function renderPeerPhaseUI(targetList, peerNum) {
+      const totalDone = peerEvalsTemp.length;
+      const current   = totalDone + 1;
+
+      // タイトル更新
+      const title = document.getElementById('step2b-title');
+      if (title) title.textContent = `${current}人目の友人による他己評価`;
+
+      // カウント更新
+      const curEl = document.getElementById('peer-current-num');
+      const totEl = document.getElementById('peer-total-num');
+      if (curEl) curEl.textContent = current;
+      if (totEl) totEl.textContent = `最大${MAX_PEERS}`;
+
+      // 進捗ドット更新
+      const dotsEl = document.getElementById('peer-progress-dots');
+      if (dotsEl) {
+        dotsEl.innerHTML = '';
+        for (let i = 0; i < MAX_PEERS; i++) {
+          const dot = document.createElement('div');
+          dot.className = i < totalDone
+            ? 'w-6 h-6 rounded-full bg-teal-600 flex items-center justify-center text-white text-[10px] font-black'
+            : i === totalDone
+              ? 'w-6 h-6 rounded-full border-2 border-teal-600 bg-teal-50 flex items-center justify-center text-teal-700 text-[10px] font-black'
+              : 'w-6 h-6 rounded-full border border-slate-200 bg-white flex items-center justify-center text-slate-300 text-[10px]';
+          dot.textContent = i + 1;
+          dotsEl.appendChild(dot);
+        }
+      }
+
+      // 入力フォームをリセット
+      const nameInput = document.getElementById('peer-name');
+      if (nameInput) nameInput.value = '';
+      const msgInput = document.getElementById('peer-message');
+      if (msgInput) msgInput.value = '';
+
+      renderPeerCards(targetList);
+    }
+
+    // COMPAREモード: 他己評価フェーズ → 自己評価フェーズに戻る
+    function backToSelfEval() {
+      document.getElementById('assess-step-2b').classList.add('hidden');
+      document.getElementById('assess-step-2').classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 他己評価カード描画（自己評価と同じ項目）
+    // 他己評価用：ルーブリック文を友人目線に変換する関数
+    // 文章の意味・内容は一切変えず、主語「友人は」を補い語尾を過去形に統一する
+    function convertToPeerPerspective(text) {
+      if (!text) return text;
+
+      let t = text;
+
+      // ── Step1: 文頭の人称を友人視点に置き換え ──
+      // 「自分の〜」→「友人の〜」（所有格）
+      t = t.replace(/^自分の/u, '友人の');
+      // 「自分と〜」→「友人と〜」（比較対象）
+      t = t.replace(/^自分と/u, '友人と');
+      // 「自分が〜」→「友人が〜」
+      t = t.replace(/^自分が/u, '友人が');
+      // 「自分は〜」→「友人は〜」
+      t = t.replace(/^自分は/u, '友人は');
+      // 「自分から〜」→ 意味が変わるので「友人は」を先頭に追加（自分からはそのまま残す）
+      // 「自ら〜」→「友人自ら〜」
+      t = t.replace(/^自ら/u, '友人自ら');
+
+      // ── Step2: 語尾変換（意味を変えず、評価者目線の過去形へ）──
+      t = t.replace(/できています。$/u,  'できていた。');
+      t = t.replace(/できています$/u,    'できていた');
+      t = t.replace(/している。$/u,      'していた。');
+      t = t.replace(/している$/u,        'していた');
+      t = t.replace(/確立できた。$/u,    '確立できていた。');
+      t = t.replace(/持てている。$/u,    '持てていた。');
+      t = t.replace(/持てている$/u,      'できていた');
+      // 「〜した。」→「〜していた。」（できなかった・なかった等の否定形は除外）
+      t = t.replace(/([^きな])した。$/u, '$1していた。');
+      t = t.replace(/([^きな])した$/u,   '$1していた');
+
+      // ── Step3: 主語「友人は」を文頭に付与 ──
+      // すでに「友人」で始まっている場合は追加しない
+      if (!/^友人/.test(t)) {
+        t = '友人は' + t;
+      }
+
+      return t;
+    }
+
+    function renderPeerCards(targetList) {
+      const container = document.getElementById('peer-cards-container');
+      if (!container) return;
+      container.innerHTML = '';
+
+      targetList.forEach(comp => {
+        const catConfig = CATEGORY_CONFIG[comp.categoryKey] || {};
+        const card = document.createElement('div');
+        card.className = 'bg-white p-6 rounded-2xl shadow-sm border border-teal-200/60 space-y-4';
+
+        let levelsHtml = '';
+        [1, 2, 3, 4].forEach(lvl => {
+          // ルーブリック文を友人目線に変換して表示
+          const peerText = convertToPeerPerspective(comp.levels[lvl]);
+          levelsHtml += `
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-200/80 hover:bg-teal-50/40 transition cursor-pointer bg-white">
+              <input type="radio" name="peer-level-${comp.id}" value="${lvl}" class="mt-1 w-4 h-4 text-teal-600 border-slate-300 focus:ring-teal-500">
+              <div>
+                <span class="text-xs font-black px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 mr-1.5">Level ${lvl}</span>
+                <span class="text-sm font-medium text-slate-700">${peerText}</span>
+              </div>
+            </label>
+          `;
+        });
+
+        card.innerHTML = `
+          <div class="flex items-center gap-4 pb-3 border-b border-slate-100">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 p-2.5 rounded-2xl ${catConfig.cardBg || 'bg-slate-50'} border ${catConfig.cardBorder || 'border-slate-200'} flex items-center justify-center shrink-0">
+              ${comp.svg}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-black text-white bg-teal-600 px-2.5 py-0.5 rounded-full">No. ${comp.id}</span>
+                <span class="text-xs font-bold text-slate-400">${catConfig.name || ''}</span>
+              </div>
+              <h3 class="text-xl font-black text-slate-800 mt-1">${comp.name}</h3>
+              <p class="text-xs font-medium text-slate-500 mt-1 leading-snug">${COMPETENCY_SHORT_DESC[comp.id] || ''}</p>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <label class="block text-xs font-bold text-slate-500">友人から見たこの項目のレベルを選んでください</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">${levelsHtml}</div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+
+      lucide.createIcons();
+    }
+
+    // 1人分の他己評価を保存 → 引き継ぎ画面へ
+    function savePeerAndNext() {
+      const targetList = COMPETENCIES.filter(c => selected5Ids.includes(c.id));
+      const peerScores = {};
+      let allSelected = true;
+
+      targetList.forEach(comp => {
+        const r = document.querySelector(`input[name="peer-level-${comp.id}"]:checked`);
+        if (!r) allSelected = false;
+        peerScores[comp.id] = r ? parseInt(r.value, 10) : selfScoresTemp[comp.id] || 3;
+      });
+
+      if (!allSelected) {
+        alert('すべての項目でレベルを選択してから保存してください。');
+        return;
+      }
+
+      const nameEl = document.getElementById('peer-name');
+      const name   = nameEl ? nameEl.value.trim() : '';
+      const msgEl  = document.getElementById('peer-message');
+      const message = msgEl ? msgEl.value.trim() : '';
+      peerEvalsTemp.push({ name: name || `友人${peerEvalsTemp.length + 1}`, message: message, scores: peerScores });
+
+      // ラジオボタンを全リセット（二重保存防止）
+      targetList.forEach(comp => {
+        document.querySelectorAll(`input[name="peer-level-${comp.id}"]`).forEach(r => r.checked = false);
+      });
+
+      const completedCount = peerEvalsTemp.length;
+      const canAddMore     = completedCount < MAX_PEERS;
+
+      if (canAddMore) {
+        showHandoffMessage(completedCount);
+      } else {
+        showReturnToOwnerScreen(completedCount);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 引き継ぎ画面：次の友人へ渡す or 本人に返す の選択
+    function showHandoffMessage(completedCount) {
+      // フォームを非表示にして引き継ぎ画面を表示
+      document.getElementById('peer-eval-form').classList.add('hidden');
+      const handoffScreen = document.getElementById('peer-handoff-screen');
+      handoffScreen.classList.remove('hidden');
+
+      const nextNum   = completedCount + 1;
+      const remaining = MAX_PEERS - completedCount;
+
+      handoffScreen.innerHTML = `
+        <div class="bg-teal-900 text-white rounded-2xl p-8 text-center space-y-5 shadow-xl">
+          <div class="text-5xl">✅</div>
+          <div class="space-y-1">
+            <div class="text-2xl font-black">${completedCount}人目の評価が完了しました</div>
+            <div class="text-teal-200 text-sm font-bold">ありがとうございました！</div>
+          </div>
+          <p class="text-sm text-teal-200">次の人はどうしますか？</p>
+          <div class="flex flex-col sm:flex-row gap-3 justify-center pt-1">
+            <button onclick="proceedToNextPeer()" class="px-7 py-4 bg-yellow-400 text-yellow-900 font-extrabold text-base rounded-2xl hover:bg-yellow-300 transition shadow-lg flex items-center justify-center gap-2">
+              <span>👤</span> ${nextNum}人目の友人が評価する
+            </button>
+            <button onclick="showReturnToOwnerScreen(${completedCount})" class="px-7 py-4 bg-white/20 hover:bg-white/30 text-white font-extrabold text-base rounded-2xl transition flex items-center justify-center gap-2">
+              <span>📱</span> 本人に端末を返す
+            </button>
+          </div>
+          <div class="text-xs text-teal-400">あと最大 ${remaining} 人まで評価を追加できます</div>
+        </div>
+      `;
+    }
+
+    // 本人返却画面：本人が「結果を見る」ボタンを押す
+    function showReturnToOwnerScreen(completedCount) {
+      document.getElementById('peer-eval-form').classList.add('hidden');
+      const handoffScreen = document.getElementById('peer-handoff-screen');
+      handoffScreen.classList.remove('hidden');
+
+      handoffScreen.innerHTML = `
+        <div class="bg-teal-900 text-white rounded-2xl p-8 text-center space-y-4 shadow-xl">
+          <div class="text-5xl">✅</div>
+          <div>
+            <div class="text-2xl font-black">${completedCount}人全員の評価が完了しました</div>
+            <div class="text-teal-200 text-sm font-bold mt-1">ありがとうございました！</div>
+          </div>
+          <div class="bg-white/10 rounded-xl p-4 text-left space-y-1.5">
+            <div class="text-xs font-black text-yellow-300 tracking-wider">📱 本人への引き継ぎ</div>
+            <div class="text-base font-extrabold">端末を <span class="text-yellow-300">本人</span> に返してください</div>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-teal-200/60 text-center space-y-3">
+          <p class="text-sm font-bold text-slate-600">友人${completedCount}人の評価が集まりました。</p>
+          <button onclick="finishPeerEval()" class="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-extrabold text-lg rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99] transition flex items-center justify-center gap-2 mx-auto">
+            <i data-lucide="bar-chart-2" class="w-6 h-6"></i>
+            自己×他己の比較結果を表示する
+          </button>
+          <p class="text-xs text-slate-400">（本人が押してください）</p>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function proceedToNextPeer() {
+      const targetList = COMPETENCIES.filter(c => selected5Ids.includes(c.id));
+      // フォームを再表示、引き継ぎ画面を非表示
+      document.getElementById('peer-eval-form').classList.remove('hidden');
+      document.getElementById('peer-handoff-screen').classList.add('hidden');
+      renderPeerPhaseUI(targetList, peerEvalsTemp.length + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 本人が押す → 平均計算してresultへ
+    function finishPeerEval() {
+      if (peerEvalsTemp.length === 0) return;
+
+      const targetList    = COMPETENCIES.filter(c => selected5Ids.includes(c.id));
+      const studentNumber = document.getElementById('student-number').value.trim();
+      const studentName   = document.getElementById('student-name').value.trim();
+      const title         = document.getElementById('assessment-title').value.trim() || '自己×他己比較アセスメント';
+      const reflection    = document.getElementById('reflection-text').value.trim();
+
+      // 平均スコアを計算
+      const avgScores = {};
+      targetList.forEach(comp => {
+        const sum = peerEvalsTemp.reduce((acc, ev) => acc + (ev.scores[comp.id] || 0), 0);
+        avgScores[comp.id] = Math.round((sum / peerEvalsTemp.length) * 10) / 10;
+      });
+
+      const record = {
+        id: Date.now(),
+        date: new Date().toISOString(),
+        studentNumber,
+        studentName,
+        title,
+        mode: 'COMPARE',
+        scores: selfScoresTemp,
+        notes: selfNotesTemp,
+        peerScores: avgScores,
+        peerEvals: [...peerEvalsTemp],
+        reflection,
+        refinedReflection: proofreadText(reflection),
+        sentToTeacher: false
+      };
+
+      try {
+        const history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+        history.unshift(record);
+        const save = (data) => localStorage.setItem('nishiki_competency_history', JSON.stringify(data));
+        try { save(history); } catch (q) { save(history.slice(0, 20)); }
+      } catch (e) { console.error(e); }
+
+      trySendRecordToTeacher(record);
+      showResult(record);
+    }
+
+    // Save Assessment and Switch to Result
+    function saveAssessment() {
+      const studentNumber = document.getElementById('student-number').value.trim();
+      const studentName = document.getElementById('student-name').value.trim();
+      const title = document.getElementById('assessment-title').value.trim() || '探究アセスメント振り返り';
+      const reflection = document.getElementById('reflection-text').value.trim();
+
+      const targetList = currentMode === 'ALL'
+        ? COMPETENCIES
+        : COMPETENCIES.filter(c => selected5Ids.includes(c.id));
+
+      if (currentMode === 'SELECT5' && targetList.length === 0) {
+        alert('振り返る5つの資質・能力を選択してください。');
+        return;
+      }
+
+      const scores = {};
+      const notes = {};
+      let allSelected = true;
+
+      targetList.forEach(comp => {
+        const checkedRadio = document.querySelector(`input[name="comp-level-${comp.id}"]:checked`);
+        if (!checkedRadio) allSelected = false;
+        scores[comp.id] = checkedRadio ? parseInt(checkedRadio.value, 10) : 3;
+        if (scores[comp.id] < 1 || scores[comp.id] > 4) scores[comp.id] = 3;
+
+        const noteInput = document.getElementById(`comp-note-${comp.id}`);
+        if (noteInput && noteInput.value.trim()) {
+          notes[comp.id] = noteInput.value.trim();
+        }
+      });
+
+      if (!allSelected) {
+        alert('すべての項目でレベルを選択してから保存してください。');
+        return;
+      }
+
+      const record = {
+        id: Date.now(),
+        date: new Date().toISOString(),
+        studentNumber: studentNumber,
+        studentName: studentName,
+        title: title,
+        mode: currentMode,
+        scores: scores,
+        notes: notes,
+        reflection: reflection,
+        refinedReflection: proofreadText(reflection),
+        sentToTeacher: false
+      };
+
+      try {
+        const history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+        history.unshift(record);
+        // localStorageの容量超過に備えて古い記録を削減してリトライ
+        const save = (data) => localStorage.setItem('nishiki_competency_history', JSON.stringify(data));
+        try {
+          save(history);
+        } catch (quotaErr) {
+          // 古い記録を削除して再試行（最大20件に削減）
+          console.warn('localStorage容量超過。古い記録を削除します。', quotaErr);
+          save(history.slice(0, 20));
+        }
+      } catch (e) {
+        console.error("LocalStorage save error:", e);
+      }
+
+      trySendRecordToTeacher(record);
+      showResult(record);
+    }
+
+    // XSS対策：ユーザー入力をinnerHTMLに埋め込む前にエスケープする
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Show Assessment Result View
+    function showResult(record) {
+      document.getElementById('result-title-display').textContent = record.title;
+      document.getElementById('result-date-badge').textContent = new Date(record.date).toLocaleDateString('ja-JP', {
+        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+
+      const studentInfoElem = document.getElementById('result-student-info');
+      if (studentInfoElem) {
+        const num = record.studentNumber || '';
+        const name = record.studentName || '';
+        if (num || name) {
+          studentInfoElem.textContent = `${num} ${name}`.trim();
+          studentInfoElem.classList.remove('hidden');
+        } else {
+          studentInfoElem.classList.add('hidden');
+        }
+      }
+
+      const targetComps = record.mode === 'ALL'
+        ? COMPETENCIES
+        : COMPETENCIES.filter(c => Object.keys(record.scores || {}).map(Number).includes(c.id));
+
+      // Populate Score List
+      const scoreListGrid = document.getElementById('result-score-list');
+      scoreListGrid.innerHTML = '';
+
+      const catDotClass = { Thinking: 'filled-thinking', Communication: 'filled-communication', Leadership: 'filled-leadership' };
+      const catInk = { Thinking: '#2c5f8a', Communication: '#3d7a5c', Leadership: '#6b4c93' };
+
+      targetComps.forEach(comp => {
+        const score = record.scores[comp.id] || 0;
+        const note = record.notes && record.notes[comp.id] ? escapeHtml(proofreadText(record.notes[comp.id])) : '';
+        const dotClass = catDotClass[comp.categoryKey] || 'filled-thinking';
+        const ink = catInk[comp.categoryKey] || '#2a2420';
+
+        let dotsHtml = '<span class="level-dots flex items-center gap-1">';
+        for (let i = 1; i <= 4; i++) {
+          dotsHtml += `<span class="${i <= score ? dotClass : ''}"></span>`;
+        }
+        dotsHtml += '</span>';
+
+        const itemDiv = document.createElement('div');
+        itemDiv.className = "p-3.5 print-score-item flex flex-col gap-1 bg-[#fdfbf6]";
+
+        itemDiv.innerHTML = `
+          <div class="flex flex-col gap-1">
+            <div class="flex items-start gap-1.5 min-w-0">
+              <div class="w-4 h-4 shrink-0 mt-0.5 print-hide-icon" style="color:${ink}">${comp.svg}</div>
+              <span class="text-xs font-bold text-[#2a2420] leading-snug score-item-name">${comp.id}. ${comp.name}</span>
+            </div>
+            <div class="flex items-center gap-2 pl-0">
+              ${dotsHtml}
+              <span class="text-xs font-black score-item-level" style="color:${ink}">Lv.${score}</span>
+            </div>
+          </div>
+          <p class="text-xs text-[#7a6f5c] leading-relaxed print-score-desc">${comp.levels[score] || ''}</p>
+          ${note ? `<div class="mt-1 pt-1.5 border-t border-[#e6dfd0] text-xs text-[#a8402c] font-bold print-score-note">${note}</div>` : ''}
+        `;
+        scoreListGrid.appendChild(itemDiv);
+      });
+
+      const wrapperCompare = document.getElementById('charts-wrapper-compare');
+      const wrapperAll     = document.getElementById('charts-wrapper-all');
+      const wrapperSelect5 = document.getElementById('charts-wrapper-select5');
+
+      wrapperCompare.classList.add('hidden');
+      wrapperAll.classList.add('hidden');
+      wrapperSelect5.classList.add('hidden');
+
+      if (record.mode === 'COMPARE') {
+        wrapperCompare.classList.remove('hidden');
+      } else if (record.mode === 'ALL') {
+        wrapperAll.classList.remove('hidden');
+      } else {
+        wrapperSelect5.classList.remove('hidden');
+      }
+
+      // Render Charts（peerScoresがない古いデータに対応）
+      renderChart(record.scores || {}, targetComps, record.mode, record.peerScores || null);
+renderGrowthSection(record);
+      // COMPAREモード: タブ描画 + ギャップ分析 + 診断メッセージ非表示
+      const diagBlock = document.getElementById('diag-message-block');
+      if (record.mode === 'COMPARE') {
+        if (diagBlock) diagBlock.classList.add('hidden');
+
+        // チャートタブ（平均 + 個別）を描画
+        const tabsEl = document.getElementById('compare-chart-tabs');
+        if (tabsEl && record.peerEvals && record.peerEvals.length > 0) {
+          tabsEl.innerHTML = '';
+
+          const setActiveTab = (activeIdx) => {
+            tabsEl.querySelectorAll('button').forEach((b, i) => {
+              b.className = i === activeIdx
+                ? `text-xs font-black px-3 py-1.5 rounded-full transition ${i === 0 ? 'bg-[#2c5f8a] text-white' : 'bg-[#a8402c] text-white'}`
+                : 'text-xs font-bold px-3 py-1.5 rounded-full bg-[#e6dfd0] text-[#5a4f3c] hover:bg-[#d8cfb8] transition';
+            });
+          };
+
+          // 平均タブ
+          const avgBtn = document.createElement('button');
+          avgBtn.type = 'button';
+          avgBtn.className = 'text-xs font-black px-3 py-1.5 rounded-full bg-[#2c5f8a] text-white transition';
+          avgBtn.textContent = `全員の平均（${record.peerEvals.length}名）`;
+          avgBtn.onclick = () => {
+            renderChart(record.scores, targetComps, 'COMPARE', record.peerScores);
+            setActiveTab(0);
+          };
+          tabsEl.appendChild(avgBtn);
+
+          // 個別タブ
+          record.peerEvals.forEach((ev, idx) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'text-xs font-bold px-3 py-1.5 rounded-full bg-[#e6dfd0] text-[#5a4f3c] hover:bg-[#d8cfb8] transition';
+            btn.textContent = ev.name || `友人${idx + 1}`;
+            // スコアをデータとして保持（クロージャ問題を回避）
+            const evScores = ev.scores;
+            btn.onclick = () => {
+              renderChart(record.scores, targetComps, 'COMPARE', evScores);
+              setActiveTab(idx + 1);
+            };
+            tabsEl.appendChild(btn);
+          });
+        }
+
+        renderGapAnalysis(record.scores, record.peerScores, targetComps, record.peerEvals || []);
+      } else {
+        if (diagBlock) diagBlock.classList.remove('hidden');
+        renderEvaluationText(record.scores, targetComps);
+      }
+
+      // Render Refined Reflection
+      const refElem = document.getElementById('result-reflection-refined');
+      refElem.textContent = record.refinedReflection || '（振り返り記述はありません）';
+
+      switchTab('result');
+      lucide.createIcons();
+    }
+
+    // ===== PDF出力: html2canvas + jsPDF（A4縦1枚） =====
+    async function exportToPDF() {
+      const btn = document.querySelector('button[onclick="exportToPDF()"]');
+      const originalBtnHtml = btn ? btn.innerHTML : '';
+
+      const pdfRoot = document.createElement('div');
+      pdfRoot.style.cssText = `
+        position:fixed; left:-9999px; top:0;
+        width:800px; font-family:'Zen Maru Gothic',sans-serif;
+        background:#fdfbf6; color:#2a2420; font-size:11px; line-height:1.5;
+      `;
+      document.body.appendChild(pdfRoot);
+
+      try {
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = `<svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg> 生成中...`;
+        }
+
+        // ── モード判定 ──
+        const isCompare = !document.getElementById('charts-wrapper-compare').classList.contains('hidden');
+        const isAll     = !document.getElementById('charts-wrapper-all').classList.contains('hidden');
+        const pdfMode   = isCompare ? 'COMPARE' : isAll ? 'ALL' : 'SELECT5';
+
+        // ── チャートPNG取得 ──
+        const chartImgs = {};
+        if (pdfMode === 'COMPARE') {
+          const c = document.getElementById('chart-compare');
+          if (c) chartImgs['chart-compare'] = c.toDataURL('image/png');
+        } else if (pdfMode === 'ALL') {
+          ['chart-thinking','chart-communication','chart-leadership'].forEach(id => {
+            const c = document.getElementById(id);
+            if (c) chartImgs[id] = c.toDataURL('image/png');
+          });
+        } else {
+          const c = document.getElementById('chart-select5');
+          if (c) chartImgs['chart-select5'] = c.toDataURL('image/png');
+        }
+
+        // ── 画面テキストデータ収集 ──
+        const titleText      = document.getElementById('result-title-display').textContent;
+        const dateBadge      = document.getElementById('result-date-badge').textContent;
+        const studentInfo    = document.getElementById('result-student-info').textContent;
+        const reflectionText = document.getElementById('result-reflection-refined').textContent;
+
+        // 自由記述の振り返りが長い場合、A4 1枚に収まるよう文字量に応じてフォントを小さくし、
+        // それでも極端に長い場合は末尾を省略して圧縮する（3モード共通で使用）
+        function compressReflectionForPdf(text) {
+          const HARD_LIMIT = 480;
+          let body = text;
+          if (body.length > HARD_LIMIT) {
+            body = body.slice(0, HARD_LIMIT).trim() + '……（文字数が多いため一部省略）';
+          }
+          let fontSize;
+          if (body.length <= 100) fontSize = 10;
+          else if (body.length <= 220) fontSize = 9.5;
+          else if (body.length <= 350) fontSize = 8.5;
+          else fontSize = 7.5;
+          return { text: body, fontSize };
+        }
+        const reflectionForPdf = compressReflectionForPdf(reflectionText);
+
+        // フィードバックテキストを安全にテキストのみ抽出
+        function extractFeedbackItems(elemId) {
+          const el = document.getElementById(elemId);
+          if (!el) return [];
+          const items = [];
+          el.querySelectorAll('div.bg-\\[\\#fdfbf6\\], div.mt-5.pt-5.report-rule').forEach(card => {
+            const nameEl  = card.querySelector('span.font-black, span.text-xs.font-black');
+            const pEl     = card.querySelector('p.text-sm, p');
+            const subEl   = card.querySelector('div.text-xs');
+            const text    = pEl ? pEl.textContent.trim() : card.textContent.trim();
+            if (text) {
+              items.push({
+                label: nameEl ? nameEl.textContent.trim() : '',
+                text:  text,
+                sub:   subEl  ? subEl.textContent.trim()  : ''
+              });
+            }
+          });
+          // フォールバック：カードが見つからない場合はtextContent全体
+          if (items.length === 0 && el.textContent.trim()) {
+            items.push({ label: '', text: el.textContent.trim(), sub: '' });
+          }
+          return items;
+        }
+
+        const currentItems = extractFeedbackItems('feedback-current-self');
+        const futureItems  = extractFeedbackItems('feedback-future-self');
+
+        // ── 定数 ──
+        const PAGE_W = 800;
+        const PAD    = 28;
+        const INNER  = PAGE_W - PAD * 2;
+
+        const secHead = (title, color = '#2a2420') => `
+          <div style="font-size:11px;font-weight:900;color:${color};
+                      margin-bottom:5px;padding-bottom:3px;
+                      border-bottom:2px solid ${color};">${title}</div>`;
+
+        // ── コンテナ（高さ自動・overflow visible）──
+        const page = document.createElement('div');
+        page.style.cssText = `
+          width:${PAGE_W}px;
+          background:#fdfbf6; padding:${PAD}px;
+          box-sizing:border-box;
+        `;
+
+        // ── ヘッダー ──
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'border-bottom:3px double #c9bd9c; padding-bottom:8px; margin-bottom:10px;';
+
+        let subInfoHtml = `<div style="font-size:10px;color:#7a6f5c;font-weight:700;margin-top:2px;">${escapeHtml(studentInfo)}</div>`;
+        if (pdfMode === 'COMPARE') {
+          const pdfPeerCount = document.getElementById('compare-chart-tabs')
+            ? document.getElementById('compare-chart-tabs').querySelectorAll('button').length - 1
+            : 0;
+          subInfoHtml = `
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:2px;">
+              <span style="font-size:10px;color:#7a6f5c;font-weight:700;">${escapeHtml(studentInfo)}</span>
+              <span style="font-size:9px;color:#3d7a5c;font-weight:900;background:#e8f4ee;padding:2px 8px;border:1px solid #3d7a5c;">他己評価 ${pdfPeerCount}名の平均との比較</span>
+            </div>`;
+        }
+
+        hdr.innerHTML = `
+          <div style="font-size:8.5px;color:#a8402c;font-weight:700;margin-bottom:2px;">${dateBadge}</div>
+          <div style="font-family:'Shippori Mincho B1',serif;font-size:18px;font-weight:700;
+                      color:#2a2420;line-height:1.25;">${escapeHtml(titleText)}</div>
+          ${subInfoHtml}
+        `;
+        page.appendChild(hdr);
+
+        // ── チャートセクション ──
+        const chartSec = document.createElement('div');
+        chartSec.style.cssText = 'margin-bottom:10px;';
+
+        if (pdfMode === 'COMPARE') {
+          chartSec.innerHTML = secHead('自己評価 × 他己評価 比較チャート（平均）');
+          const chartSize = Math.min(INNER - 20, 340);
+          const chartWrap = document.createElement('div');
+          chartWrap.style.cssText = 'border:1px solid #e6dfd0; padding:10px; background:#fdfbf6; text-align:center;';
+          chartWrap.innerHTML = `
+            <img src="${chartImgs['chart-compare']}"
+                 style="width:${chartSize}px;height:${chartSize}px;object-fit:contain;display:inline-block;">
+            <div style="display:flex;justify-content:center;gap:24px;margin-top:5px;">
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:9px;font-weight:700;color:#2c5f8a;">
+                <span style="display:inline-block;width:18px;height:2.5px;background:#2c5f8a;"></span>自己評価
+              </span>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:9px;font-weight:700;color:#a8402c;">
+                <span style="display:inline-block;width:18px;height:2.5px;background:#a8402c;opacity:0.7;"></span>他己評価（平均）
+              </span>
+            </div>
+          `;
+          chartSec.appendChild(chartWrap);
+
+          // ギャップ分析テーブル
+          const gapSec = document.createElement('div');
+          gapSec.style.cssText = 'margin-top:8px;';
+          gapSec.innerHTML = secHead('項目別ギャップ分析');
+          const gapTable = document.createElement('div');
+          gapTable.style.cssText = 'border:1px solid #e6dfd0; background:#fdfbf6; overflow:hidden;';
+          const gapTH = document.createElement('div');
+          gapTH.style.cssText = 'display:grid; grid-template-columns:1fr 72px 90px 130px; background:#f5f0e8; padding:5px 10px; border-bottom:1px solid #e6dfd0;';
+          gapTH.innerHTML = `
+            <span style="font-size:9px;font-weight:900;color:#2a2420;">資質・能力</span>
+            <span style="font-size:9px;font-weight:900;color:#2c5f8a;text-align:center;">自己</span>
+            <span style="font-size:9px;font-weight:900;color:#a8402c;text-align:center;">他己平均</span>
+            <span style="font-size:9px;font-weight:900;color:#2a2420;text-align:center;">評価</span>
+          `;
+          gapTable.appendChild(gapTH);
+          document.querySelectorAll('#compare-gap-analysis > div[data-comp-name]').forEach((srcRow, idx) => {
+            const name    = srcRow.dataset.compName || '';
+            const selfLv  = srcRow.dataset.selfLv   || '';
+            const peerLv  = srcRow.dataset.peerLv   || '';
+            const label   = srcRow.dataset.label    || '';
+            const txColor = srcRow.dataset.labelTx  || '#5a4f3c';
+            const row = document.createElement('div');
+            row.style.cssText = `display:grid; grid-template-columns:1fr 72px 90px 130px; align-items:center; padding:5px 10px; border-bottom:1px solid #eee5d3; background:${idx % 2 === 0 ? '#fdfbf6' : '#f9f7f2'};`;
+            row.innerHTML = `
+              <span style="font-size:9.5px;font-weight:700;color:#2a2420;line-height:1.4;">${escapeHtml(name)}</span>
+              <span style="font-size:9.5px;font-weight:900;color:#2c5f8a;text-align:center;">${escapeHtml(selfLv)}</span>
+              <span style="font-size:9.5px;font-weight:900;color:#a8402c;text-align:center;">${escapeHtml(peerLv)}</span>
+              <span style="font-size:9px;font-weight:900;color:${txColor};text-align:center;white-space:nowrap;">${escapeHtml(label)}</span>
+            `;
+            gapTable.appendChild(row);
+          });
+          gapSec.appendChild(gapTable);
+          chartSec.appendChild(gapSec);
+
+        } else if (pdfMode === 'ALL') {
+          chartSec.innerHTML = secHead('カテゴリー別 診断レーダーチャート');
+          const catColors = { 'chart-thinking':'#2c5f8a', 'chart-communication':'#3d7a5c', 'chart-leadership':'#6b4c93' };
+          const catLabels = { 'chart-thinking':'Thinking（思考・探究）', 'chart-communication':'Communication（発信・表現・協働）', 'chart-leadership':'Leadership（主体性・実行力）' };
+          const chartW = Math.floor((INNER - 12) / 3);
+          const chartH = Math.min(chartW, 210);
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex; gap:6px;';
+          Object.keys(chartImgs).forEach(id => {
+            const col = document.createElement('div');
+            col.style.cssText = `flex:1;border:1px solid #e6dfd0;border-top:3px solid ${catColors[id]};padding:5px;text-align:center;background:#fdfbf6;box-sizing:border-box;`;
+            col.innerHTML = `
+              <div style="font-size:8px;font-weight:800;color:${catColors[id]};margin-bottom:3px;line-height:1.3;">${catLabels[id]}</div>
+              <img src="${chartImgs[id]}" style="width:${chartW}px;height:${chartH}px;object-fit:contain;display:block;margin:0 auto;">
+            `;
+            row.appendChild(col);
+          });
+          chartSec.appendChild(row);
+        } else {
+          chartSec.innerHTML = secHead('選択5項目 レーダーチャート');
+          const cdiv = document.createElement('div');
+          cdiv.style.cssText = 'text-align:center;border:1px solid #e6dfd0;padding:10px;background:#fdfbf6;';
+          cdiv.innerHTML = `<img src="${chartImgs['chart-select5']}" style="width:230px;height:230px;object-fit:contain;display:inline-block;">`;
+          chartSec.appendChild(cdiv);
+        }
+        page.appendChild(chartSec);
+
+        // ── 各能力スコア一覧（全モード共通） ──
+        function extractScoreList() {
+          const listEl = document.getElementById('result-score-list');
+          if (!listEl) return [];
+          const out = [];
+          listEl.querySelectorAll(':scope > div').forEach(card => {
+            const nameEl  = card.querySelector('.score-item-name');
+            const levelEl = card.querySelector('.score-item-level');
+            const descEl  = card.querySelector('.print-score-desc');
+            const noteEl  = card.querySelector('.print-score-note');
+            const levelText = levelEl ? levelEl.textContent.trim() : '';
+            const levelNum   = parseInt((levelText.match(/\d+/) || ['0'])[0], 10);
+            out.push({
+              name: nameEl ? nameEl.textContent.trim() : '',
+              levelText: levelText,
+              levelNum: levelNum,
+              color: (levelEl && levelEl.style.color) ? levelEl.style.color : '#2a2420',
+              desc: descEl ? descEl.textContent.trim() : '',
+              note: noteEl ? noteEl.textContent.trim() : ''
+            });
+          });
+          return out;
+        }
+
+        const buildDots = (levelNum, color) => {
+          let dots = '<span style="display:inline-flex;gap:2px;vertical-align:middle;">';
+          for (let i = 1; i <= 4; i++) {
+            dots += `<span style="width:5px;height:5px;border-radius:50%;display:inline-block;background:${i <= levelNum ? color : '#e2dccb'};"></span>`;
+          }
+          dots += '</span>';
+          return dots;
+        };
+
+        const scoreItems = extractScoreList();
+        if (scoreItems.length > 0) {
+          const scoreSec = document.createElement('div');
+          scoreSec.style.cssText = 'margin-bottom:10px;';
+          scoreSec.innerHTML = secHead('各能力スコア一覧（Level 1〜4）');
+          const scoreGrid = document.createElement('div');
+
+          if (scoreItems.length > 8) {
+            // 項目数が多い場合（ALLモード＝21項目）：名前＋レベルのみのコンパクト表示
+            scoreGrid.style.cssText = 'display:grid; grid-template-columns:repeat(3,1fr); gap:5px 8px;';
+            scoreGrid.innerHTML = scoreItems.map(it => `
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;border:1px solid #e6dfd0;background:#fdfbf6;padding:3px 6px;box-sizing:border-box;overflow:hidden;">
+                <span style="font-size:7.5px;font-weight:700;color:#2a2420;line-height:1.35;min-width:0;flex:1 1 auto;word-break:break-word;">${escapeHtml(it.name)}</span>
+                <span style="display:flex;align-items:center;gap:3px;flex-shrink:0;margin-top:1px;">
+                  ${buildDots(it.levelNum, it.color)}
+                  <span style="font-size:7.5px;font-weight:900;color:${it.color};white-space:nowrap;">${escapeHtml(it.levelText)}</span>
+                </span>
+              </div>
+            `).join('');
+          } else {
+            // 項目数が少ない場合（SELECT5／COMPAREモード）：説明文付きの詳細表示
+            scoreGrid.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+            scoreGrid.innerHTML = scoreItems.map(it => `
+              <div style="border:1px solid #e6dfd0;background:#fdfbf6;padding:5px 8px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:2px;">
+                  <span style="font-size:8.5px;font-weight:900;color:#2a2420;">${escapeHtml(it.name)}</span>
+                  <span style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                    ${buildDots(it.levelNum, it.color)}
+                    <span style="font-size:8.5px;font-weight:900;color:${it.color};">${escapeHtml(it.levelText)}</span>
+                  </span>
+                </div>
+                <div style="font-size:8px;color:#7a6f5c;line-height:1.5;">${escapeHtml(it.desc)}</div>
+                ${it.note ? `<div style="margin-top:2px;padding-top:2px;border-top:1px solid #e6dfd0;font-size:7.5px;color:#a8402c;font-weight:700;">${escapeHtml(it.note)}</div>` : ''}
+              </div>
+            `).join('');
+          }
+          scoreSec.appendChild(scoreGrid);
+          page.appendChild(scoreSec);
+        }
+
+const growthBody = document.getElementById('growth-body');
+const growthCanvas = document.getElementById('chart-growth');
+if (growthBody && !growthBody.classList.contains('hidden') && growthCanvas) {
+  const gSec = document.createElement('div');
+  gSec.style.cssText = 'margin-bottom:10px;';
+  gSec.innerHTML = secHead('成長の経過（過去の自分との比較）') + `
+    <div style="border:1px solid #e6dfd0;background:#fdfbf6;padding:6px 10px;font-size:8.5px;line-height:1.6;color:#2a2420;margin-bottom:4px;">
+      ${escapeHtml(document.getElementById('growth-summary').textContent)}
+    </div>
+    <div style="border:1px solid #e6dfd0;background:#fdfbf6;padding:4px;text-align:center;">
+      <img src="${growthCanvas.toDataURL('image/png')}" style="width:${INNER - 24}px;height:150px;object-fit:contain;">
+    </div>`;
+  page.appendChild(gSec);
+}
+
+        // ── COMPAREモード：ふりかえり記述のみ ──
+        if (pdfMode === 'COMPARE') {
+          if (reflectionText && reflectionText.trim()) {
+            const refSec = document.createElement('div');
+            refSec.style.cssText = 'margin-top:10px;';
+            refSec.innerHTML = secHead('ふりかえり記述');
+            const refBox = document.createElement('div');
+            refBox.style.cssText = 'border:1px solid #e6dfd0;padding:8px 12px;background:#fdfbf6;';
+            refBox.innerHTML = `
+              <div style="font-size:7.5px;font-weight:700;color:#a8402c;margin-bottom:4px;">整文・ブラッシュアップ後の文章</div>
+              <div style="font-family:'Shippori Mincho B1',serif;font-size:${reflectionForPdf.fontSize}px;color:#2a2420;line-height:1.6;white-space:pre-wrap;">${escapeHtml(reflectionForPdf.text)}</div>
+            `;
+            refSec.appendChild(refBox);
+            page.appendChild(refSec);
+          }
+
+        } else {
+          // ── 通常モード：診断メッセージ（テキスト安全再構築）+ ふりかえり ──
+
+          // フィードバックアイテムをHTMLとして再構築（Tailwindクラスなし）
+          const buildFeedbackHtml = (items, borderColor) => {
+            if (!items.length) return '<div style="font-size:8.5px;color:#7a6f5c;padding:4px;">（コメントなし）</div>';
+            return items.map(item => `
+              <div style="border-left:3px solid ${borderColor};padding:5px 8px;background:#fdfbf6;margin-bottom:5px;">
+                ${item.label ? `<div style="font-size:8px;font-weight:900;color:${borderColor};margin-bottom:2px;">${escapeHtml(item.label)}</div>` : ''}
+                ${item.sub ? `<div style="font-size:7.5px;font-weight:700;color:${borderColor};margin-bottom:2px;">${escapeHtml(item.sub)}</div>` : ''}
+                <div style="font-size:8px;color:#2a2420;line-height:1.55;">${escapeHtml(item.text)}</div>
+              </div>
+            `).join('');
+          };
+
+          const diagSec = document.createElement('div');
+          diagSec.style.cssText = 'margin-bottom:8px;';
+          diagSec.innerHTML = secHead('アセスメント分析・評価メッセージ');
+          const diagGrid = document.createElement('div');
+          diagGrid.style.cssText = 'display:grid; grid-template-columns:1fr 1fr; gap:6px;';
+
+          const col1 = document.createElement('div');
+          col1.style.cssText = 'border:1px solid #e6dfd0;border-left:3px solid #2c5f8a;padding:7px;background:#fdfbf6;';
+          col1.innerHTML = `
+            <div style="font-weight:900;color:#2a2420;font-size:8.5px;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #e6dfd0;">
+              ①　現在のあなたらしさ（強みと探究スタイル）
+            </div>
+            ${buildFeedbackHtml(currentItems, '#2c5f8a')}
+          `;
+
+          const col2 = document.createElement('div');
+          col2.style.cssText = 'border:1px solid #e6dfd0;border-left:3px solid #a8402c;padding:7px;background:#fdfbf6;';
+          col2.innerHTML = `
+            <div style="font-weight:900;color:#2a2420;font-size:8.5px;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #e6dfd0;">
+              ②　なりたい自分に向けて（さらなる成長へのヒント）
+            </div>
+            ${buildFeedbackHtml(futureItems, '#a8402c')}
+          `;
+
+          diagGrid.appendChild(col1);
+          diagGrid.appendChild(col2);
+          diagSec.appendChild(diagGrid);
+          page.appendChild(diagSec);
+
+          // ふりかえり記述
+          if (reflectionText && reflectionText.trim()) {
+            const refSec = document.createElement('div');
+            refSec.innerHTML = secHead('ふりかえり記述');
+            const refBox = document.createElement('div');
+            refBox.style.cssText = 'border:1px solid #e6dfd0;padding:7px 10px;background:#fdfbf6;';
+            refBox.innerHTML = `
+              <div style="font-size:7px;font-weight:700;color:#a8402c;margin-bottom:3px;">整文・ブラッシュアップ後の文章</div>
+              <div style="font-family:'Shippori Mincho B1',serif;font-size:9.5px;color:#2a2420;line-height:1.65;white-space:pre-wrap;">${escapeHtml(reflectionText)}</div>
+            `;
+            refSec.appendChild(refBox);
+            page.appendChild(refSec);
+          }
+        }
+
+        pdfRoot.appendChild(page);
+        await new Promise(r => setTimeout(r, 200));
+
+        // ── html2canvasで実際の高さでキャプチャ ──
+        const canvas = await html2canvas(page, {
+          scale: 2, useCORS: true, allowTaint: false,
+          backgroundColor: '#fdfbf6', logging: false,
+          width: PAGE_W,
+          height: page.scrollHeight,  // 実際の高さに合わせる
+          windowWidth: PAGE_W
+        });
+
+        // ── A4に収まるよう縮小してPDF出力 ──
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const A4W = 210, A4H = 297, MARGIN = 8;
+        const printW = A4W - MARGIN * 2;
+        // コンテンツ全体をA4の縦いっぱいに収まるよう縮小
+        const imgH = (canvas.height / canvas.width) * printW;
+
+        if (imgH <= A4H - MARGIN * 2) {
+          // 1ページに収まる場合：上下中央寄せ
+          const yOff = Math.max(MARGIN, (A4H - imgH) / 2);
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', MARGIN, yOff, printW, imgH);
+        } else {
+          // 収まらない場合：縮小してmarginありで貼る（切れ防止）
+          const scale  = (A4H - MARGIN * 2) / imgH;
+          const scaledW = printW * scale;
+          const scaledH = imgH * scale;
+          const xOff   = MARGIN + (printW - scaledW) / 2;
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', xOff, MARGIN, scaledW, scaledH);
+        }
+
+        const namePart  = studentInfo.trim().replace(/\s+/g, '_') || '探究アセスメント';
+        const datePart  = dateBadge.trim().replace(/[年月日\s]/g, '-').replace(/-+$/, '');
+        const modeSuffix = pdfMode === 'COMPARE' ? '_自己他己比較' : '';
+        pdf.save(`${namePart}_${datePart}_探究アセスメント${modeSuffix}.pdf`);
+
+      } catch (err) {
+        console.error('PDF生成エラー:', err);
+        alert('PDFの生成に失敗しました。ページを再読み込みしてから再度お試しください。');
+      } finally {
+        if (document.body.contains(pdfRoot)) document.body.removeChild(pdfRoot);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = originalBtnHtml;
+          lucide.createIcons();
+        }
+      }
+    }
+
+    // Render History function
+    // 選択中の削除対象IDセット
+    let selectedHistoryIds = new Set();
+
+    function renderHistory() {
+      const historyList = document.getElementById('history-list');
+      if (!historyList) return;
+
+      // 選択状態をリセット
+      selectedHistoryIds = new Set();
+      updateDeleteButton();
+
+      try {
+        const history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+
+        // 「すべて選択」ボタンの表示切替
+        const btnSelectAll = document.getElementById('btn-select-all-history');
+        if (btnSelectAll) {
+          btnSelectAll.classList.toggle('hidden', history.length === 0);
+          btnSelectAll.textContent = 'すべて選択'; // 選択状態はここでリセットされるため表示も合わせる
+        }
+
+        // 「バックアップを保存」ボタンの表示切替
+        const btnExport = document.getElementById('btn-export-history');
+        if (btnExport) {
+          btnExport.classList.toggle('hidden', history.length === 0);
+          btnExport.classList.toggle('flex', history.length > 0);
+        }
+
+        // 「未送信をまとめて送信」ボタンの表示切替（送信機能が無効なら常に非表示）
+        const btnResendAll = document.getElementById('btn-resend-all');
+        if (btnResendAll) {
+          const unsentCount = TEACHER_SUBMIT_ENABLED ? history.filter(r => !r.sentToTeacher).length : 0;
+          btnResendAll.classList.toggle('hidden', unsentCount === 0);
+          btnResendAll.classList.toggle('flex', unsentCount > 0);
+          const label = document.getElementById('btn-resend-all-label');
+          if (label) label.textContent = `未送信の記録（${unsentCount}件）を教師に送信`;
+        }
+
+        if (history.length === 0) {
+          historyList.innerHTML = `
+            <div class="p-8 text-center text-slate-400 font-bold bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              まだ保存された過去の評価記録はありません。
+            </div>
+          `;
+          return;
+        }
+
+        historyList.innerHTML = '';
+        history.forEach(item => {
+          const modeLabel = item.mode === 'COMPARE'
+            ? '<span class="text-[10px] font-bold bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">自己×他己比較</span>'
+            : item.mode === 'SELECT5'
+              ? '<span class="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">5項目選択</span>'
+              : '<span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">全21項目</span>';
+
+          // 送信状況バッジ（送信機能が無効の場合は表示しない）
+          let sendStatusHtml = '';
+          if (TEACHER_SUBMIT_ENABLED) {
+            sendStatusHtml = item.sentToTeacher
+              ? '<span class="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full flex items-center gap-0.5"><i data-lucide="check" class="w-3 h-3"></i>送信済み</span>'
+              : '<span class="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">未送信</span>';
+          }
+
+          const row = document.createElement('div');
+          row.className = 'history-row p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 transition flex items-start gap-3';
+          row.dataset.id = item.id;
+          row.innerHTML = `
+            <input type="checkbox" class="history-checkbox mt-1 w-4 h-4 text-rose-500 border-slate-300 rounded cursor-pointer shrink-0 accent-rose-500"
+              onchange="toggleHistorySelect(${item.id}, this.checked)" aria-label="この記録を選択">
+            <div class="flex-1 min-w-0">
+              <div class="flex flex-wrap items-center gap-2 mb-1">
+                <span class="text-xs font-bold bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full">
+                  ${escapeHtml(item.studentNumber || '')} ${escapeHtml(item.studentName || '')}
+                </span>
+                ${modeLabel}
+                ${sendStatusHtml}
+                <span class="text-xs font-medium text-slate-400">
+                  ${new Date(item.date).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <h3 class="font-extrabold text-slate-800 text-sm truncate">${escapeHtml(item.title)}</h3>
+            </div>
+            ${TEACHER_SUBMIT_ENABLED && !item.sentToTeacher ? `
+            <button onclick="resendHistoryRecord(${item.id})" id="btn-resend-${item.id}" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-lg transition shrink-0 flex items-center gap-1">
+              <i data-lucide="send" class="w-3.5 h-3.5"></i> 送信
+            </button>` : ''}
+            <button onclick="loadHistoryRecord(${item.id})" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition shrink-0 flex items-center gap-1">
+              <i data-lucide="eye" class="w-3.5 h-3.5"></i> 表示
+            </button>
+          `;
+          historyList.appendChild(row);
+        });
+
+        lucide.createIcons();
+      } catch (e) {
+        console.error("History render error:", e);
+      }
+    }
+
+    // 1件の記録を教師へ再送信する
+    function resendHistoryRecord(id) {
+      if (!TEACHER_SUBMIT_ENABLED) return;
+      const btn = document.getElementById(`btn-resend-${id}`);
+      if (btn) { btn.disabled = true; btn.classList.add('opacity-50'); }
+      try {
+        const history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+        const record = history.find(r => r.id === id);
+        if (!record) return;
+        sendRecordToTeacher(record).then(sent => {
+          markRecordSentInStorage(id, sent);
+          renderHistory();
+        });
+      } catch (e) {
+        console.error('再送信エラー:', e);
+      }
+    }
+
+    // 未送信の記録をまとめて教師へ送信する
+    function resendAllUnsentToTeacher() {
+      if (!TEACHER_SUBMIT_ENABLED) return;
+      const btn = document.getElementById('btn-resend-all');
+      if (btn) btn.disabled = true;
+      try {
+        const history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+        const unsent = history.filter(r => !r.sentToTeacher);
+        Promise.all(unsent.map(record =>
+          sendRecordToTeacher(record).then(sent => ({ id: record.id, sent }))
+        )).then(results => {
+          const sentById = {};
+          results.forEach(r => { sentById[r.id] = r.sent; });
+          markRecordsSentInStorage(sentById);
+        }).finally(() => {
+          if (btn) btn.disabled = false;
+          renderHistory();
+        });
+      } catch (e) {
+        console.error('一括再送信エラー:', e);
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // 記録をJSONファイルとしてダウンロードする（端末の故障・機種変更時の引き継ぎ用バックアップ）
+    function exportHistoryBackup() {
+      try {
+        const history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+        if (history.length === 0) {
+          alert('バックアップできる記録がありません。');
+          return;
+        }
+        const payload = {
+          exportedAt: new Date().toISOString(),
+          appVersion: 'nishiki_competency_history_v1',
+          history
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `探究アセスメント_バックアップ_${dateStr}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) {
+        console.error('バックアップの作成に失敗:', e);
+        alert('バックアップの作成に失敗しました。');
+      }
+    }
+
+    // バックアップファイルから記録を復元する（IDが重複する記録は取り込まず、新しい記録のみ追加する）
+    function importHistoryBackup(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          const importedHistory = Array.isArray(parsed) ? parsed : parsed.history;
+          if (!Array.isArray(importedHistory)) {
+            alert('このファイルは正しいバックアップ形式ではありません。');
+            return;
+          }
+
+          const currentHistory = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+          const existingIds = new Set(currentHistory.map(r => r.id));
+          const newRecords = importedHistory.filter(r => r && r.id && !existingIds.has(r.id));
+
+          if (newRecords.length === 0) {
+            alert('このバックアップの記録はすべて、すでにこの端末に存在しています。');
+            return;
+          }
+
+          const merged = [...newRecords, ...currentHistory].sort((a, b) => new Date(b.date) - new Date(a.date));
+          const save = (data) => localStorage.setItem('nishiki_competency_history', JSON.stringify(data));
+          try {
+            save(merged);
+          } catch (quotaErr) {
+            console.warn('localStorage容量超過。古い記録を削除します。', quotaErr);
+            save(merged.slice(0, 20));
+          }
+
+          alert(`${newRecords.length}件の記録を復元しました。`);
+          renderHistory();
+        } catch (err) {
+          console.error('復元エラー:', err);
+          alert('ファイルの読み込みに失敗しました。正しいバックアップファイルを選択してください。');
+        } finally {
+          const input = document.getElementById('history-import-input');
+          if (input) input.value = '';
+        }
+      };
+      reader.onerror = () => {
+        alert('ファイルの読み込みに失敗しました。');
+        const input = document.getElementById('history-import-input');
+        if (input) input.value = '';
+      };
+      reader.readAsText(file);
+    }
+
+    function toggleHistorySelect(id, checked) {
+      if (checked) {
+        selectedHistoryIds.add(id);
+      } else {
+        selectedHistoryIds.delete(id);
+      }
+      updateDeleteButton();
+      // 行の見た目を更新
+      const row = document.querySelector(`.history-row[data-id="${id}"]`);
+      if (row) {
+        row.className = checked
+          ? 'history-row p-3.5 bg-rose-50 rounded-xl border border-rose-200 transition flex items-start gap-3'
+          : 'history-row p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 transition flex items-start gap-3';
+      }
+    }
+
+    function toggleSelectAllHistory() {
+      const checkboxes = document.querySelectorAll('.history-checkbox');
+      const allChecked = [...checkboxes].every(cb => cb.checked);
+      checkboxes.forEach(cb => {
+        const id = parseInt(cb.closest('.history-row').dataset.id, 10);
+        cb.checked = !allChecked;
+        toggleHistorySelect(id, !allChecked);
+      });
+      const btn = document.getElementById('btn-select-all-history');
+      if (btn) btn.textContent = allChecked ? 'すべて選択' : 'すべて解除';
+    }
+
+    function updateDeleteButton() {
+      const btn = document.getElementById('btn-delete-history');
+      const label = document.getElementById('btn-delete-history-label');
+      const count = selectedHistoryIds.size;
+      if (btn) {
+        btn.classList.toggle('hidden', count === 0);
+        btn.classList.toggle('flex', count > 0);
+      }
+      if (label) {
+        label.textContent = count > 0 ? `選択した${count}件を削除` : '選択した記録を削除';
+      }
+    }
+
+    function deleteSelectedHistory() {
+      if (selectedHistoryIds.size === 0) return;
+      const countEl = document.getElementById('delete-confirm-count');
+      if (countEl) countEl.textContent = `${selectedHistoryIds.size}件の記録が削除されます。`;
+      const modal = document.getElementById('delete-confirm-modal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        lucide.createIcons();
+      }
+    }
+
+    function cancelDeleteHistory() {
+      const modal = document.getElementById('delete-confirm-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    function confirmDeleteHistory() {
+      try {
+        const history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+        const filtered = history.filter(item => !selectedHistoryIds.has(item.id));
+        localStorage.setItem('nishiki_competency_history', JSON.stringify(filtered));
+      } catch (e) {
+        console.error('Delete history error:', e);
+      }
+      cancelDeleteHistory();
+      renderHistory();
+    }
+
+    // Load selected record from history
+    function loadHistoryRecord(recordId) {
+      try {
+        const history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]');
+        const record = history.find(r => r.id === recordId);
+        if (record) {
+          showResult(record);
+        }
+      } catch (e) {
+        console.error("Load record error:", e);
+      }
+    }
+
+    // Tab switching handler
+    function switchTab(tab) {
+      const viewAssess = document.getElementById('view-assess');
+      const viewResult = document.getElementById('view-result');
+      const viewHistory = document.getElementById('view-history');
+      const stepIndicator = document.getElementById('step-indicator-bar');
+      const btnAssess = document.getElementById('btn-assess');
+      const btnHistory = document.getElementById('btn-history');
+
+      // Hide all tabs
+      viewAssess.classList.add('hidden');
+      viewResult.classList.add('hidden');
+      viewHistory.classList.add('hidden');
+
+      // Reset button styles（新デザインに合わせた非アクティブ状態）
+      if (btnAssess) btnAssess.className = "flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 bg-white/20 text-white font-bold rounded-xl hover:bg-white/30 transition min-w-[56px]";
+      if (btnHistory) btnHistory.className = "flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 bg-white/20 text-white font-bold rounded-xl hover:bg-white/30 transition min-w-[48px]";
+
+      if (tab === 'assess') {
+        viewAssess.classList.remove('hidden');
+        if (stepIndicator) stepIndicator.classList.remove('hidden');
+        if (btnAssess) btnAssess.className = "flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 bg-white text-indigo-800 font-bold rounded-xl shadow hover:bg-indigo-50 transition min-w-[56px]";
+        updateStepIndicator(currentStep);
+      } else if (tab === 'result') {
+        viewResult.classList.remove('hidden');
+        if (stepIndicator) stepIndicator.classList.remove('hidden');
+        updateStepIndicator(3);
+      } else if (tab === 'history') {
+        viewHistory.classList.remove('hidden');
+        if (stepIndicator) stepIndicator.classList.add('hidden');
+        if (btnHistory) btnHistory.className = "flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 bg-white text-indigo-800 font-bold rounded-xl shadow hover:bg-indigo-50 transition min-w-[48px]";
+        renderHistory();
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // exportToPDF も同じスナップショット処理を経由する
+    function renderChart(scores, targetComps, mode, peerScores) {
+      // Destroy previous chart instances
+      chartInstances.forEach(chart => chart.destroy());
+      chartInstances = [];
+
+      const wrapperAll     = document.getElementById('charts-wrapper-all');
+      const wrapperSelect5 = document.getElementById('charts-wrapper-select5');
+
+      const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 1,
+        scales: {
+          r: {
+            min: 0,
+            max: 4,
+            ticks: {
+              stepSize: 1,
+              font: { size: 10, weight: 'bold' },
+              color: '#a89b7f',
+              backdropColor: 'transparent'
+            },
+            grid: { color: '#e6dfd0' },
+            angleLines: { color: '#e6dfd0' },
+            pointLabels: {
+              font: { size: 9, weight: 'bold', family: "'Zen Maru Gothic', sans-serif" },
+              color: '#2a2420',
+              padding: 12,
+              callback: function(label) {
+                const breakPoints = ['・', '（'];
+                for (const bp of breakPoints) {
+                  const idx = label.indexOf(bp);
+                  if (idx > 0 && idx < label.length - 1) {
+                    return [label.slice(0, idx), label.slice(idx)];
+                  }
+                }
+                if (label.length > 6) {
+                  const mid = Math.ceil(label.length / 2);
+                  return [label.slice(0, mid), label.slice(mid)];
+                }
+                return label;
+              }
+            }
+          }
+        },
+        plugins: {
+          legend: { display: mode === 'COMPARE' }
+        }
+      };
+
+      if (mode === 'COMPARE') {
+        // 自己×他己の重ねチャート
+        const labels   = targetComps.map(c => c.name);
+        const selfVals = targetComps.map(c => scores[c.id] || 0);
+        const peerVals = targetComps.map(c => (peerScores && peerScores[c.id]) || 0);
+
+        const canvas = document.getElementById('chart-compare');
+        if (canvas) {
+          const chart = new Chart(canvas.getContext('2d'), {
+            type: 'radar',
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: '自己評価',
+                  data: selfVals,
+                  backgroundColor: 'rgba(44, 95, 138, 0.15)',
+                  borderColor: '#2c5f8a',
+                  borderWidth: 2.5,
+                  pointBackgroundColor: '#2c5f8a',
+                  pointRadius: 4
+                },
+                {
+                  label: '他己評価',
+                  data: peerVals,
+                  backgroundColor: 'rgba(168, 64, 44, 0.12)',
+                  borderColor: '#a8402c',
+                  borderWidth: 2.5,
+                  borderDash: [5, 3],
+                  pointBackgroundColor: '#a8402c',
+                  pointRadius: 4
+                }
+              ]
+            },
+            options: { ...chartOptions, plugins: { legend: { display: true, labels: { font: { family: "'Zen Maru Gothic', sans-serif", size: 11, weight: 'bold' }, color: '#2a2420' } } } }
+          });
+          chartInstances.push(chart);
+        }
+
+      } else if (mode === 'ALL') {
+        if (wrapperAll) wrapperAll.classList.remove('hidden');
+        if (wrapperSelect5) wrapperSelect5.classList.add('hidden');
+
+        const categories = [
+          { key: 'Thinking', canvasId: 'chart-thinking', color: 'rgba(44, 95, 138, 0.15)', border: '#2c5f8a' },
+          { key: 'Communication', canvasId: 'chart-communication', color: 'rgba(61, 122, 92, 0.15)', border: '#3d7a5c' },
+          { key: 'Leadership', canvasId: 'chart-leadership', color: 'rgba(107, 76, 147, 0.15)', border: '#6b4c93' }
+        ];
+
+        categories.forEach(cat => {
+          const comps = COMPETENCIES.filter(c => c.categoryKey === cat.key);
+          const labels = comps.map(c => c.name);
+          const dataVals = comps.map(c => scores[c.id] || 0);
+
+          const canvas = document.getElementById(cat.canvasId);
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            const chart = new Chart(ctx, {
+              type: 'radar',
+              data: {
+                labels: labels,
+                datasets: [{
+                  data: dataVals,
+                  backgroundColor: cat.color,
+                  borderColor: cat.border,
+                  borderWidth: 2.5,
+                  pointBackgroundColor: cat.border,
+                  pointRadius: 4
+                }]
+              },
+              options: chartOptions
+            });
+            chartInstances.push(chart);
+          }
+        });
+      } else {
+        if (wrapperAll) wrapperAll.classList.add('hidden');
+        if (wrapperSelect5) wrapperSelect5.classList.remove('hidden');
+
+        const labels = targetComps.map(c => c.name);
+        const dataVals = targetComps.map(c => scores[c.id] || 0);
+
+        const canvas = document.getElementById('chart-select5');
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          const chart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+              labels: labels,
+              datasets: [{
+                data: dataVals,
+                backgroundColor: 'rgba(168, 64, 44, 0.15)',
+                borderColor: '#a8402c',
+                borderWidth: 2.5,
+                pointBackgroundColor: '#a8402c',
+                pointRadius: 4
+              }]
+            },
+            options: chartOptions
+          });
+          chartInstances.push(chart);
+        }
+      }
+    }
+
+    // ギャップ分析：自己×他己（複数人平均）の差を項目ごとに表示
+    function renderGapAnalysis(selfScores, avgPeerScores, targetComps, peerEvals) {
+      const gapEl = document.getElementById('compare-gap-analysis');
+      if (!gapEl) return;
+      gapEl.innerHTML = '';
+
+      const evalCount = peerEvals ? peerEvals.length : 0;
+
+      // ── ヘッダー ──
+      const header = document.createElement('div');
+      header.className = 'px-4 py-3 bg-[#f5f0e8] flex flex-wrap items-center gap-x-4 gap-y-1';
+      header.innerHTML = `
+        <span class="text-xs font-black text-[#2a2420]">項目別ギャップ分析（他己評価 ${evalCount}名の平均）</span>
+        <span class="flex items-center gap-1.5 text-[11px] font-bold text-[#2c5f8a] ml-auto">
+          <span class="inline-block w-10 h-1.5 rounded-full bg-[#2c5f8a]"></span>自己評価
+        </span>
+        <span class="flex items-center gap-1.5 text-[11px] font-bold text-[#a8402c]">
+          <span class="inline-block w-10 h-1.5 rounded-full bg-[#a8402c] opacity-60"></span>他己平均
+        </span>
+      `;
+      gapEl.appendChild(header);
+
+      targetComps.forEach(comp => {
+        const self = selfScores[comp.id] || 0;
+        const peer = (avgPeerScores && avgPeerScores[comp.id]) || 0;
+        const diff = peer - self; // 正 = 友人の方が高く評価
+
+        // ── ラベル設計（ポジティブ寄り3段階） ──
+        // diff > 0  → 友人がより高く見ている  = 「友人からの期待」
+        // diff = 0  → ほぼ一致              = 「ほぼ同じ」
+        // diff < 0  → 自己評価の方が高い    = 「伸びしろ発見」
+        let tier, labelText, labelBg, labelBorder, labelTextColor, barColor, comment;
+
+        if (diff >= 1) {
+          tier = 'expect';
+          labelText = diff >= 2 ? '✦ 友人からの大きな期待' : '✦ 友人からの期待';
+          labelBg = '#e8f4ee';
+          labelBorder = '#3d7a5c';
+          labelTextColor = '#1a5c3a';
+          barColor = '#3d7a5c';
+          comment = diff >= 2
+            ? `友人たちはあなたの「${comp.name}」を、自己評価よりかなり高く見ています。まだ気づいていない強みが周囲にははっきりと見えているようです。自信を持ってこの力を前面に出していきましょう。`
+            : `友人から見ると、あなたの「${comp.name}」は自己評価よりひとつ高い水準にあります。謙虚さも大切ですが、もう少し自分の力を信じて発揮してみましょう。`;
+        } else if (diff === 0 || (diff > -1 && diff < 1)) {
+          tier = 'same';
+          labelText = '● ほぼ同じ';
+          labelBg = '#f0ece3';
+          labelBorder = '#a89b7f';
+          labelTextColor = '#5a4f3c';
+          barColor = '#a89b7f';
+          comment = `「${comp.name}」については、自己評価と友人の評価がほぼ一致しています。自分自身を客観的に捉えられている証拠です。この認識の正確さを大切にしながら、さらなる成長を目指しましょう。`;
+        } else {
+          tier = 'potential';
+          labelText = Math.abs(diff) >= 2 ? '◎ 大きな伸びしろ発見' : '◎ 伸びしろ発見';
+          labelBg = '#fef3ec';
+          labelBorder = '#c4692a';
+          labelTextColor = '#8a3e0f';
+          barColor = '#c4692a';
+          comment = Math.abs(diff) >= 2
+            ? `「${comp.name}」は、周囲から見た評価と自己認識の間に大きなギャップがあります。これはあなたにとって大きな成長のチャンスです。友人の視点を参考に、この力をどう磨くか具体的に考えてみましょう。`
+            : `「${comp.name}」について、友人の評価は自己評価よりやや低い傾向があります。周囲からどう見えているかを知ることは貴重な気づきです。次の探究活動で意識的にこの力を見せていきましょう。`;
+        }
+
+        const diffLabel = diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1);
+
+        const row = document.createElement('div');
+        row.className = 'px-4 py-3.5 bg-[#fdfbf6] flex flex-col gap-2';
+        // PDF読み取り用にdata属性を付与
+        row.dataset.compName = `${comp.id}. ${comp.name}`;
+        row.dataset.selfLv   = `Lv.${self}`;
+        row.dataset.peerLv   = `Lv.${typeof peer === 'number' ? peer.toFixed(1) : peer}`;
+        row.dataset.tier     = tier;
+        row.dataset.label    = labelText;
+        row.dataset.labelBg  = labelBg;
+        row.dataset.labelBd  = labelBorder;
+        row.dataset.labelTx  = labelTextColor;
+        row.innerHTML = `
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-sm font-bold text-[#2a2420]">${comp.id}. ${comp.name}</span>
+            <span class="text-xs font-black text-[#2c5f8a] ml-auto shrink-0">自己 Lv.${self}</span>
+            <span class="text-xs font-black text-[#a8402c] shrink-0">他己平均 Lv.${typeof peer === 'number' ? peer.toFixed(1) : peer}</span>
+          </div>
+          <div class="flex items-start gap-2.5 flex-wrap">
+            <span class="inline-flex items-center shrink-0 text-xs font-black px-3 py-1 rounded-sm border-l-[3px]"
+              style="background:${labelBg}; border-color:${labelBorder}; color:${labelTextColor}; border-left-width:3px; border-top:1px solid ${labelBorder}; border-right:1px solid ${labelBorder}; border-bottom:1px solid ${labelBorder};">
+              ${labelText}
+              <span class="ml-2 font-black text-sm">${diffLabel}</span>
+            </span>
+            <span class="text-xs text-[#5a4f3c] leading-relaxed flex-1">${comment}</span>
+          </div>
+        `;
+        gapEl.appendChild(row);
+      });
+
+      // ── 友人メッセージ一覧 ──
+      const msgsEl = document.getElementById('compare-peer-messages');
+      if (msgsEl) {
+        msgsEl.innerHTML = '';
+        if (peerEvals && peerEvals.length > 0) {
+          const msgs = peerEvals.filter(ev => ev.message && ev.message.trim());
+          if (msgs.length > 0) {
+            const msgHeader = document.createElement('div');
+            msgHeader.className = 'text-xs font-black text-[#2a2420] px-1 pt-2';
+            msgHeader.textContent = '友人からのメッセージ';
+            msgsEl.appendChild(msgHeader);
+            msgs.forEach(ev => {
+              const card = document.createElement('div');
+              card.className = 'border border-[#e6dfd0] p-4 bg-[#fdfbf6]';
+              card.innerHTML = `
+                <p class="text-sm font-bold text-[#2a2420] leading-relaxed">"${escapeHtml(ev.message)}"</p>
+                <p class="text-xs text-[#7a6f5c] mt-1.5 text-right font-bold">— ${escapeHtml(ev.name)}</p>
+              `;
+              msgsEl.appendChild(card);
+            });
+          }
+        }
+      }
+    }
+
+    // Dynamic Evaluation & Feedback Generator with rich variations
+    function renderEvaluationText(scores, targetComps) {
+      const currentSelfElem = document.getElementById('feedback-current-self');
+      const futureSelfElem = document.getElementById('feedback-future-self');
+
+      if (!currentSelfElem || !futureSelfElem) return;
+
+      // Sort competencies by score (high to low)
+      const sorted = [...targetComps].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
+
+      // Strengths: Level 3 or 4
+      const strengths = sorted.filter(c => (scores[c.id] || 0) >= 3);
+      // Growth areas: Level 1 or 2 only (not high scorers), ordered lowest first
+      const growthAreas = [...targetComps]
+        .filter(c => (scores[c.id] || 0) <= 2)
+        .sort((a, b) => (scores[a.id] || 0) - (scores[b.id] || 0));
+
+      // Category Score Aggregation & Type Diagnosis Logic
+      const catAvg = { Thinking: 0, Communication: 0, Leadership: 0 };
+      const catCount = { Thinking: 0, Communication: 0, Leadership: 0 };
+
+      targetComps.forEach(c => {
+        const sc = scores[c.id] || 0;
+        catAvg[c.categoryKey] += sc;
+        catCount[c.categoryKey]++;
+      });
+
+      Object.keys(catAvg).forEach(key => {
+        if (catCount[key] > 0) catAvg[key] /= catCount[key];
+      });
+
+      // Type determination logic
+      let typeTitle = "バランス探究チャレンジャー";
+      let deptStrengthSummary = "どの領域にも均等に力を注ぎ、着実に歩みを進めている姿が印象的です。バランスの取れた成長は、多様な場面で柔軟に対応できる力の土台になります。「なりたい自分」に向かって、ひとつひとつ積み重ねる姿勢を大切にしてください。";
+      let deptGrowthSummary = "焦らず自分のペースで、一つひとつの資質を次のレベルへとステップアップさせていきましょう。「今の自分より少し上」を目指す小さな挑戦が、大きな成長へと繋がります。錦丘高校が目指す「なりたい自分の実現」に向けて、探究の歩みを止めないでください。";
+
+      const maxCat = Object.keys(catAvg).reduce((a, b) => catAvg[a] > catAvg[b] ? a : b);
+      const minCat = Object.keys(catAvg).reduce((a, b) => catAvg[a] < catAvg[b] ? a : b);
+      const diff = catAvg[maxCat] - catAvg[minCat];
+
+      if (diff < 0.5 && catAvg[maxCat] >= 3.2) {
+        typeTitle = "🌟 万能オールラウンダー型";
+        deptStrengthSummary = "思考・発信・実行の3つの領域すべてで高いパフォーマンスを発揮する、まさに「万能探究者」です。どの場面でもチームの頼れる中心として存在感を示し、錦丘高校が目指す「自己有用感が高く他者と協働しながら問題解決できる生徒」の姿を体現しています。";
+        deptGrowthSummary = "すでに高い完成度に達しているあなたには、校内にとどまらず地域社会・外部コンテスト・社会課題への提言など、より広いフィールドへの挑戦をおすすめします。「持続可能な社会の発展に貢献したい」という錦丘高校の理念を、あなたなら実現できます。";
+      } else if (maxCat === "Thinking" && catAvg.Thinking >= 3.0) {
+        if (catAvg.Leadership >= 3.0) {
+          typeTitle = "💡 探究イノベーター型 (思考×実行)";
+          deptStrengthSummary = "深い洞察力と果敢な実行力を兼ね備えた「変革者」タイプです。新しい問いを立て、自ら突き進む推進力が高く評価できます。論理的に考え、それを形にする力は、地域課題の解決や新しいプロジェクトの立案に大きく貢献できます。";
+        } else {
+          typeTitle = "🔍 知の探求者型 (思考特化)";
+          deptStrengthSummary = "「なぜ？」を深く掘り下げ、本質を見抜く知的なプロフェッショナルです。豊かな知識と論理力で確信ある成果を生み出す力は、探究活動の核心そのものです。「考え抜く探究心を持ち続ける生徒」を目指す錦丘高校の理念に、あなたは深く応えています。";
+        }
+        deptGrowthSummary = "持ち前の探究の深さをさらに輝かせるために、自分の知見や分析結果を周囲へ発信・共有（Communication）する機会を積極的に作ってみましょう。あなたの深い思考が、周りの人の気づきや行動を引き出すことで、探究の影響力が社会へと広がっていきます。";
+      } else if (maxCat === "Communication" && catAvg.Communication >= 3.0) {
+        typeTitle = "🤝 共創コミュニケーター型 (発信・協働特化)";
+        deptStrengthSummary = "周囲の意見を紡ぎ合わせ、チームの魅力をカタチにして社会へ届ける「共創のリーダー」です。「多様な価値観を受け入れ他者と協働できる力」と「表現・発信力」を高いレベルで発揮しており、グループを前向きな方向へと導く存在感があります。";
+        deptGrowthSummary = "磨かれたコミュニケーション力を土台として、データや論拠の裏付け（Thinking）をさらに意識すると、あなたの提案はより説得力を持ち、より広い場で受け入れられるようになります。感性と論理の両輪が揃った時、あなたの発信力は最大限に輝きます。";
+      } else if (maxCat === "Leadership" && catAvg.Leadership >= 3.0) {
+        typeTitle = "🚀 未来を開拓するリーダー型 (実行力特化)";
+        deptStrengthSummary = "目標に向けて自ら行動を起こし、周りを巻き込んで前進させる「パイオニア」タイプです。「なりたい自分の実現に向けてアクションを起こす生徒」を目指す錦丘高校の方針を、あなたは日々の探究活動の中で体現しています。その推進力が、チームに力と勇気を与えています。";
+        deptGrowthSummary = "高い行動力をさらに活かすために、ときに立ち止まって「なぜこの方向に進んでいるのか」を振り返る時間（Thinking）を設けてみましょう。根拠と戦略に支えられた行動力は、より確実で大きな成果へと結びつき、あなたのリーダーシップをさらに磨きます。";
+      } else {
+        typeTitle = "🌱 伸びしろいっぱいのチャレンジャー";
+        deptStrengthSummary = "自分の現在地を客観的に捉え、着実に一歩一歩前進している成長の真っ只中にいます。「今の自分」を正直に見つめ直す力は、探究者として最も大切な第一歩です。どんなに高い山も、最初の一歩から始まります。";
+        deptGrowthSummary = "伸びしろはあなたが大きく飛躍するための最大の宝物です。まずは得意・好きだと感じる1つの資質を見つけて、そこを「自分の強み」として磨いていきましょう。小さな自信の積み重ねが、「なりたい自分」への道を少しずつ確かなものにしていきます。";
+      }
+
+      // 1. Construct Strength Feedback Cards (Top 3)
+      // typeTitleShort は if/else 両ブランチで使うためここで定義
+      const typeTitleShort = typeTitle.replace(/^\S+\s/, '');
+
+      if (strengths.length > 0) {
+        const top3 = strengths.slice(0, 3);
+        const strengthTexts = top3.map(c => {
+          const sc = scores[c.id] || 3;
+          const fbData = COMPETENCY_FEEDBACK_DB[c.id];
+          const text = (fbData && fbData.strength && fbData.strength[sc])
+            ? fbData.strength[sc]
+            : (fbData && fbData.strength && fbData.strength[3])
+              ? fbData.strength[3]
+              : '高いパフォーマンスを発揮し、探究活動をリードできています。';
+
+          return `
+            <div class="bg-[#fdfbf6] p-3.5 border-l-[3px] border-[#2c5f8a] space-y-1.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-black text-[#2c5f8a]">${c.name}</span>
+                <span class="text-xs font-black text-[#2c5f8a]">Level ${sc}</span>
+              </div>
+              <p class="text-sm font-bold text-[#2a2420] leading-relaxed">${text}</p>
+            </div>
+          `;
+        }).join('');
+
+        const deptMsgHtml = `
+          <div class="mt-5 pt-5 report-rule relative">
+            <span class="seal-badge inline-flex items-center justify-center w-24 h-24 rounded-full text-center text-xs font-bold leading-tight p-2 float-right ml-3 mb-2">${typeTitleShort}</span>
+            <div class="text-xs font-bold text-[#a8402c] mb-1.5">探究未来課の診断</div>
+            <p class="text-sm font-bold leading-relaxed text-[#2a2420]">${deptStrengthSummary}</p>
+          </div>
+        `;
+
+        currentSelfElem.innerHTML = strengthTexts + deptMsgHtml;
+      } else {
+        currentSelfElem.innerHTML = `
+          <div class="bg-[#fdfbf6] p-3.5 border-l-[3px] border-[#2c5f8a] text-[#2a2420] text-sm font-medium">
+            自分の課題と丁寧に向き合い、一つひとつの工程を直向きに取り組んでいます。自分のペースで試行錯誤を続けましょう。
+          </div>
+          <div class="mt-5 pt-5 report-rule relative">
+            <span class="seal-badge inline-flex items-center justify-center w-24 h-24 rounded-full text-center text-xs font-bold leading-tight p-2 float-right ml-3 mb-2">${typeTitleShort}</span>
+            <div class="text-xs font-bold text-[#a8402c] mb-1.5">探究未来課からのメッセージ</div>
+            <p class="text-sm font-bold leading-relaxed text-[#2a2420]">${deptStrengthSummary}</p>
+          </div>
+        `;
+      }
+
+      // 2. Construct Growth Tip Feedback Cards (Bottom 2)
+      if (growthAreas.length > 0) {
+        const bottom2 = growthAreas.slice(0, 2);
+        const growthTexts = bottom2.map(c => {
+          const sc = scores[c.id] || 1;
+          const fbData = COMPETENCY_FEEDBACK_DB[c.id];
+          const text = (fbData && fbData.growthTip && fbData.growthTip[sc])
+            ? fbData.growthTip[sc]
+            : (fbData && fbData.growthTip && fbData.growthTip[2])
+              ? fbData.growthTip[2]
+              : '少しの意識付けと具体的な工夫で、大きく伸ばしていける伸びしろ領域です。';
+
+          return `
+            <div class="bg-[#fdfbf6] p-3.5 border-l-[3px] border-[#a8402c] space-y-1.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-black text-[#a8402c]">${c.name}</span>
+                <span class="text-xs font-black text-[#a8402c]">Level ${sc}</span>
+              </div>
+              <p class="text-sm font-bold text-[#2a2420] leading-relaxed">${text}</p>
+            </div>
+          `;
+        }).join('');
+
+        const deptGrowthMsgHtml = `
+          <div class="mt-5 pt-5 report-rule">
+            <div class="text-xs font-bold text-[#a8402c] mb-1.5">次の一歩へのアドバイス</div>
+            <p class="text-sm font-bold leading-relaxed text-[#2a2420]">${deptGrowthSummary}</p>
+          </div>
+        `;
+
+        futureSelfElem.innerHTML = growthTexts + deptGrowthMsgHtml;
+      } else {
+        futureSelfElem.innerHTML = `
+          <div class="bg-[#fdfbf6] p-3.5 border-l-[3px] border-[#a8402c] text-[#2a2420] text-sm font-medium">
+            全般的にとても高い水準にあります。現状に満足せず、より高度なチャレンジを設定してみましょう。
+          </div>
+        `;
+      }
+
+      lucide.createIcons();
+    }
+
+// ===== 成長の経過（過去の自分との比較：全21項目モード） =====
+let growthChartInstance = null;
+let growthState = { series: [], current: null };
+const GROWTH_CAT_INK = { Thinking: '#2c5f8a', Communication: '#3d7a5c', Leadership: '#6b4c93' };
+
+function calcAverages(scores) {
+  const acc = { Thinking: [0, 0], Communication: [0, 0], Leadership: [0, 0], all: [0, 0] };
+  COMPETENCIES.forEach(c => {
+    const v = Number(scores && scores[c.id]);
+    if (v > 0) {
+      acc[c.categoryKey][0] += v; acc[c.categoryKey][1]++;
+      acc.all[0] += v; acc.all[1]++;
+    }
+  });
+  const out = {};
+  Object.keys(acc).forEach(k => { out[k] = acc[k][1] ? acc[k][0] / acc[k][1] : null; });
+  return out;
+}
+
+function fmtGrowthDate(iso, withYear) {
+  return new Date(iso).toLocaleDateString('ja-JP',
+    withYear ? { year: 'numeric', month: 'numeric', day: 'numeric' } : { month: 'numeric', day: 'numeric' });
+}
+
+function renderGrowthSection(record) {
+  const section = document.getElementById('growth-section');
+  if (!section) return;
+  if (growthChartInstance) { growthChartInstance.destroy(); growthChartInstance = null; }
+
+  if (record.mode !== 'ALL') { section.classList.add('hidden'); return; }
+  section.classList.remove('hidden');
+
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem('nishiki_competency_history') || '[]'); } catch (e) {}
+
+  // 同じ出席番号の「全21項目」記録を日付順に並べ、表示中の記録までを対象にする
+  const same = history.filter(r => r.mode === 'ALL' && r.studentNumber === record.studentNumber && r.id !== record.id);
+  same.push(record);
+  same.sort((a, b) => new Date(a.date) - new Date(b.date));
+  const series = same.slice(0, same.findIndex(r => r.id === record.id) + 1);
+  growthState = { series, current: record };
+
+  const emptyEl = document.getElementById('growth-empty');
+  const bodyEl = document.getElementById('growth-body');
+  if (series.length < 2) {
+    bodyEl.classList.add('hidden');
+    emptyEl.classList.remove('hidden');
+    emptyEl.textContent = '今回が最初の「全21項目」の記録です。次回以降にふりかえりを行うと、ここに成長の経過が表示されます。';
+    return;
+  }
+  emptyEl.classList.add('hidden');
+  bodyEl.classList.remove('hidden');
+
+  // ── 折れ線グラフ ──
+  const spansYears = new Set(series.map(r => new Date(r.date).getFullYear())).size > 1;
+  const avgs = series.map(r => calcAverages(r.scores));
+  const mk = (label, key, color, w) => ({
+    label, data: avgs.map(a => a[key] === null ? null : Number(a[key].toFixed(2))),
+    borderColor: color, backgroundColor: color, borderWidth: w, pointRadius: 4, tension: 0.2, spanGaps: true
+  });
+  growthChartInstance = new Chart(document.getElementById('chart-growth').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: series.map(r => fmtGrowthDate(r.date, spansYears)),
+      datasets: [
+        mk('総合', 'all', '#a8402c', 3.5),
+        mk('Thinking', 'Thinking', GROWTH_CAT_INK.Thinking, 2),
+        mk('Communication', 'Communication', GROWTH_CAT_INK.Communication, 2),
+        mk('Leadership', 'Leadership', GROWTH_CAT_INK.Leadership, 2)
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { min: 0, max: 4, ticks: { stepSize: 1 }, title: { display: true, text: '平均レベル' } } },
+      plugins: {
+        legend: { position: 'top', labels: { font: { family: "'Zen Maru Gothic', sans-serif", size: 11, weight: 'bold' } } },
+        tooltip: { callbacks: { afterTitle: items => series[items[0].dataIndex].title || '' } }
+      }
+    }
+  });
+
+  // ── 比較先の選択肢（デフォルト＝前回）──
+  const past = series.slice(0, -1);
+  const sel = document.getElementById('growth-compare-select');
+  sel.innerHTML = '';
+  past.forEach((r, i) => {
+    const tag = past.length === 1 ? '前回（初回）' : i === past.length - 1 ? '前回' : i === 0 ? '初回' : `${i + 1}回目`;
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${tag}：${fmtGrowthDate(r.date, true)} ${r.title || ''}`;
+    sel.appendChild(opt);
+  });
+  sel.value = String(past.length - 1);
+  onGrowthCompareChange();
+}
+
+function onGrowthCompareChange() {
+  const { series, current } = growthState;
+  if (!current || series.length < 2) return;
+  const base = series[parseInt(document.getElementById('growth-compare-select').value, 10)];
+  if (!base) return;
+
+  const nowAvg = calcAverages(current.scores), baseAvg = calcAverages(base.scores);
+  const diffs = COMPETENCIES.map(c => ({
+    comp: c, before: Number(base.scores[c.id]) || 0, now: Number(current.scores[c.id]) || 0
+  })).map(d => ({ ...d, diff: d.now - d.before }));
+
+  // ── 要約文 ──
+  const baseLabel = `${fmtGrowthDate(base.date, true)}の記録`;
+  const parts = [];
+  if (nowAvg.all !== null && baseAvg.all !== null) {
+    const d = nowAvg.all - baseAvg.all;
+    if (Math.abs(d) < 0.05) parts.push(`${baseLabel}と比べて、総合平均（${nowAvg.all.toFixed(1)}）はほぼ横ばいです。`);
+    else if (d > 0) parts.push(`${baseLabel}と比べて、総合平均が${baseAvg.all.toFixed(1)}から${nowAvg.all.toFixed(1)}へ${d.toFixed(1)}ポイント伸びています。`);
+    else parts.push(`${baseLabel}と比べて、総合平均は${baseAvg.all.toFixed(1)}から${nowAvg.all.toFixed(1)}になりました。自己評価の基準が厳しくなった可能性もあり、必ずしも後退とは限りません。`);
+  }
+  const grown = diffs.filter(d => d.diff > 0).sort((a, b) => b.diff - a.diff).slice(0, 3);
+  if (grown.length) parts.push(`特に伸びたのは ${grown.map(d => `「${d.comp.name}」（Lv.${d.before}→${d.now}）`).join('、')} です。`);
+  const upCount = diffs.filter(d => d.diff > 0).length, downCount = diffs.filter(d => d.diff < 0).length;
+  parts.push(`21項目のうち、上がった項目は${upCount}個、下がった項目は${downCount}個、変わらなかった項目は${21 - upCount - downCount}個でした。`);
+  const summaryEl = document.getElementById('growth-summary');
+  summaryEl.textContent = parts.join('');
+
+  // ── 項目別比較表（カテゴリーごと）──
+  const table = document.getElementById('growth-diff-table');
+  let html = '';
+  ['Thinking', 'Communication', 'Leadership'].forEach(cat => {
+    const ink = GROWTH_CAT_INK[cat];
+    html += `<div class="px-4 py-2 text-xs font-black text-white" style="background:${ink}">${CATEGORY_CONFIG[cat].name}</div>`;
+    diffs.filter(d => d.comp.categoryKey === cat).forEach(d => {
+      const badge = d.diff > 0
+        ? `<span class="text-xs font-black px-2 py-0.5 rounded-sm" style="background:#e8f4ee;color:#1a5c3a">▲ +${d.diff}</span>`
+        : d.diff < 0
+          ? `<span class="text-xs font-black px-2 py-0.5 rounded-sm" style="background:#fef3ec;color:#8a3e0f">▼ ${d.diff}</span>`
+          : `<span class="text-xs font-black px-2 py-0.5 rounded-sm" style="background:#f0ece3;color:#5a4f3c">→ 変化なし</span>`;
+      html += `
+        <div class="px-4 py-2.5 bg-[#fdfbf6] flex items-center gap-3 flex-wrap">
+          <span class="text-xs font-bold text-[#2a2420] flex-1 min-w-[10rem]">${d.comp.id}. ${escapeHtml(d.comp.name)}</span>
+          <span class="text-xs font-bold text-[#7a6f5c]">Lv.${d.before} → <span style="color:${ink}" class="font-black">Lv.${d.now}</span></span>
+          ${badge}
+        </div>`;
+    });
+  });
+  table.innerHTML = html;
+}
+
+    // App Initialization
+    window.onload = function() {
+      initCurrentDate();
+      setAssessmentMode('ALL');
+      updateStepIndicator(1);
+      initTeacherSheetButton();
+      // ページ全体のLucideアイコンを初期化（ヘッダーの静的アイコンも含む）
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    };
+  </script>
+</body>
+</html>
