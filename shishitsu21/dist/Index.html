@@ -25,9 +25,17 @@
       padding: 10px 12px; border-width: 2px; border-radius: 0.75rem; font-weight: 700; text-align: left; transition: background-color .15s; }
     .mode-desc { font-size: 11px; line-height: 1.45; color: #64748b; font-weight: 500; }
     /* トップ画面左のピクトグラム */
-    .picto-tile:hover, .picto-tile:focus-visible { transform: scale(1.06); outline: none; box-shadow: 0 0 0 2px #6366f1; }
-    .picto-tile.picto-on { box-shadow: 0 0 0 3px #4f46e5; }
-    .picto-tile.picto-off { opacity: .35; }
+    /* 絵は押すと説明が出るだけ（ここでは選べない）。光るのは、モードで選んだ5つだけ */
+    .picto-tile { cursor: help; }
+    .picto-tile:hover { filter: brightness(1.08); }
+    .picto-tile:focus-visible { outline: 2px dashed #64748b; outline-offset: 2px; }
+    .picto-tile.picto-on { box-shadow: 0 0 0 3px #4f46e5, 0 0 12px 2px rgba(99, 102, 241, .55); }
+    .picto-tile.picto-off { opacity: .3; }
+    .picto-strip { scrollbar-width: none; }
+    .picto-strip::-webkit-scrollbar { display: none; }
+    /* 広い画面で5つを選ぶとき：「選び直す」はモードの見出しの右に出す（高さを増やさないため） */
+    .mode-pick-lg { display: none; }
+    @media (min-width: 1024px) { body.picking .mode-pick-lg { display: inline-flex; } }
     /* トップ画面はスクロールせずに1画面で終わるよう、上下の余白と進み具合の表示を小さくする（ほかの画面は今のまま） */
     body.top-page { padding-bottom: 0; }
     body.top-page main { margin-top: 12px; }
@@ -176,23 +184,29 @@
 
       <!-- STEP 1 CONTAINER（トップ画面：スクロールせずに1画面で入力が終わるように、情報→モード→次へ の3段にまとめる） -->
       <div id="assess-step-1">
+      <!-- 狭い画面では、21のピクトグラムを横1列に並べる（横にずらすと全部見られる） -->
+        <div id="picto-strip-card" class="lg:hidden mb-3 bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-200/80">
+          <div class="text-xs font-black text-slate-800 flex items-center gap-1.5 mb-1">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-indigo-600"></i>
+            探究で身に付けたい21の資質・能力
+          </div>
+          <div id="picto-strip" class="picto-strip flex gap-1 overflow-x-auto py-1 px-0.5"></div>
+          <p id="picto-caption-sm" class="text-[10px] text-slate-500 font-medium leading-snug mt-0.5 min-h-[1.4em]">絵を押すと、名前と説明が出ます</p>
+        </div>
       <!-- 2列にする箱は内側に置く（外側に lg:grid を付けると、次の画面で hidden にしても消えないため） -->
       <div class="lg:grid lg:grid-cols-12 lg:gap-3 lg:items-start">
         <!-- 21の資質・能力のピクトグラム（広い画面だけ。中身は renderPictoPanel() が作る） -->
-        <aside id="picto-panel" class="hidden lg:flex lg:col-span-5 flex-col gap-2 bg-white px-4 py-3.5 rounded-2xl shadow-sm border border-slate-200/80" aria-label="探究で身に付けたい21の資質・能力">
+        <aside id="picto-panel" class="hidden lg:flex lg:col-span-5 flex-col gap-2 bg-white px-4 py-3 rounded-2xl shadow-sm border border-slate-200/80" aria-label="探究で身に付けたい21の資質・能力">
           <h2 class="text-sm font-black text-slate-800 flex items-center gap-1.5">
             <i data-lucide="sparkles" class="w-4 h-4 text-indigo-600"></i>
             探究で身に付けたい21の資質・能力
           </h2>
           <div id="picto-groups" class="flex flex-col gap-2"></div>
-          <p id="picto-caption" class="text-[11px] text-slate-500 font-medium leading-snug min-h-[2.6em]">絵を押すと、その資質・能力の名前と説明が出ます</p>
-          <!-- 5つを選ぶ・自己×他己のとき：選んだ数と「選び直す」（広い画面ではここに出す） -->
-          <div id="picto-pick-row" class="hidden items-center gap-2 pt-2 border-t border-slate-100">
-            <span class="text-xs font-bold text-indigo-900 flex items-center gap-1">
-              <i data-lucide="check-square" class="w-4 h-4 text-indigo-600"></i>
-              ふりかえる5つ（<span id="picto-pick-count">0</span> / 5）：色のついた絵
-            </span>
-            <button type="button" onclick="openSelect5Picker()" id="picto-pick-btn" class="ml-auto px-3 py-1.5 rounded-xl border-2 border-indigo-600 text-indigo-700 bg-white text-xs font-extrabold hover:bg-indigo-50 transition whitespace-nowrap">5つを選ぶ</button>
+          <p id="picto-caption" class="text-[11px] text-slate-500 font-medium leading-snug min-h-[2.4em]">絵を押すと、その資質・能力の名前と説明が出ます</p>
+          <!-- 5つを選ぶ・自己×他己のとき：光っている絵の意味（選ぶのは右のモードから） -->
+          <div id="picto-pick-row" class="hidden items-center gap-1 pt-1.5 border-t border-slate-100 text-xs font-bold text-indigo-900">
+            <i data-lucide="sparkle" class="w-4 h-4 text-indigo-600"></i>
+            光っている絵が、ふりかえる5つです（<span id="picto-pick-count">0</span> / 5）
           </div>
         </aside>
 
@@ -251,10 +265,15 @@
 
         <!-- Mode Selection Card -->
         <div class="bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-200/80">
-          <h2 class="text-base font-black text-slate-800 flex items-center gap-2 mb-2.5">
-            <i data-lucide="sliders" class="w-5 h-5 text-indigo-600"></i>
-            2. ふりかえりモードの選択
-          </h2>
+          <div class="flex items-center justify-between gap-2 mb-2.5">
+            <h2 class="text-base font-black text-slate-800 flex items-center gap-2">
+              <i data-lucide="sliders" class="w-5 h-5 text-indigo-600"></i>
+              2. ふりかえりモードの選択
+            </h2>
+            <button type="button" onclick="openSelect5Picker()" id="mode-pick-btn" class="mode-pick-lg items-center gap-1 px-3 py-0.5 rounded-xl border-2 border-indigo-600 text-indigo-700 bg-white text-xs font-extrabold hover:bg-indigo-50 transition whitespace-nowrap">
+              <i data-lucide="check-square" class="w-3.5 h-3.5"></i><span id="mode-pick-label">5つを選ぶ</span>
+            </button>
+          </div>
           <div class="grid grid-cols-3 gap-2 sm:gap-3">
             <button type="button" onclick="setAssessmentMode('ALL')" id="mode-btn-all" class="mode-btn border-indigo-600 bg-indigo-50/50 text-indigo-900">
               <span class="flex items-center gap-2">
@@ -290,9 +309,9 @@
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-xs font-bold text-indigo-900 flex items-center gap-1 whitespace-nowrap">
                 <i data-lucide="check-square" class="w-4 h-4 text-indigo-600"></i>
-                ふりかえる5つ（<span id="select5-count-inline">0</span> / 5）
+                ふりかえる5つ（<span id="select5-count-inline">0</span> / 5）：上の光っている絵
               </span>
-              <div id="select5-chips" class="flex flex-wrap gap-1 w-full sm:w-auto sm:flex-1 min-w-0 order-last sm:order-none"></div>
+              <div id="select5-chips" class="hidden"></div>
               <button type="button" onclick="openSelect5Picker()" id="select5-open-btn" class="ml-auto px-3 py-1.5 rounded-xl border-2 border-indigo-600 text-indigo-700 bg-white text-xs font-extrabold hover:bg-indigo-50 transition whitespace-nowrap">
                 5つを選ぶ
               </button>
@@ -706,7 +725,7 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.13';
+    const APP_VERSION = '2026-10-24.14';
 
     // Apps Script の画面では <html lang="ja"> の指定が消えてしまう。日本語の指定がないと、
     // 端末によっては漢字が中国語の字形で表示・印刷されるため、ここで入れ直す
@@ -2296,7 +2315,7 @@ const COMPETENCY_SHORT_DESC = {
         numberEl.classList.add('bg-slate-100');
         nameEl.value = rosterIdentity.name;
         rosterLookup = { number: rosterIdentity.number, ok: true, message: '' };
-        setRosterNote('Googleアカウントから、出席番号と名前が自動で入りました。違うときは先生に伝えてください。', 'ok');
+        setRosterNote('番号と名前は名簿から入りました（違うときは先生へ）', 'ok');
       } else {
         rosterLookup = { number: '', ok: false, message: '' };
         setRosterNote('', '');
@@ -2462,30 +2481,40 @@ const COMPETENCY_SHORT_DESC = {
       ['Communication', '発信・表現・協働', '#059669', '#ecfdf5'],
       ['Leadership', '主体性・実行力', '#9333ea', '#faf5ff']
     ];
+    const pictoTile = (c, cls) => `
+              <button type="button" class="picto-tile ${cls} rounded-lg overflow-hidden ring-1 ring-black/5 transition" data-id="${c.id}"
+                title="${c.id}. ${escapeHtml(c.name)}" aria-label="${c.id}. ${escapeHtml(c.name)}の説明を見る" onclick="showPictoCaption(${c.id})">${iconHtml(c)}</button>`;
     function renderPictoPanel() {
+      const strip = document.getElementById('picto-strip');
+      if (strip) {
+        strip.innerHTML = PICTO_GROUPS.map(([key, label, color]) =>
+          `<span class="shrink-0 w-1 rounded-full self-stretch" style="background:${color}" title="${label}"></span>` +
+          COMPETENCIES.filter(c => c.categoryKey === key).map(c => pictoTile(c, 'shrink-0 w-9 h-9')).join('')).join('');
+      }
       const box = document.getElementById('picto-groups');
       if (!box) return;
       box.innerHTML = PICTO_GROUPS.map(([key, label, color, bg]) => `
         <div class="rounded-xl px-2.5 py-2" style="background:${bg}">
           <div class="text-[11px] font-black mb-1.5" style="color:${color}">${label}</div>
           <div class="grid grid-cols-7 gap-1.5">
-            ${COMPETENCIES.filter(c => c.categoryKey === key).map(c => `
-              <button type="button" class="picto-tile aspect-square rounded-lg overflow-hidden ring-1 ring-black/5 transition" data-id="${c.id}"
-                title="${c.id}. ${escapeHtml(c.name)}" aria-label="${c.id}. ${escapeHtml(c.name)}" onclick="showPictoCaption(${c.id})">${iconHtml(c)}</button>`).join('')}
+            ${COMPETENCIES.filter(c => c.categoryKey === key).map(c => pictoTile(c, 'aspect-square')).join('')}
           </div>
         </div>`).join('');
       updatePictoHighlight();
     }
     function showPictoCaption(id) {
       const comp = COMPETENCIES.find(c => c.id === id);
-      const el = document.getElementById('picto-caption');
-      if (!comp || !el) return;
-      el.innerHTML = `<span class="font-black text-slate-800">${comp.id}. ${escapeHtml(comp.name)}</span>　${escapeHtml(COMPETENCY_SHORT_DESC[comp.id] || '')}`;
+      if (!comp) return;
+      ['picto-caption', 'picto-caption-sm'].forEach(elId => {
+        const el = document.getElementById(elId);
+        if (el) el.innerHTML = `<span class="font-black text-slate-800">${comp.id}. ${escapeHtml(comp.name)}</span>　${escapeHtml(COMPETENCY_SHORT_DESC[comp.id] || '')}`;
+      });
     }
     // 5つを選ぶ・自己×他己のときは、選んだ5つをはっきり、ほかを薄く表示する
     function updatePictoHighlight() {
       const picking = currentMode === 'SELECT5' || currentMode === 'COMPARE';
-      document.querySelectorAll('#picto-groups .picto-tile').forEach(t => {
+      document.body.classList.toggle('picking', picking);
+      document.querySelectorAll('.picto-tile').forEach(t => {
         const on = selected5Ids.includes(Number(t.dataset.id));
         t.classList.toggle('picto-on', picking && on);
         t.classList.toggle('picto-off', picking && !on);
@@ -2495,8 +2524,9 @@ const COMPETENCY_SHORT_DESC = {
         row.classList.toggle('hidden', !picking);
         row.classList.toggle('flex', picking);
         document.getElementById('picto-pick-count').textContent = selected5Ids.length;
-        document.getElementById('picto-pick-btn').textContent = selected5Ids.length ? '選び直す' : '5つを選ぶ';
       }
+      const pickLabel = document.getElementById('mode-pick-label');
+      if (pickLabel) pickLabel.textContent = selected5Ids.length ? '選び直す' : '5つを選ぶ';
     }
 
     // トップ画面に、選んだ5つを番号と略称で並べる
