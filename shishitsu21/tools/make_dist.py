@@ -22,7 +22,7 @@ def rep(old, new, count):
     assert n == count, f'{old!r}: {n} 件（{count} 件のはず）'
     s = s.replace(old, new)
 
-rep('>金沢錦丘中学校・高等学校<', f'>{school}<', 1)
+rep('>金沢錦丘中学校・高等学校<', f'>{school}<', 2)
 rep('錦丘　太郎', f'{family}　太郎', 3)
 # フィードバックの「錦丘高校が目指す「…」」は学校の目標なので、目標の文だけ残す
 rep('錦丘高校が目指す', '', 3)

@@ -24,10 +24,14 @@
     .mode-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; height: 100%;
       padding: 10px 12px; border-width: 2px; border-radius: 0.75rem; font-weight: 700; text-align: left; transition: background-color .15s; }
     .mode-desc { font-size: 11px; line-height: 1.45; color: #64748b; font-weight: 500; }
+    /* トップ画面左のピクトグラム */
+    .picto-tile:hover, .picto-tile:focus-visible { transform: scale(1.06); outline: none; box-shadow: 0 0 0 2px #6366f1; }
+    .picto-tile.picto-on { box-shadow: 0 0 0 3px #4f46e5; }
+    .picto-tile.picto-off { opacity: .35; }
     /* トップ画面はスクロールせずに1画面で終わるよう、上下の余白と進み具合の表示を小さくする（ほかの画面は今のまま） */
     body.top-page { padding-bottom: 0; }
     body.top-page main { margin-top: 12px; }
-    body.top-page #step-indicator-bar { padding: 6px 16px; margin-bottom: 12px; }
+    body.top-page #step-indicator-bar { padding: 5px 16px; margin-bottom: 10px; }
     body.top-page #step-indicator-bar .flex-col { flex-direction: row; gap: 6px; }
     body.top-page #step-indicator-bar [id^="step-dot-"] { width: 26px; height: 26px; font-size: 12px; }
     body.top-page footer { margin-top: 8px; padding-bottom: 6px; }
@@ -35,8 +39,8 @@
       .mode-btn { padding: 8px 9px; }
       .mode-desc { display: none; }
       /* 携帯のトップ画面は、見出しを小さくして入力欄が1画面に入るようにする */
-      body.top-page header h1 { font-size: 12px; line-height: 1.4; }
-      body.top-page header .py-3 { padding-top: 8px; padding-bottom: 8px; }
+      body.top-page header h1 { font-size: 14px; }
+      body.top-page header > div { padding-top: 8px; padding-bottom: 8px; }
       body.top-page #step-indicator-bar [id^="step-label-"] { font-size: 10px; }
       body.top-page .top-help { display: none; }
       body.top-page #step-indicator-bar { display: none; }
@@ -111,15 +115,14 @@
 
   <!-- Header -->
   <header class="bg-gradient-to-r from-indigo-700 via-purple-700 to-sky-600 text-white shadow-md sticky top-0 z-50">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex flex-row justify-between items-center gap-3">
+    <div class="max-w-5xl mx-auto px-4 py-2.5 flex flex-row justify-between items-center gap-3">
       <div class="min-w-0">
-        <div class="flex items-center gap-2 mb-0.5">
+        <div class="flex items-center gap-2 mb-0.5 sm:hidden">
           <span class="bg-white/20 text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wider whitespace-nowrap">金沢錦丘中学校・高等学校</span>
-          <span class="text-[10px] text-indigo-100 whitespace-nowrap">21の資質・能力準拠</span>
         </div>
-        <h1 class="text-base sm:text-lg font-black flex items-start gap-1.5 leading-snug">
-          <i data-lucide="compass" class="w-5 h-5 shrink-0 mt-0.5"></i>
-          <span>探究的な学びを通じて身に付けたい資質・能力21<br>ふりかえりアプリ（総合的な探究の時間）</span>
+        <h1 class="text-base sm:text-lg font-black flex items-center gap-1.5 leading-tight">
+          <i data-lucide="compass" class="w-5 h-5 shrink-0"></i>
+          <span>資質・能力21 ふりかえりアプリ<span class="hidden sm:inline-block ml-2 align-[2px] bg-white/20 text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wider whitespace-nowrap">金沢錦丘中学校・高等学校</span><span class="hidden sm:block text-[10px] font-bold text-white/75 tracking-wide mt-0.5">探究的な学びを通じて身に付けたい資質・能力21／総合的な探究の時間</span></span>
         </h1>
       </div>
       <div id="nav-buttons" class="flex gap-1.5 shrink-0">
@@ -172,9 +175,30 @@
     <div id="view-assess" class="space-y-6">
 
       <!-- STEP 1 CONTAINER（トップ画面：スクロールせずに1画面で入力が終わるように、情報→モード→次へ の3段にまとめる） -->
-      <div id="assess-step-1" class="space-y-3">
+      <div id="assess-step-1">
+      <!-- 2列にする箱は内側に置く（外側に lg:grid を付けると、次の画面で hidden にしても消えないため） -->
+      <div class="lg:grid lg:grid-cols-12 lg:gap-3 lg:items-start">
+        <!-- 21の資質・能力のピクトグラム（広い画面だけ。中身は renderPictoPanel() が作る） -->
+        <aside id="picto-panel" class="hidden lg:flex lg:col-span-5 flex-col gap-2 bg-white px-4 py-3.5 rounded-2xl shadow-sm border border-slate-200/80" aria-label="探究で身に付けたい21の資質・能力">
+          <h2 class="text-sm font-black text-slate-800 flex items-center gap-1.5">
+            <i data-lucide="sparkles" class="w-4 h-4 text-indigo-600"></i>
+            探究で身に付けたい21の資質・能力
+          </h2>
+          <div id="picto-groups" class="flex flex-col gap-2"></div>
+          <p id="picto-caption" class="text-[11px] text-slate-500 font-medium leading-snug min-h-[2.6em]">絵を押すと、その資質・能力の名前と説明が出ます</p>
+          <!-- 5つを選ぶ・自己×他己のとき：選んだ数と「選び直す」（広い画面ではここに出す） -->
+          <div id="picto-pick-row" class="hidden items-center gap-2 pt-2 border-t border-slate-100">
+            <span class="text-xs font-bold text-indigo-900 flex items-center gap-1">
+              <i data-lucide="check-square" class="w-4 h-4 text-indigo-600"></i>
+              ふりかえる5つ（<span id="picto-pick-count">0</span> / 5）：色のついた絵
+            </span>
+            <button type="button" onclick="openSelect5Picker()" id="picto-pick-btn" class="ml-auto px-3 py-1.5 rounded-xl border-2 border-indigo-600 text-indigo-700 bg-white text-xs font-extrabold hover:bg-indigo-50 transition whitespace-nowrap">5つを選ぶ</button>
+          </div>
+        </aside>
+
+        <div class="lg:col-span-7 space-y-3">
         <!-- 生徒情報・実施回 -->
-        <div class="bg-white px-5 py-3.5 rounded-2xl shadow-sm border border-slate-200/80 space-y-2.5">
+        <div class="bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-200/80 space-y-2.5">
           <div class="flex items-center justify-between gap-3">
             <h2 class="text-base font-black text-slate-800 flex items-center gap-2">
               <i data-lucide="user-check" class="w-5 h-5 text-indigo-600"></i>
@@ -192,15 +216,15 @@
             <span id="step1-error-text"></span>
           </div>
 
-          <div class="grid grid-cols-2 lg:grid-cols-12 gap-x-3 gap-y-2">
-            <div class="lg:col-span-3">
+          <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+            <div>
               <label for="student-number" class="block text-xs font-bold text-slate-500 mb-1">
                 出席番号（半角4文字） <span class="text-rose-500">*</span>
               </label>
               <input type="text" id="student-number" maxlength="4" inputmode="text" autocapitalize="characters" autocomplete="off" oninput="this.value=this.value.toUpperCase()" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base" placeholder="例: 1215 / 1B15">
               <span class="top-help block text-[10px] text-slate-400 font-medium leading-snug mt-0.5">高校1年2組15番→1215／中学1年B組15番→1B15</span>
             </div>
-            <div class="lg:col-span-3">
+            <div>
               <label for="student-name" class="block text-xs font-bold text-slate-500 mb-1">
                 氏名 <span class="text-rose-500">*</span>
               </label>
@@ -208,7 +232,7 @@
               <span id="student-name-help" class="top-help block text-[10px] text-slate-400 font-medium leading-snug mt-0.5">※姓と名の間に全角スペースを入れてください（例: 錦丘　太郎）</span>
             </div>
             <!-- 先生が「実施回」シートに実施回を登録しているときは一覧から選ぶ（集計で回がばらばらにならないように） -->
-            <div id="occasion-select-wrap" class="hidden col-span-2 lg:col-span-6">
+            <div id="occasion-select-wrap" class="hidden col-span-2">
               <label for="assessment-occasion" class="block text-xs font-bold text-slate-500 mb-1">
                 今回のふりかえり（実施回） <span class="text-rose-500">*</span>
               </label>
@@ -216,7 +240,7 @@
                 <option value="">選んでください</option>
               </select>
             </div>
-            <div id="title-input-wrap" class="col-span-2 lg:col-span-6">
+            <div id="title-input-wrap" class="col-span-2">
               <label for="assessment-title" class="block text-xs font-bold text-slate-500 mb-1">探究テーマ / アセスメントタイトル</label>
               <input type="text" id="assessment-title" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-base" placeholder="例: 後期探究プロジェクト（観光と地域活性化）の振り返り">
             </div>
@@ -226,7 +250,7 @@
         </div>
 
         <!-- Mode Selection Card -->
-        <div class="bg-white px-5 py-3.5 rounded-2xl shadow-sm border border-slate-200/80">
+        <div class="bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-200/80">
           <h2 class="text-base font-black text-slate-800 flex items-center gap-2 mb-2.5">
             <i data-lucide="sliders" class="w-5 h-5 text-indigo-600"></i>
             2. ふりかえりモードの選択
@@ -239,7 +263,7 @@
                 </span>
                 <span class="text-sm font-extrabold">全21項目</span>
               </span>
-              <span class="mode-desc">すべての資質・能力をふり返る</span>
+              <span class="mode-desc">21項目すべてをふり返る</span>
             </button>
             <button type="button" onclick="setAssessmentMode('SELECT5', true)" id="mode-btn-select5" class="mode-btn border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
               <span class="flex items-center gap-2">
@@ -248,7 +272,7 @@
                 </span>
                 <span class="text-sm font-extrabold">5つを選ぶ</span>
               </span>
-              <span class="mode-desc">特に意識した・成長を感じた5つをふり返る</span>
+              <span class="mode-desc">自分で選んだ5つをふり返る</span>
             </button>
             <button type="button" onclick="setAssessmentMode('COMPARE', true)" id="mode-btn-compare" class="mode-btn border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
               <span class="flex items-center gap-2">
@@ -257,12 +281,12 @@
                 </span>
                 <span class="text-sm font-extrabold">自己×他己</span>
               </span>
-              <span class="mode-desc">5つを自分と友だちが評価してくらべる</span>
+              <span class="mode-desc">自分と友だちの評価をくらべる</span>
             </button>
           </div>
 
           <!-- 5つを選ぶ・自己×他己のとき：選んだ5つの表示と「選ぶ」ボタン（一覧は別の画面で開く。トップ画面がスクロールしないように） -->
-          <div id="select5-panel" class="hidden mt-2.5 pt-2.5 border-t border-slate-100">
+          <div id="select5-panel" class="hidden mt-2.5 pt-2.5 border-t border-slate-100 lg:!hidden">
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-xs font-bold text-indigo-900 flex items-center gap-1 whitespace-nowrap">
                 <i data-lucide="check-square" class="w-4 h-4 text-indigo-600"></i>
@@ -309,6 +333,8 @@
             次へ進む（評価入力へ） <i data-lucide="arrow-right" class="w-5 h-5"></i>
           </button>
         </div>
+        </div>
+      </div>
       </div>
 
       <!-- STEP 2 CONTAINER -->
@@ -680,7 +706,7 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.12';
+    const APP_VERSION = '2026-10-24.13';
 
     // Apps Script の画面では <html lang="ja"> の指定が消えてしまう。日本語の指定がないと、
     // 端末によっては漢字が中国語の字形で表示・印刷されるため、ここで入れ直す
@@ -2402,6 +2428,7 @@ const COMPETENCY_SHORT_DESC = {
         panelSelect5.classList.add('hidden');
         closeSelect5Picker();
       }
+      updatePictoHighlight();
 
       // Step2が表示されている場合のみカードを再描画（入力中の値を不必要にリセットしない）
       if (!document.getElementById('assess-step-2').classList.contains('hidden')) {
@@ -2451,8 +2478,52 @@ const COMPETENCY_SHORT_DESC = {
     }
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSelect5Picker(); });
 
+    // トップ画面の左に、21の資質・能力をカテゴリーごとに7つずつ並べる
+    const PICTO_GROUPS = [
+      ['Thinking', '思考・探究', '#2563eb', '#eff6ff'],
+      ['Communication', '発信・表現・協働', '#059669', '#ecfdf5'],
+      ['Leadership', '主体性・実行力', '#9333ea', '#faf5ff']
+    ];
+    function renderPictoPanel() {
+      const box = document.getElementById('picto-groups');
+      if (!box) return;
+      box.innerHTML = PICTO_GROUPS.map(([key, label, color, bg]) => `
+        <div class="rounded-xl px-2.5 py-2" style="background:${bg}">
+          <div class="text-[11px] font-black mb-1.5" style="color:${color}">${label}</div>
+          <div class="grid grid-cols-7 gap-1.5">
+            ${COMPETENCIES.filter(c => c.categoryKey === key).map(c => `
+              <button type="button" class="picto-tile aspect-square rounded-lg overflow-hidden ring-1 ring-black/5 transition" data-id="${c.id}"
+                title="${c.id}. ${escapeHtml(c.name)}" aria-label="${c.id}. ${escapeHtml(c.name)}" onclick="showPictoCaption(${c.id})">${iconHtml(c)}</button>`).join('')}
+          </div>
+        </div>`).join('');
+      updatePictoHighlight();
+    }
+    function showPictoCaption(id) {
+      const comp = COMPETENCIES.find(c => c.id === id);
+      const el = document.getElementById('picto-caption');
+      if (!comp || !el) return;
+      el.innerHTML = `<span class="font-black text-slate-800">${comp.id}. ${escapeHtml(comp.name)}</span>　${escapeHtml(COMPETENCY_SHORT_DESC[comp.id] || '')}`;
+    }
+    // 5つを選ぶ・自己×他己のときは、選んだ5つをはっきり、ほかを薄く表示する
+    function updatePictoHighlight() {
+      const picking = currentMode === 'SELECT5' || currentMode === 'COMPARE';
+      document.querySelectorAll('#picto-groups .picto-tile').forEach(t => {
+        const on = selected5Ids.includes(Number(t.dataset.id));
+        t.classList.toggle('picto-on', picking && on);
+        t.classList.toggle('picto-off', picking && !on);
+      });
+      const row = document.getElementById('picto-pick-row');
+      if (row) {
+        row.classList.toggle('hidden', !picking);
+        row.classList.toggle('flex', picking);
+        document.getElementById('picto-pick-count').textContent = selected5Ids.length;
+        document.getElementById('picto-pick-btn').textContent = selected5Ids.length ? '選び直す' : '5つを選ぶ';
+      }
+    }
+
     // トップ画面に、選んだ5つを番号と略称で並べる
     function renderSelect5Chips() {
+      updatePictoHighlight();
       const chips = document.getElementById('select5-chips');
       const inline = document.getElementById('select5-count-inline');
       const openBtn = document.getElementById('select5-open-btn');
@@ -4622,6 +4693,7 @@ function onGrowthCompareChange() {
     // App Initialization
     window.onload = function() {
       initCurrentDate();
+      renderPictoPanel();
       setAssessmentMode('ALL');
       updateStepIndicator(1);
       initOccasionSelect();
