@@ -725,7 +725,7 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.14';
+    const APP_VERSION = '2026-10-24.15';
 
     // Apps Script の画面では <html lang="ja"> の指定が消えてしまう。日本語の指定がないと、
     // 端末によっては漢字が中国語の字形で表示・印刷されるため、ここで入れ直す
@@ -771,7 +771,7 @@
     // Category metadata configuration
     const CATEGORY_CONFIG = {
       Thinking: {
-        name: "思考・探究（Thinking）",
+        name: "Thinking（思考・探究）",
         badgeBg: "bg-blue-600",
         badgeText: "text-blue-600",
         cardBorder: "border-blue-200",
@@ -780,7 +780,7 @@
         chartBorder: "#2563eb"
       },
       Communication: {
-        name: "発信・表現・協働（Communication）",
+        name: "Communication（発信・表現・協働）",
         badgeBg: "bg-emerald-600",
         badgeText: "text-emerald-600",
         cardBorder: "border-emerald-200",
@@ -789,7 +789,7 @@
         chartBorder: "#059669"
       },
       Leadership: {
-        name: "主体性・実行力（Leadership）",
+        name: "Leadership（主体性・実行力）",
         badgeBg: "bg-purple-600",
         badgeText: "text-purple-600",
         cardBorder: "border-purple-200",
@@ -2499,9 +2499,9 @@ const COMPETENCY_SHORT_DESC = {
 
     // トップ画面の左に、21の資質・能力をカテゴリーごとに7つずつ並べる
     const PICTO_GROUPS = [
-      ['Thinking', '思考・探究', '#2563eb', '#eff6ff'],
-      ['Communication', '発信・表現・協働', '#059669', '#ecfdf5'],
-      ['Leadership', '主体性・実行力', '#9333ea', '#faf5ff']
+      ['Thinking', 'Thinking（思考・探究）', '#2563eb', '#eff6ff'],
+      ['Communication', 'Communication（発信・表現・協働）', '#059669', '#ecfdf5'],
+      ['Leadership', 'Leadership（主体性・実行力）', '#9333ea', '#faf5ff']
     ];
     const pictoTile = (c, cls) => `
               <button type="button" class="picto-tile ${cls} rounded-lg overflow-hidden ring-1 ring-black/5 transition" data-id="${c.id}"
