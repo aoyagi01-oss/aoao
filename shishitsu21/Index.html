@@ -206,7 +206,7 @@
           <!-- 5つを選ぶ・自己×他己のとき：光っている絵の意味（選ぶのは右のモードから） -->
           <div id="picto-pick-row" class="hidden items-center gap-1 pt-1.5 border-t border-slate-100 text-xs font-bold text-indigo-900">
             <i data-lucide="sparkle" class="w-4 h-4 text-indigo-600"></i>
-            光っている絵が、ふりかえる5つです（<span id="picto-pick-count">0</span> / 5）
+            光っている絵が、ふりかえる項目です（<span id="picto-pick-count">0</span>つ）
           </div>
         </aside>
 
@@ -271,7 +271,7 @@
               2. ふりかえりモードの選択
             </h2>
             <button type="button" onclick="openSelect5Picker()" id="mode-pick-btn" class="mode-pick-lg items-center gap-1 px-3 py-0.5 rounded-xl border-2 border-indigo-600 text-indigo-700 bg-white text-xs font-extrabold hover:bg-indigo-50 transition whitespace-nowrap">
-              <i data-lucide="check-square" class="w-3.5 h-3.5"></i><span id="mode-pick-label">5つを選ぶ</span>
+              <i data-lucide="check-square" class="w-3.5 h-3.5"></i><span id="mode-pick-label">項目を選ぶ</span>
             </button>
           </div>
           <div class="grid grid-cols-3 gap-2 sm:gap-3">
@@ -289,9 +289,9 @@
                 <span class="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center bg-white shrink-0">
                   <span id="mode-dot-select5" class="w-2 h-2 rounded-full bg-indigo-600 hidden"></span>
                 </span>
-                <span class="text-sm font-extrabold">5つを選ぶ</span>
+                <span class="text-sm font-extrabold">1〜5つを選ぶ</span>
               </span>
-              <span class="mode-desc">自分で選んだ5つをふり返る</span>
+              <span class="mode-desc">自分で選んだ1〜5つをふり返る</span>
             </button>
             <button type="button" onclick="setAssessmentMode('COMPARE', true)" id="mode-btn-compare" class="mode-btn border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
               <span class="flex items-center gap-2">
@@ -300,7 +300,7 @@
                 </span>
                 <span class="text-sm font-extrabold">自己×他己</span>
               </span>
-              <span class="mode-desc">自分と友だちの評価をくらべる</span>
+              <span class="mode-desc">選んだ1〜5つを友だちの評価とくらべる</span>
             </button>
           </div>
 
@@ -309,11 +309,11 @@
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-xs font-bold text-indigo-900 flex items-center gap-1 whitespace-nowrap">
                 <i data-lucide="check-square" class="w-4 h-4 text-indigo-600"></i>
-                ふりかえる5つ（<span id="select5-count-inline">0</span> / 5）：上の光っている絵
+                ふりかえる項目（<span id="select5-count-inline">0</span>つ）：上の光っている絵
               </span>
               <div id="select5-chips" class="hidden"></div>
               <button type="button" onclick="openSelect5Picker()" id="select5-open-btn" class="ml-auto px-3 py-1.5 rounded-xl border-2 border-indigo-600 text-indigo-700 bg-white text-xs font-extrabold hover:bg-indigo-50 transition whitespace-nowrap">
-                5つを選ぶ
+                項目を選ぶ
               </button>
             </div>
           </div>
@@ -325,15 +325,15 @@
             <div class="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3 border-b border-slate-100">
               <span id="select5-modal-title" class="text-sm font-black text-indigo-900 flex items-center gap-1.5">
                 <i data-lucide="check-square" class="w-4 h-4 text-indigo-600"></i>
-                ふりかえる資質・能力を5つ選んでください（タップで選択・解除）
+                ふりかえる資質・能力を1〜5つ選んでください（タップで選択・解除）
               </span>
               <span id="select5-count-badge" class="text-xs font-black px-3 py-1 rounded-full bg-indigo-100 text-indigo-800">
-                選択中: <span id="select5-count">0</span> / 5
+                選択中: <span id="select5-count">0</span>つ（5つまで）
               </span>
             </div>
             <div id="select5-limit-warning" class="hidden mx-4 sm:mx-5 mt-3 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 items-center gap-1.5">
               <i data-lucide="alert-circle" class="w-3.5 h-3.5 shrink-0"></i>
-              すでに5つ選択されています。追加するには、先にどれか1つの選択を解除してください。
+              選べるのは5つまでです。追加するには、先にどれか1つの選択を解除してください。
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 overflow-y-auto p-3 sm:p-4 bg-slate-50/50 custom-scrollbar min-h-0" id="select5-grid">
               <!-- Populated dynamically by JS -->
@@ -405,7 +405,7 @@
             <div>
               <span class="text-xs font-bold text-teal-200 bg-white/20 px-2.5 py-0.5 rounded-full" id="step2b-info-badge"></span>
               <h2 class="text-xl font-black mt-1" id="step2b-title">友人による他己評価</h2>
-              <p class="text-xs text-teal-200 mt-1">友人が同じ5項目を評価します。<strong>本人は画面を見ないようにしてください。</strong></p>
+              <p class="text-xs text-teal-200 mt-1">友人が同じ項目を評価します。<strong>本人は画面を見ないようにしてください。</strong></p>
             </div>
             <button onclick="backToSelfEval()" class="text-xs font-bold bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-xl transition flex items-center gap-1 shrink-0">
               <i data-lucide="arrow-left" class="w-4 h-4"></i> 自己評価に戻る
@@ -561,7 +561,7 @@
 
         <!-- Mode SELECT5: Single Radar Chart -->
         <div id="charts-wrapper-select5" class="hidden border border-[#e6dfd0] p-5 max-w-xl mx-auto">
-          <h3 class="report-serif text-base font-bold text-[#2a2420] mb-1 text-center">選択5項目 レーダーチャート</h3>
+          <h3 id="select5-chart-title" class="report-serif text-base font-bold text-[#2a2420] mb-1 text-center">選択した項目のグラフ</h3>
           <p class="radar-note text-xs text-[#7a6f5c] text-center mb-2"></p>
           <div class="relative w-full aspect-square max-w-md mx-auto">
             <canvas id="chart-select5"></canvas>
@@ -725,7 +725,7 @@
 
   <script>
     // Code.gs の APP_VERSION と同じ値にそろえる（先生がコードを貼り直したかの確認用）
-    const APP_VERSION = '2026-10-24.15';
+    const APP_VERSION = '2026-11-10.1';
 
     // Apps Script の画面では <html lang="ja"> の指定が消えてしまう。日本語の指定がないと、
     // 端末によっては漢字が中国語の字形で表示・印刷されるため、ここで入れ直す
@@ -1989,7 +1989,7 @@ const COMPETENCY_SHORT_DESC = {
 
     // Application State Variables
     let currentMode = 'ALL'; // 'ALL' or 'SELECT5' or 'COMPARE'
-    let selected5Ids = []; // User must actively choose exactly 5 items
+    let selected5Ids = []; // 生徒が自分で選んだ項目（1〜5つ）
     let chartInstances = [];
     let currentStep = 1;
     let selfScoresTemp = {};   // COMPAREモードで自己評価を一時保存
@@ -2186,13 +2186,13 @@ const COMPETENCY_SHORT_DESC = {
         return;
       }
 
-      if (currentMode === 'SELECT5' && selected5Ids.length !== 5) {
-        showError('ふりかえる資質・能力をちょうど5つ選択してください。');
+      if (currentMode === 'SELECT5' && (selected5Ids.length < 1 || selected5Ids.length > 5)) {
+        showError('ふりかえる資質・能力を1〜5つ選択してください。');
         return;
       }
 
-      if (currentMode === 'COMPARE' && selected5Ids.length !== 5) {
-        showError('比較する資質・能力をちょうど5つ選択してください。');
+      if (currentMode === 'COMPARE' && (selected5Ids.length < 1 || selected5Ids.length > 5)) {
+        showError('比較する資質・能力を1〜5つ選択してください。');
         return;
       }
 
@@ -2201,7 +2201,7 @@ const COMPETENCY_SHORT_DESC = {
       if (badge) {
         const modeText = currentMode === 'ALL' ? '全21項目評価モード'
           : currentMode === 'COMPARE' ? '自己×他己比較モード（Step1: 自己評価）'
-          : '選択5項目評価モード';
+          : `選択${selected5Ids.length}項目評価モード`;
         badge.textContent = `${studentNumber} ${studentName} 様 （${modeText}）`;
       }
 
@@ -2438,11 +2438,11 @@ const COMPETENCY_SHORT_DESC = {
       dotSelect5.classList.toggle('hidden', mode !== 'SELECT5');
       dotCompare.classList.toggle('hidden', mode !== 'COMPARE');
 
-      // SELECT5 / COMPARE どちらも、選んだ5つの表示を出す。生徒がボタンで選んだときは、まだ5つそろっていなければ一覧を開く
+      // SELECT5 / COMPARE どちらも、選んだ項目の表示を出す。生徒がボタンで選んだときは、まだ1つも選んでいなければ一覧を開く
       if (mode === 'SELECT5' || mode === 'COMPARE') {
         panelSelect5.classList.remove('hidden');
         renderSelect5Grid();
-        if (fromUser && selected5Ids.length < 5) openSelect5Picker();
+        if (fromUser && selected5Ids.length === 0) openSelect5Picker();
       } else {
         panelSelect5.classList.add('hidden');
         closeSelect5Picker();
@@ -2548,7 +2548,7 @@ const COMPETENCY_SHORT_DESC = {
         document.getElementById('picto-pick-count').textContent = selected5Ids.length;
       }
       const pickLabel = document.getElementById('mode-pick-label');
-      if (pickLabel) pickLabel.textContent = selected5Ids.length ? '選び直す' : '5つを選ぶ';
+      if (pickLabel) pickLabel.textContent = selected5Ids.length ? '選び直す' : '項目を選ぶ';
     }
 
     // トップ画面に、選んだ5つを番号と略称で並べる
@@ -2559,7 +2559,7 @@ const COMPETENCY_SHORT_DESC = {
       const openBtn = document.getElementById('select5-open-btn');
       if (!chips) return;
       if (inline) inline.textContent = selected5Ids.length;
-      if (openBtn) openBtn.textContent = selected5Ids.length ? '選び直す' : '5つを選ぶ';
+      if (openBtn) openBtn.textContent = selected5Ids.length ? '選び直す' : '項目を選ぶ';
       chips.innerHTML = selected5Ids.length
         ? selected5Ids.map(id => {
             const comp = COMPETENCIES.find(c => c.id === id);
@@ -2577,7 +2577,7 @@ const COMPETENCY_SHORT_DESC = {
 
       countDisplay.textContent = selected5Ids.length;
       if (countBadge) {
-        countBadge.className = selected5Ids.length === 5
+        countBadge.className = selected5Ids.length >= 1
           ? "text-xs font-black px-3 py-1 rounded-full bg-emerald-100 text-emerald-800"
           : "text-xs font-black px-3 py-1 rounded-full bg-indigo-100 text-indigo-800";
       }
@@ -2619,7 +2619,7 @@ const COMPETENCY_SHORT_DESC = {
       if (targetList.length === 0) {
         container.innerHTML = `
           <div class="bg-white p-8 rounded-2xl text-center border border-slate-200">
-            <p class="text-slate-500 font-bold">5つの資質・能力を選択してください。</p>
+            <p class="text-slate-500 font-bold">1〜5つの資質・能力を選択してください。</p>
           </div>
         `;
         return;
@@ -3036,7 +3036,7 @@ const COMPETENCY_SHORT_DESC = {
         : COMPETENCIES.filter(c => selected5Ids.includes(c.id));
 
       if (currentMode === 'SELECT5' && targetList.length === 0) {
-        alert('振り返る5つの資質・能力を選択してください。');
+        alert('振り返る資質・能力を1〜5つ選択してください。');
         return;
       }
 
@@ -3468,7 +3468,7 @@ renderGrowthSection(record);
           });
           chartSec.appendChild(row);
         } else {
-          chartSec.innerHTML = secHead('選択5項目 レーダーチャート') + `<div style="font-size:8px;color:#7a6f5c;margin:-2px 0 4px;">${RADAR_NOTE}</div>`;
+          chartSec.innerHTML = secHead(selectedChartTitle(chartOf('chart-select5') ? chartOf('chart-select5').data.labels.length : 5)) + `<div style="font-size:8px;color:#7a6f5c;margin:-2px 0 4px;">${RADAR_NOTE}</div>`;
           const cdiv = document.createElement('div');
           cdiv.style.cssText = 'text-align:center;border:1px solid #e6dfd0;padding:10px;background:#fdfbf6;';
           cdiv.innerHTML = `<img src="${chartImgs['chart-select5']}" style="width:300px;height:300px;object-fit:contain;display:inline-block;">`;
@@ -3791,7 +3791,7 @@ if (growthSection && !growthSection.classList.contains('hidden') && growthBody &
           const modeLabel = item.mode === 'COMPARE'
             ? '<span class="text-[10px] font-bold bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">自己×他己比較</span>'
             : item.mode === 'SELECT5'
-              ? '<span class="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">5項目選択</span>'
+              ? '<span class="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">項目選択</span>'
               : '<span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">全21項目</span>';
 
           // 送信状況バッジ（送信機能が無効の場合は表示しない）
@@ -4133,6 +4133,29 @@ if (growthSection && !growthSection.classList.contains('hidden') && growthBody &
       };
     }
 
+    // 選んだ項目が1〜2つのときはレーダーチャートが形にならない（点や線になる）ので、棒グラフにする
+    function buildBarOptions(labelSize) {
+      const size = ctx => typeof labelSize === 'function' ? labelSize(ctx) : labelSize;
+      const font = ctx => ({ size: size(ctx), weight: 'bold', family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif", lineHeight: 1.15 });
+      return {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 1,
+        layout: { padding: { left: 8, right: 16, top: 12, bottom: 4 } },
+        datasets: { bar: { maxBarThickness: 64, categoryPercentage: 0.6 } },
+        scales: {
+          y: { min: 0, max: 4, ticks: { stepSize: 1, color: '#7a6f5c', font: ctx => ({ size: Math.max(9, size(ctx) - 2), family: "'BIZ UDPGothic', 'Zen Maru Gothic', sans-serif" }) }, grid: { color: '#e6dfd0' } },
+          x: { grid: { display: false }, ticks: { color: '#2a2420', font: font,
+            // 項目名は略称で表示する（データは正式な名前のまま）
+            callback: function (value) { return radarLabel(this.getLabelForValue(value)); } } }
+        }
+      };
+    }
+    // 選んだ項目のグラフの見出し（3つ以上はレーダーチャート、1〜2つは棒グラフ）
+    function selectedChartTitle(count) {
+      return `選択${count}項目 ${count >= 3 ? 'レーダーチャート' : 'グラフ'}`;
+    }
+
     // PDF用：画面のグラフを縮めて貼ると項目名が読めないほど小さくなるため、
     // PDFに載せる大きさ（size px）で、項目名を labelSize px にして描き直した画像を作る
     // peerData を渡すと、2本目（他己評価）の線をその値で描く
@@ -4143,10 +4166,11 @@ if (growthSection && !growthSection.classList.contains('hidden') && growthBody &
       const canvas = document.createElement('canvas');
       holder.appendChild(canvas);
       document.body.appendChild(holder);
-      const options = buildRadarOptions(labelSize, chart.data.labels.length);
+      const type = chart.config.type;
+      const options = type === 'bar' ? buildBarOptions(labelSize) : buildRadarOptions(labelSize, chart.data.labels.length);
       Object.assign(options, { animation: false, devicePixelRatio: 3, plugins: { legend: { display: false } } });
       const copy = new Chart(canvas.getContext('2d'), {
-        type: 'radar',
+        type: type,
         data: { labels: chart.data.labels.slice(), datasets: chart.data.datasets.map((d, i) => Object.assign({}, d, { data: (i === 1 && peerData ? peerData : d.data).slice() })) },
         options: options
       });
@@ -4170,7 +4194,10 @@ if (growthSection && !growthSection.classList.contains('hidden') && growthBody &
       const wrapperSelect5 = document.getElementById('charts-wrapper-select5');
 
       // 画面では、グラフの幅に合わせて項目名を12〜14pxで描く
-      const chartOptions = buildRadarOptions(ctx => Math.max(12, Math.min(16, Math.round(ctx.chart.width / 21))), mode === 'ALL' ? 7 : targetComps.length);
+      const labelSize = ctx => Math.max(12, Math.min(16, Math.round(ctx.chart.width / 21)));
+      // 選んだ項目が1〜2つのときは棒グラフ
+      const chartType = mode !== 'ALL' && targetComps.length < 3 ? 'bar' : 'radar';
+      const chartOptions = chartType === 'bar' ? buildBarOptions(labelSize) : buildRadarOptions(labelSize, mode === 'ALL' ? 7 : targetComps.length);
       chartOptions.plugins = { legend: { display: mode === 'COMPARE' } };
 
       if (mode === 'COMPARE') {
@@ -4182,7 +4209,7 @@ if (growthSection && !growthSection.classList.contains('hidden') && growthBody &
         const canvas = document.getElementById('chart-compare');
         if (canvas) {
           const chart = new Chart(canvas.getContext('2d'), {
-            type: 'radar',
+            type: chartType,
             data: {
               labels,
               datasets: [
@@ -4255,11 +4282,13 @@ if (growthSection && !growthSection.classList.contains('hidden') && growthBody &
         const labels = targetComps.map(c => c.name);
         const dataVals = targetComps.map(c => scores[c.id] || 0);
 
+        const titleEl = document.getElementById('select5-chart-title');
+        if (titleEl) titleEl.textContent = selectedChartTitle(targetComps.length);
         const canvas = document.getElementById('chart-select5');
         if (canvas) {
           const ctx = canvas.getContext('2d');
           const chart = new Chart(ctx, {
-            type: 'radar',
+            type: chartType,
             data: {
               labels: labels,
               datasets: [{

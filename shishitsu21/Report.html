@@ -202,12 +202,12 @@
     const ysel = $('year');
     ysel.innerHTML = DATA.years.map(y => `<option value="${y}"${y === DATA.year ? ' selected' : ''}>${y}年度</option>`).join('');
 
-    // 全21項目の回答があればそれだけ使う（5項目モードは生徒が選んだ項目だけなので平均が高めに出るため）
+    // 全21項目の回答があればそれだけ使う（項目選択のモードは生徒が選んだ項目だけなので平均が高めに出るため）
     const full = DATA.responses.filter(r => r.m === 'ALL');
     const use = full.length ? full : DATA.responses;
     MODE_NOTE = full.length
-      ? (full.length < DATA.responses.length ? `「全21項目」モードの回答だけで集計しています（5項目モードの回答${DATA.responses.length - full.length}件は除外）。` : '')
-      : (DATA.responses.length ? '「全21項目」モードの回答がないため、5項目モードの回答で集計しています（平均は高めに出やすい点にご注意ください）。' : '');
+      ? (full.length < DATA.responses.length ? `「全21項目」モードの回答だけで集計しています（項目を選ぶモードの回答${DATA.responses.length - full.length}件は除外）。` : '')
+      : (DATA.responses.length ? '「全21項目」モードの回答がないため、項目を選ぶモードの回答で集計しています（平均は高めに出やすい点にご注意ください）。' : '');
     // 同じ生徒が同じ回に何度か送ったときは、最後に送ったものだけを使う
     const latest = {};
     use.forEach(r => { const k = r.n + '|' + r.t; if (!latest[k] || latest[k].d < r.d) latest[k] = r; });
@@ -692,7 +692,7 @@
     const mine = occIdx.map(oi => RESP.find(r => r.n === s.number && r.t === oi) || null);
     const labels = occIdx.map(oi => DATA.occasions[oi]);
     const v = (r, m) => r ? valueOf(r, m) : null;
-    // 差は両方の回に値があるときだけ（5項目モードで集計するときは、回によって答えた項目が違うため）
+    // 差は両方の回に値があるときだけ（項目を選ぶモードで集計するときは、回によって答えた項目が違うため）
     const sub = (a, b) => a === null || b === null ? null : a - b;
     let h = `<h1>成長の記録　${esc(s.name)} さん</h1><div class="sub">${DATA.year}年度　／　${esc(cls.label)} ${esc(s.p.no)}番　／　作成日 ${esc(DATA.generatedAt)}</div>`;
     if (MODE_NOTE) h += `<div class="warnline">${esc(MODE_NOTE)}</div>`;
