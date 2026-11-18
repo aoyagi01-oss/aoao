@@ -96,7 +96,17 @@
   .press-need { position: absolute; transform: translate(-50%, -50%); padding: 1px 8px; border-radius: 10px;
     background: #ffd36b; color: #2b1d14; font-weight: bold; font-size: 14px; pointer-events: none;
     box-shadow: 0 0 8px #ffcc55; }
-  .press-shade { position: absolute; top: 0; bottom: 0; left: 0; background: #00000018; pointer-events: none; }
+  .press-shade { position: absolute; background: #00000018; pointer-events: none; }
+
+  /* 縦並び（弦が上下にのびる） */
+  #board.vert .str { right: auto; height: auto; top: 0; bottom: 0; width: 0; }
+  #board.vert .str .line { left: -1.5px; right: auto; top: 1.5%; bottom: 3%; width: 3px; height: auto;
+    box-shadow: 2px 0 3px #0007; }
+  #board.vert .str.thick .line { width: 3.5px; height: auto; }
+  #board.vert .str .lab { right: auto; top: auto; bottom: 1%; left: 0; transform: translateX(-50%);
+    width: auto; padding: 2px 6px; }
+  #boardWrap.vert #keyhint { bottom: auto; top: 14px; }
+  #board.vert .str.target .line { box-shadow: 0 0 10px 3px #ffcc55; }
 
   #keyhint { position: absolute; right: 18px; bottom: 14px; font-size: 12px; color: #ffffffaa;
     text-shadow: 0 1px 2px #000; pointer-events: none; }
@@ -114,6 +124,7 @@
     <label class="field">調弦 <select id="tuneSel"></select></label>
     <button id="playBtn" class="primary">▶ お手本</button>
     <button id="resetBtn">⟲ はじめから</button>
+    <button id="orientBtn">↕ 弦を縦に</button>
     <label class="field">速さ <input type="range" id="tempo" min="40" max="160" step="4" value="80"><span id="tempoVal">80</span></label>
     <span class="spacer"></span>
     <span id="status"></span>
@@ -254,10 +265,17 @@ function bend(i, semi) { // 鳴っている弦を押したり離したりした�
 }
 
 // ===== 箏の絵 =====
+// a = 弦にそった向き（柱・竜角の位置）、c = 弦を横切る向き（弦の並び）
+// 横並び：a は左→右、c は上→下。縦並び：a は上→下、c は左→右。
 const board = $('board');
-const geo = { w: 0, h: 0, top: 0, gap: 0, ryu: 0, bridges: [] };
+const geo = { vert: false, A: 0, C: 0, top: 0, gap: 0, ryu: 0, bridges: [] };
 const strEls = [], bridgeEls = [];
 let pressNeedEl = null;
+
+function place(el, a, c) {
+  if (geo.vert) { el.style.left = c + 'px'; el.style.top = a + 'px'; }
+  else { el.style.left = a + 'px'; el.style.top = c + 'px'; }
+}
 
 function buildBoard() {
   board.innerHTML = '';
@@ -265,9 +283,7 @@ function buildBoard() {
   const shade = document.createElement('div'); shade.className = 'press-shade'; shade.id = 'shade';
   board.appendChild(shade);
   const h1 = document.createElement('div'); h1.className = 'zone-hint'; h1.id = 'hintL';
-  h1.textContent = '◀ 柱の左：押す（押し手）';
   const h2 = document.createElement('div'); h2.className = 'zone-hint'; h2.id = 'hintR';
-  h2.textContent = '柱の右：はじく ▶';
   board.append(h1, h2);
   const ry = document.createElement('div'); ry.className = 'ryukaku'; ry.id = 'ryu'; board.appendChild(ry);
   for (let i = 0; i < 13; i++) {
@@ -285,38 +301,57 @@ function buildBoard() {
 
 function layout() {
   const r = board.getBoundingClientRect();
-  geo.w = r.width; geo.h = r.height;
-  geo.top = r.height * 0.09;
-  geo.gap = (r.height * 0.86) / 12;
-  geo.ryu = r.width * 0.9;
+  const v = geo.vert;
+  board.classList.toggle('vert', v);
+  $('boardWrap').classList.toggle('vert', v);
+  geo.A = v ? r.height : r.width;
+  geo.C = v ? r.width : r.height;
+  geo.top = geo.C * (v ? 0.06 : 0.09);
+  geo.gap = (geo.C * (v ? 0.88 : 0.86)) / 12;
+  geo.ryu = geo.A * (v ? 0.86 : 0.9);
   const fs = freqs.filter(Boolean);
   const fmin = Math.min(...fs), fmax = Math.max(...fs);
   const span = Math.log(fmax / fmin) || 1;
   geo.bridges = freqs.map(f => {
-    const k = f ? Math.log(f / fmin) / span : 0.5; // 低い音ほど柱は左（弦が長い）
-    return geo.ryu - geo.w * (0.66 - 0.36 * k);
+    const k = f ? Math.log(f / fmin) / span : 0.5; // 低い音ほど柱は竜角から遠い（弦が長い）
+    return geo.ryu - geo.A * (0.66 - 0.36 * k);
   });
-  $('ryu').style.left = (geo.ryu - 5) + 'px';
-  $('hintL').style.left = '12px';
-  $('hintR').style.left = (geo.ryu - 170) + 'px';
   const minB = Math.min(...geo.bridges);
-  $('shade').style.width = minB + 'px';
-  const labFs = Math.max(12, Math.min(22, geo.gap * 0.62));
+  const ry = $('ryu'), shade = $('shade'), hL = $('hintL'), hR = $('hintR');
+  if (v) {
+    ry.style.cssText = `left:2%;right:2%;top:${geo.ryu - 5}px;height:10px;width:auto;bottom:auto;`;
+    shade.style.cssText = `left:0;right:0;top:0;height:${minB}px;width:auto;bottom:auto;`;
+    hL.textContent = '▲ 柱の上：押す（押し手）';
+    hR.textContent = '柱の下：はじく ▼';
+    hL.style.cssText = 'left:12px;top:4px;';
+    hR.style.cssText = `left:12px;top:${geo.ryu - 24}px;`;
+  } else {
+    ry.style.cssText = `top:2%;bottom:2%;left:${geo.ryu - 5}px;width:10px;`;
+    shade.style.cssText = `top:0;bottom:0;left:0;width:${minB}px;`;
+    hL.textContent = '◀ 柱の左：押す（押し手）';
+    hR.textContent = '柱の右：はじく ▶';
+    hL.style.cssText = 'left:12px;top:4px;';
+    hR.style.cssText = `left:${geo.ryu - 170}px;top:4px;`;
+  }
+  const labFs = v ? Math.max(14, Math.min(24, geo.gap * 0.32, geo.A * 0.05))
+                  : Math.max(12, Math.min(22, geo.gap * 0.62));
   const bh = Math.max(14, Math.min(30, geo.gap * 0.85));
   for (let i = 0; i < 13; i++) {
-    const y = geo.top + i * geo.gap;
-    strEls[i].style.top = y + 'px';
-    strEls[i].querySelector('.lab').style.fontSize = labFs + 'px';
+    const c = geo.top + i * geo.gap;
+    const s = strEls[i];
+    s.style.left = s.style.top = '';
+    if (v) s.style.left = c + 'px'; else s.style.top = c + 'px';
+    s.querySelector('.lab').style.fontSize = labFs + 'px';
     const b = bridgeEls[i];
-    b.style.left = geo.bridges[i] + 'px'; b.style.top = (y - bh * 0.25) + 'px';
+    place(b, geo.bridges[i], v ? c : c - bh * 0.25);
     const bw = bh * 1.1;
     b.innerHTML = `<svg width="${bw}" height="${bh}" viewBox="0 0 22 20"><path d="M2 19 L9 3 Q11 0 13 3 L20 19 Z" fill="#f6f1e6" stroke="#9c8b6a" stroke-width="1"/><path d="M6 19 L11 8 L16 19 Z" fill="#00000022"/></svg>`;
   }
   updateTarget();
 }
 
-function stringAt(y) {
-  const i = Math.round((y - geo.top) / geo.gap);
+function stringAt(c) {
+  const i = Math.round((c - geo.top) / geo.gap);
   return Math.max(0, Math.min(12, i));
 }
 function lineY(i) { return geo.top + i * geo.gap; }
@@ -344,25 +379,26 @@ function setPress(i, on) {
   if (pressSemi(i) !== before) bend(i, pressSemi(i));
 }
 
-function localXY(e) {
+function localAC(e) {
   const r = board.getBoundingClientRect();
-  return { x: e.clientX - r.left, y: e.clientY - r.top };
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  return geo.vert ? { a: y, c: x } : { a: x, c: y };
 }
 
 board.addEventListener('pointerdown', e => {
   e.preventDefault();
   if (ctx.state !== 'running') ctx.resume();
   board.setPointerCapture(e.pointerId);
-  const { x, y } = localXY(e);
-  const i = stringAt(y);
-  if (x < geo.bridges[i] - 6) {
+  const { a, c } = localAC(e);
+  const i = stringAt(c);
+  if (a < geo.bridges[i] - 6) {
     const dot = document.createElement('div'); dot.className = 'press-dot';
-    dot.style.left = x + 'px'; dot.style.top = lineY(i) + 'px';
+    place(dot, a, lineY(i));
     board.appendChild(dot);
     pointers.set(e.pointerId, { mode: 'press', i, dot });
     setPress(i, true);
   } else {
-    pointers.set(e.pointerId, { mode: 'pluck', lastY: lineY(i) });
+    pointers.set(e.pointerId, { mode: 'pluck', lastC: lineY(i) });
     pluck(i);
   }
 });
@@ -370,19 +406,19 @@ board.addEventListener('pointerdown', e => {
 board.addEventListener('pointermove', e => {
   const p = pointers.get(e.pointerId);
   if (!p) return;
-  const { x, y } = localXY(e);
+  const { a, c } = localAC(e);
   if (p.mode === 'pluck') {
     // 指で弦をなでたら、通った弦を順に鳴らす
-    const down = y > p.lastY;
-    const order = down ? [...Array(13).keys()] : [...Array(13).keys()].reverse();
+    const fwd = c > p.lastC;
+    const order = fwd ? [...Array(13).keys()] : [...Array(13).keys()].reverse();
     for (const k of order) {
-      const ly = lineY(k);
-      if ((p.lastY - ly) * (y - ly) < 0 && x > geo.bridges[k] - 6) pluck(k);
+      const lc = lineY(k);
+      if ((p.lastC - lc) * (c - lc) < 0 && a > geo.bridges[k] - 6) pluck(k);
     }
-    p.lastY = y;
+    p.lastC = c;
   } else {
-    const i = stringAt(y);
-    p.dot.style.left = x + 'px'; p.dot.style.top = lineY(i) + 'px';
+    const i = stringAt(c);
+    place(p.dot, a, lineY(i));
     if (i !== p.i) { setPress(p.i, false); setPress(i, true); p.i = i; }
   }
 });
@@ -480,8 +516,7 @@ function updateTarget() {
   if (tokEl) { tokEl.classList.add('cur'); scrollToTok(tokEl); }
   if (st.press && geo.bridges.length) {
     pressNeedEl.textContent = st.press === 2 ? '押す' : '半音押す';
-    pressNeedEl.style.left = Math.max(40, geo.bridges[st.s] - 60) + 'px';
-    pressNeedEl.style.top = lineY(st.s) + 'px';
+    place(pressNeedEl, Math.max(geo.vert ? 30 : 40, geo.bridges[st.s] - (geo.vert ? 36 : 60)), lineY(st.s));
     pressNeedEl.style.display = 'block';
   }
 }
@@ -592,6 +627,15 @@ $('tempo').addEventListener('input', e => { $('tempoVal').textContent = e.target
 $('playBtn').addEventListener('click', () => (playing ? stopPlay() : startPlay()));
 $('resetBtn').addEventListener('click', () => { stopPlay(); stepIdx = 0; updateTarget(); $('score').scrollLeft = 0; });
 window.addEventListener('resize', () => layout());
+
+function setOrient(vert) {
+  geo.vert = vert;
+  $('orientBtn').textContent = vert ? '↔ 弦を横に' : '↕ 弦を縦に';
+  try { localStorage.setItem('koto-orient', vert ? 'v' : 'h'); } catch (e) {}
+  if (strEls.length) layout();
+}
+$('orientBtn').addEventListener('click', () => setOrient(!geo.vert));
+try { setOrient(localStorage.getItem('koto-orient') === 'v'); } catch (e) { setOrient(false); }
 
 function start(data, note) {
   if (data && data.tunings && data.tunings.length) {
