@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>画面配信（先生用）</title>
+<style>
+  :root { --bg: #f6f7f9; --card: #fff; --ink: #1d2430; --sub: #5d6878; --line: #d9dde3; --accent: #1f6feb; --ok: #1a7f37; --warn: #9a6700; --ng: #cf222e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; line-height: 1.6; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lead { color: var(--sub); margin: 0 0 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 16px; margin: 0 0 10px; }
+  label { display: block; font-size: 14px; color: var(--sub); margin-bottom: 4px; }
+  input[type=text], input[type=password] { width: 100%; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row input { flex: 1 1 240px; }
+  button { font-size: 16px; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: bold; font-size: 18px; padding: 12px 22px; }
+  button.stop { background: var(--ng); color: #fff; border-color: var(--ng); }
+  button.pause.on { background: #fff4d6; border-color: var(--warn); }
+  #msg { margin-top: 10px; font-weight: bold; }
+  #msg.ok { color: var(--ok); } #msg.ng { color: var(--ng); } #msg.warn { color: var(--warn); }
+  #preview { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #222; aspect-ratio: 16/9; object-fit: contain; display: block; }
+  .meta { font-size: 13px; color: var(--sub); margin-top: 6px; }
+  details { margin-top: 6px; }
+  ol, ul { padding-left: 20px; margin: 6px 0; }
+  code { background: #eef1f4; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>📺 画面配信（先生用）</h1>
+  <p class="lead">先生の画面を、数秒ごとの静止画にして生徒のページに配ります。画面が変わったときだけ送るので、スライドの提示に向いています。</p>
+
+  <div class="card">
+    <h2>生徒用のURL（Classroom に1回貼るだけ）</h2>
+    <div class="row">
+      <input type="text" id="studentUrl" readonly>
+      <button id="copy" type="button">コピー</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>配信する</h2>
+    <label for="key">合言葉（Apps Script に書いたもの。この端末に覚えておきます）</label>
+    <input type="password" id="key" autocomplete="off">
+    <div class="row" style="margin-top:12px">
+      <button id="start" class="primary" type="button">▶ 配信開始</button>
+      <button id="pause" class="pause" type="button" disabled>⏸ 一時停止</button>
+      <button id="now" type="button" disabled>📤 今すぐ送る</button>
+      <button id="stop" class="stop" type="button" disabled>■ 終了</button>
+    </div>
+    <div id="msg"></div>
+    <details>
+      <summary>ボタンの説明</summary>
+      <ul>
+        <li><b>配信開始</b>：Chrome の画面選択が出ます。スライドだけ見せるなら「タブ」または「ウィンドウ」、何でも見せるなら「画面全体」を選びます。</li>
+        <li><b>一時停止</b>：生徒には今の画面が出たままになり、先生は答えや別の画面を見られます。もう一度押すと再開します。</li>
+        <li><b>今すぐ送る</b>：書き込みなど小さな変化は自動で送られないことがあります。そのときに押します。</li>
+        <li><b>終了</b>：生徒の画面には最後の画面が残り、「配信は止まっています」と出ます。</li>
+      </ul>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>生徒に届いている画面</h2>
+    <img id="preview" alt="">
+    <div class="meta" id="info">まだ送っていません</div>
+  </div>
+</main>
+
+<video id="video" muted playsinline style="display:none"></video>
+<canvas id="big" style="display:none"></canvas>
+<canvas id="small" width="160" height="90" style="display:none"></canvas>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+const MAX_W = 1600;           // 送る画像の最大の横幅
+const MAX_CHARS = 700000;     // 画像（base64）の大きさの上限の目安
+const CHECK_MS = 1000;        // 画面が変わったかを調べる間隔
+const BEAT_MS = 30000;        // 「配信中」の合図を送る間隔
+const DIFF_PIXELS = 8;        // 160×90 に縮めた画像でこれより多く変わったら送る（マウスの動きだけでは送らない）
+
+const $ = id => document.getElementById(id);
+const keyEl = $('key'), msg = $('msg');
+const video = $('video'), big = $('big'), small = $('small');
+const bctx = big.getContext('2d'), sctx = small.getContext('2d', { willReadFrequently: true });
+
+$('studentUrl').value = new URL('./', location.href).href;
+$('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('studentUrl').value); $('copy').textContent = 'コピーしました'; }
+  catch (e) { $('studentUrl').select(); document.execCommand('copy'); }
+  setTimeout(() => { $('copy').textContent = 'コピー'; }, 2000);
+};
+
+try { keyEl.value = localStorage.getItem('gamenKey') || ''; } catch (e) {}
+
+function say(text, cls) { msg.textContent = text; msg.className = cls || ''; }
+
+let stream = null, track = null, capture = null;
+let paused = false, sending = false, force = false;
+let lastSmall = null, ticker = null, beatTimer = null;
+
+// 背景のタブでもタイマーが遅くならないよう、Worker で時間をはかる
+function makeTicker(ms, fn) {
+  const src = `setInterval(() => postMessage(0), ${ms});`;
+  const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  w.onmessage = fn;
+  return w;
+}
+
+async function grab() {
+  if (capture) {
+    try {
+      const bmp = await capture.grabFrame();
+      return { src: bmp, w: bmp.width, h: bmp.height, close: () => bmp.close && bmp.close() };
+    } catch (e) { /* 下の方法で取る */ }
+  }
+  if (!video.videoWidth) return null;
+  return { src: video, w: video.videoWidth, h: video.videoHeight, close: () => {} };
+}
+
+function smallData(frame) {
+  sctx.drawImage(frame.src, 0, 0, small.width, small.height);
+  return sctx.getImageData(0, 0, small.width, small.height).data;
+}
+
+function changed(a, b) {
+  if (!b) return true;
+  let n = 0;
+  for (let i = 0; i < a.length; i += 4) {
+    if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 48 && ++n > DIFF_PIXELS) return true;
+  }
+  return false;
+}
+
+function encode(frame) {
+  const scale = Math.min(1, MAX_W / frame.w);
+  big.width = Math.round(frame.w * scale);
+  big.height = Math.round(frame.h * scale);
+  bctx.drawImage(frame.src, 0, 0, big.width, big.height);
+  let q = 0.75, url;
+  do { url = big.toDataURL('image/jpeg', q); q -= 0.15; } while (url.length > MAX_CHARS && q > 0.2);
+  return url;
+}
+
+async function check() {
+  if (!track || paused || sending) return;
+  const frame = await grab();
+  if (!frame) return;
+  try {
+    const data = smallData(frame);
+    if (!force && !changed(data, lastSmall)) return;
+    force = false;
+    sending = true;
+    const url = encode(frame);
+    const ver = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const b64 = url.slice(url.indexOf(',') + 1);
+    try {
+      await postApi({ action: 'put', key: keyEl.value, ver, img: b64, paused: false });
+      const m = await callApi({ action: 'meta' });
+      if (m.ver !== ver) throw new Error('届いていません');
+      lastSmall = data;
+      $('preview').src = url;
+      $('info').textContent = `最後に送った時刻 ${new Date().toLocaleTimeString()}（${big.width}×${big.height}・約${Math.round(b64.length * 0.75 / 1024)}KB）`;
+      if (!paused) say('● 配信中：画面が変わると自動で送ります', 'ok');
+    } catch (e) {
+      say('送れませんでした（' + e.message + '）。自動でやり直します', 'ng');
+    } finally {
+      sending = false;
+    }
+  } finally {
+    frame.close();
+  }
+}
+
+function beat() {
+  if (track) postApi({ action: 'beat', key: keyEl.value, paused }).catch(() => {});
+}
+
+$('start').onclick = async () => {
+  const key = keyEl.value.trim();
+  if (!key) { say('合言葉を入れてください', 'ng'); keyEl.focus(); return; }
+  $('start').disabled = true;
+  say('合言葉を確かめています…');
+  try {
+    await callApi({ action: 'check', key });
+    try { localStorage.setItem('gamenKey', key); } catch (e) {}
+  } catch (e) {
+    say(e.message, 'ng'); $('start').disabled = false; return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5, cursor: 'never' }, audio: false });
+  } catch (e) {
+    say('画面の選択がキャンセルされました', 'warn'); $('start').disabled = false; return;
+  }
+  track = stream.getVideoTracks()[0];
+  track.onended = stopAll;
+  capture = ('ImageCapture' in window) ? new ImageCapture(track) : null;
+  video.srcObject = stream;
+  await video.play().catch(() => {});
+  paused = false; lastSmall = null; force = true;
+  $('pause').disabled = $('now').disabled = $('stop').disabled = false;
+  say('● 配信中：画面が変わると自動で送ります', 'ok');
+  ticker = makeTicker(CHECK_MS, check);
+  beatTimer = makeTicker(BEAT_MS, beat);
+};
+
+$('pause').onclick = () => {
+  paused = !paused;
+  $('pause').classList.toggle('on', paused);
+  $('pause').textContent = paused ? '▶ 再開' : '⏸ 一時停止';
+  if (paused) say('⏸ 一時停止中：生徒には止めたときの画面が出ています', 'warn');
+  else { force = true; say('● 配信中：画面が変わると自動で送ります', 'ok'); }
+  beat();
+};
+
+$('now').onclick = () => { force = true; if (paused) $('pause').click(); };
+
+function stopAll() {
+  if (!track) return;
+  postApi({ action: 'stop', key: keyEl.value }).catch(() => {});
+  stream.getTracks().forEach(t => t.stop());
+  stream = track = capture = null;
+  if (ticker) ticker.terminate();
+  if (beatTimer) beatTimer.terminate();
+  ticker = beatTimer = null;
+  paused = false;
+  $('pause').classList.remove('on'); $('pause').textContent = '⏸ 一時停止';
+  $('pause').disabled = $('now').disabled = $('stop').disabled = true;
+  $('start').disabled = false;
+  say('配信を終了しました');
+}
+$('stop').onclick = stopAll;
+
+// ページを閉じたときも「終了」を伝える
+window.addEventListener('pagehide', () => {
+  if (track && navigator.sendBeacon) navigator.sendBeacon(API_URL, JSON.stringify({ action: 'stop', key: keyEl.value }));
+});
+
+if (typeof API_URL === 'undefined' || !API_URL) say('まだ Apps Script とつながっていません。README の「最初に1回だけ」を見て、config.js に URL を入れてください。', 'ng');
+</script>
+</body>
+</html>
