@@ -490,7 +490,7 @@ function renderScore() {
     if (t.type === 'hold') n = '<span class="holdbar"></span>';
     else if (t.type === 'rest') n = t.text || '○';
     else n = t.notes.map((x, ni) => `<span id="n${ti}_${ni}">${NAMES[x.s]}${x.press ? `<span class="sub">${x.press === 2 ? '押' : '半'}</span>` : ''}</span>`).join('');
-    const ly = t.lyric === 'ー' || t.lyric === '－' ? '' : t.lyric;
+    const ly = /^[ー－○〇]$/.test(t.lyric) ? '' : t.lyric;
     el.innerHTML = `<div class="n${t.notes.length > 1 ? ' multi' : ''}">${n}</div><div class="l">${ly}</div>`;
     mEl.appendChild(el);
   });
