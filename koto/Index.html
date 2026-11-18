@@ -192,9 +192,18 @@ const body = ctx.createBiquadFilter();      // 胴の響き（少しだけ）
 body.type = 'peaking'; body.frequency.value = 280; body.Q.value = 1.2; body.gain.value = 4;
 const hp = ctx.createBiquadFilter();
 hp.type = 'highpass'; hp.frequency.value = 70;
-const comp = ctx.createDynamicsCompressor();
-comp.threshold.value = -14; comp.ratio.value = 4;
-master.connect(body); body.connect(hp); hp.connect(comp); comp.connect(ctx.destination);
+// 音が割れないための安全装置。小さい音はそのまま通し、大きくなりすぎたときだけなめらかに抑える。
+// （DynamicsCompressor は、はじいた直後の音を一度つぶしてからふくらませるので、2重に聞こえる。使わない）
+const clip = ctx.createWaveShaper();
+clip.curve = (() => {
+  const n = 2048, c = new Float32Array(n), k = 0.6;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1, ax = Math.abs(x);
+    c[i] = ax <= k ? x : Math.sign(x) * (k + (1 - k) * Math.tanh((ax - k) / (1 - k)));
+  }
+  return c;
+})();
+master.connect(body); body.connect(hp); hp.connect(clip); clip.connect(ctx.destination);
 
 let buffers = [];   // 弦ごとの { buf, rate }
 const voices = [];  // 弦ごとに鳴っている音
@@ -250,7 +259,7 @@ function playString(i, semi = 0, when = 0) {
   src.buffer = buffers[i].buf;
   src.playbackRate.value = semitoneRate(i, semi);
   const gain = ctx.createGain();
-  gain.gain.value = 0.75;
+  gain.gain.value = 0.55;
   src.connect(gain); gain.connect(master);
   src.start(t);
   const v = { src, gain };
@@ -398,7 +407,7 @@ board.addEventListener('pointerdown', e => {
     pointers.set(e.pointerId, { mode: 'press', i, dot });
     setPress(i, true);
   } else {
-    pointers.set(e.pointerId, { mode: 'pluck', lastC: lineY(i) });
+    pointers.set(e.pointerId, { mode: 'pluck', lastC: lineY(i), lastK: i, lastT: performance.now() });
     pluck(i);
   }
 });
@@ -413,7 +422,13 @@ board.addEventListener('pointermove', e => {
     const order = fwd ? [...Array(13).keys()] : [...Array(13).keys()].reverse();
     for (const k of order) {
       const lc = lineY(k);
-      if ((p.lastC - lc) * (c - lc) < 0 && a > geo.bridges[k] - 6) pluck(k);
+      if ((p.lastC - lc) * (c - lc) < 0 && a > geo.bridges[k] - 6) {
+        // 指が弦の上で少しゆれただけで、同じ弦がもう一度鳴らないようにする
+        const now = performance.now();
+        if (k === p.lastK && now - p.lastT < 180) continue;
+        p.lastK = k; p.lastT = now;
+        pluck(k);
+      }
     }
     p.lastC = c;
   } else {
