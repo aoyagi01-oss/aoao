@@ -6,26 +6,34 @@
 <title>先生の画面</title>
 <style>
   html, body { margin: 0; height: 100%; background: #111; color: #eee; font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; }
-  #screen { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; background: #111; }
+  /* ダブルタップで字が選ばれると、そのあとのドラッグが止まってしまうので、選べないようにする */
+  body { user-select: none; -webkit-user-select: none; }
+  #stage { position: fixed; inset: 0; overflow: hidden; touch-action: none; display: none; }
+  #stage.zoomed { cursor: grab; }
+  #stage.dragging { cursor: grabbing; }
+  #screen { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; pointer-events: none; }
   #wait { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 16px; }
   #wait .big { font-size: 28px; font-weight: bold; }
   #wait .small { font-size: 16px; color: #aaa; }
   #bar { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 8px; align-items: center; opacity: .85; transition: opacity .4s; }
   #bar.hide { opacity: 0; }
-  #bar button { font-size: 15px; padding: 8px 14px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; cursor: pointer; }
+  #bar button { min-width: 44px; font-size: 15px; padding: 8px 14px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; cursor: pointer; }
   #state { font-size: 13px; padding: 6px 10px; border-radius: 8px; background: rgba(0,0,0,.6); }
   #state.off { background: #8a2b2b; }
   #state.pause { background: #7a5b12; }
 </style>
 </head>
 <body>
-<img id="screen" alt="先生の画面">
+<div id="stage"><img id="screen" alt="先生の画面" draggable="false"></div>
 <div id="wait">
   <div class="big">先生の画面を待っています…</div>
   <div class="small">先生が配信をはじめると、ここに自動で映ります。このままにしておいてください。</div>
 </div>
 <div id="bar">
   <button id="fs" type="button">⛶ 全画面</button>
+  <button id="zin" type="button" title="拡大">＋</button>
+  <button id="zout" type="button" title="縮小">－</button>
+  <button id="zreset" type="button" style="display:none">元の大きさ</button>
   <span id="state">接続中…</span>
 </div>
 
@@ -33,6 +41,7 @@
 <script src="api.js"></script>
 <script>
 const img = document.getElementById('screen');
+const stage = document.getElementById('stage');
 const wait = document.getElementById('wait');
 const stateEl = document.getElementById('state');
 const bar = document.getElementById('bar');
@@ -53,7 +62,7 @@ async function tick() {
       img.src = 'data:image/jpeg;base64,' + d.img;
       have = d.ver;
     }
-    if (have) { img.style.display = 'block'; wait.style.display = 'none'; }
+    if (have) { stage.style.display = 'block'; wait.style.display = 'none'; }
     if (!d.live) {
       setState(have ? '配信は止まっています（最後の画面を表示中）' : '先生の配信を待っています', 'off');
       delay = 5000;
@@ -77,13 +86,99 @@ document.getElementById('fs').onclick = () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else document.documentElement.requestFullscreen().catch(() => {});
 };
-img.ondblclick = () => document.getElementById('fs').click();
+
+// ── 手元で拡大する（ダブルタップ・ピンチ・ホイール・＋－ボタン。拡大中はドラッグで動かす）──
+// 画面が新しくなっても拡大の位置はそのまま
+const MAX_Z = 6;
+let z = 1, tx = 0, ty = 0;
+
+function apply() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  z = Math.min(MAX_Z, Math.max(1, z));
+  tx = Math.min(0, Math.max(w - w * z, tx));
+  ty = Math.min(0, Math.max(h - h * z, ty));
+  if (z === 1) { tx = 0; ty = 0; }
+  img.style.transform = `translate(${tx}px, ${ty}px) scale(${z})`;
+  stage.classList.toggle('zoomed', z > 1);
+  document.getElementById('zreset').style.display = z > 1 ? '' : 'none';
+}
+
+// (px, py) の点を動かさずに倍率を z2 にする
+function zoomAt(z2, px, py) {
+  z2 = Math.min(MAX_Z, Math.max(1, z2));
+  tx = px - (px - tx) * z2 / z;
+  ty = py - (py - ty) * z2 / z;
+  z = z2;
+  apply();
+}
+
+const center = () => [stage.clientWidth / 2, stage.clientHeight / 2];
+document.getElementById('zin').onclick = () => zoomAt(z * 1.5, ...center());
+document.getElementById('zout').onclick = () => zoomAt(z / 1.5, ...center());
+document.getElementById('zreset').onclick = () => zoomAt(1, 0, 0);
+window.addEventListener('resize', apply);
+
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomAt(z * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY);
+}, { passive: false });
+
+const pts = new Map();
+let pinch = null, lastTap = null;
+
+stage.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+  if (pts.size === 2) {
+    const [a, b] = [...pts.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z };
+  }
+});
+
+stage.addEventListener('pointermove', e => {
+  const p = pts.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (pts.size === 2 && pinch) {
+    const [a, b] = [...pts.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    // 2本の指の真ん中を中心に拡大し、指が動いた分だけ動かす
+    tx += dx / 2; ty += dy / 2;
+    zoomAt(pinch.z * d / pinch.d, (a.x + b.x) / 2, (a.y + b.y) / 2);
+  } else if (pts.size === 1 && z > 1) {
+    stage.classList.add('dragging');
+    tx += dx; ty += dy;
+    apply();
+  }
+});
+
+function up(e) {
+  const p = pts.get(e.pointerId);
+  if (!p) return;
+  pts.delete(e.pointerId);
+  if (pts.size < 2) pinch = null;
+  stage.classList.remove('dragging');
+  // ほとんど動かさずに2回続けてタップ（クリック）したら、拡大／元に戻す
+  if (e.type === 'pointerup' && pts.size === 0 && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 10) {
+    const now = Date.now();
+    if (lastTap && now - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40) {
+      if (z > 1) zoomAt(1, 0, 0); else zoomAt(2.5, e.clientX, e.clientY);
+      lastTap = null;
+    } else {
+      lastTap = { t: now, x: e.clientX, y: e.clientY };
+    }
+  }
+}
+stage.addEventListener('pointerup', up);
+stage.addEventListener('pointercancel', up);
 
 // ボタンはしばらく動かさないと薄くなる
 let hideTimer;
 function showBar() { bar.classList.remove('hide'); clearTimeout(hideTimer); hideTimer = setTimeout(() => { if (have) bar.classList.add('hide'); }, 4000); }
 document.addEventListener('mousemove', showBar);
-document.addEventListener('touchstart', showBar);
+document.addEventListener('pointerdown', showBar);
 showBar();
 
 tick();
