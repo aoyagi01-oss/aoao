@@ -68,4 +68,5 @@ Google ドライブの **「AI英会話 教材リスト」** というスプレ�
 
 - [`kadai-barcode/`](kadai-barcode/README.md)：**課題提出バーコード管理**（バーコードリーダーで課題の提出を記録し、Google スプレッドシートで提出状況・提出率・未提出者リストを管理）
 - [`gamen-kyoyu/`](gamen-kyoyu/README.md)：**画面配信（静止画）**（先生の画面を数秒ごとの静止画にして、Classroom に貼ったURLを開いた生徒のブラウザに映す。Meet や Zoom は使わない）
+- [`info-gap/`](info-gap/README.md)：**インフォギャップ配信**（A役・B役の生徒にそれぞれ別の Google スライドを見せ、先生の「次へ」で全員いっしょにページを進める）
 - [`koto/`](koto/README.md)：**デジタルお箏**（Chromebook のタッチ画面で弾ける13弦の箏。曲と調弦は Google スプレッドシートで管理）
