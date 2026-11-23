@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>インフォギャップ配信（先生用）</title>
+<style>
+  :root { --bg: #f6f7f9; --card: #fff; --ink: #1d2430; --sub: #5d6878; --line: #d9dde3; --accent: #1f6feb; --ok: #1a7f37; --warn: #9a6700; --ng: #cf222e; --a: #1f6feb; --b: #d4570b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; line-height: 1.6; }
+  main { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lead { color: var(--sub); margin: 0 0 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 16px; margin: 0 0 10px; }
+  label { display: block; font-size: 14px; color: var(--sub); margin: 8px 0 4px; }
+  input[type=text], input[type=password] { width: 100%; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row input { flex: 1 1 240px; }
+  button { font-size: 16px; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: bold; }
+  button.big { font-size: 22px; padding: 14px 28px; }
+  button.toggle.on { background: #fff4d6; border-color: var(--warn); font-weight: bold; }
+  .msg { margin-top: 8px; font-weight: bold; min-height: 1.6em; }
+  .msg.ok { color: var(--ok); } .msg.ng { color: var(--ng); } .msg.warn { color: var(--warn); }
+  .roleTag { display: inline-block; min-width: 1.8em; text-align: center; color: #fff; border-radius: 6px; font-weight: bold; padding: 0 6px; margin-right: 4px; }
+  .roleTag.A { background: var(--a); } .roleTag.B { background: var(--b); }
+  #pageNo { font-size: 28px; font-weight: bold; min-width: 7em; text-align: center; }
+  .previews { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  @media (max-width: 600px) { .previews { grid-template-columns: 1fr; } }
+  .pv .cap { font-size: 14px; color: var(--sub); margin-bottom: 4px; }
+  .pv .box { position: relative; aspect-ratio: 16/9; border: 1px solid var(--line); border-radius: 8px; background: #222; color: #ccc; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 14px; overflow: hidden; padding: 8px; }
+  .pv img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .meta { font-size: 13px; color: var(--sub); margin-top: 6px; }
+  .keys { font-size: 13px; color: var(--sub); }
+  details { margin-top: 6px; }
+  ul { padding-left: 20px; margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🔀 インフォギャップ配信（先生用）</h1>
+  <p class="lead">A役とB役の生徒に、それぞれ別のスライドを同時に見せます。先生が「次へ」を押すと、全員が一斉に次のページに進みます。</p>
+
+  <div class="card">
+    <h2>生徒用のURL（Classroom に1回貼るだけ）</h2>
+    <div class="row">
+      <input type="text" id="studentUrl" readonly>
+      <button id="copy" type="button">コピー</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>① スライドを準備する（授業の前に1回）</h2>
+    <label for="key">合言葉（Apps Script に書いたもの。この端末に覚えておきます）</label>
+    <input type="password" id="key" autocomplete="off">
+    <label for="urlA"><span class="roleTag A">A</span>A役に見せる Google スライドの URL</label>
+    <input type="text" id="urlA" placeholder="https://docs.google.com/presentation/d/…/edit">
+    <label for="urlB"><span class="roleTag B">B</span>B役に見せる Google スライドの URL</label>
+    <input type="text" id="urlB" placeholder="https://docs.google.com/presentation/d/…/edit">
+    <div class="row" style="margin-top:12px">
+      <button id="prepare" class="primary" type="button">📥 スライドを準備する</button>
+    </div>
+    <div id="prepMsg" class="msg"></div>
+    <div id="deckInfo" class="meta"></div>
+  </div>
+
+  <div class="card">
+    <h2>② 授業で進める</h2>
+    <div class="row">
+      <button id="prev" class="big" type="button">◀ 前へ</button>
+      <div id="pageNo">—</div>
+      <button id="next" class="big primary" type="button">次へ ▶</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="hide" class="toggle" type="button">🙈 生徒の画面をかくす</button>
+      <button id="swap" class="toggle" type="button">⇄ AとBを入れかえる</button>
+      <button id="first" type="button">⏮ はじまる前に戻す</button>
+    </div>
+    <div id="goMsg" class="msg"></div>
+    <div class="keys">キーボードの → ・スペース・PageDown で次へ、← ・PageUp で前へ進めます（文字を入力しているときを除く）。プレゼン用のリモコンも使えます。</div>
+    <div class="previews">
+      <div class="pv"><div class="cap"><span class="roleTag A">A</span>A役の生徒に見えている画面</div><div class="box" id="pvA">—</div></div>
+      <div class="pv"><div class="cap"><span class="roleTag B">B</span>B役の生徒に見えている画面</div><div class="box" id="pvB">—</div></div>
+    </div>
+    <details>
+      <summary>ボタンの説明</summary>
+      <ul>
+        <li><b>次へ・前へ</b>：A役もB役も、同じ番号のページに進みます。「はじまる前」は、生徒に「待っていてね」と出る状態です。</li>
+        <li><b>生徒の画面をかくす</b>：全員の画面が「先生の方を見てください」になります。もう一度押すと戻ります。</li>
+        <li><b>AとBを入れかえる</b>：A役の生徒にB用、B役の生徒にA用のページが出ます。役割を交代して2回目をするときに使います。もう一度押すと戻ります。</li>
+      </ul>
+    </details>
+  </div>
+</main>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const keyEl = $('key'), urlA = $('urlA'), urlB = $('urlB');
+
+$('studentUrl').value = new URL('./', location.href).href;
+$('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('studentUrl').value); $('copy').textContent = 'コピーしました'; }
+  catch (e) { $('studentUrl').select(); document.execCommand('copy'); }
+  setTimeout(() => { $('copy').textContent = 'コピー'; }, 2000);
+};
+
+function remember(el, name) {
+  try { el.value = localStorage.getItem(name) || ''; } catch (e) {}
+  el.addEventListener('change', () => { try { localStorage.setItem(name, el.value.trim()); } catch (e) {} });
+}
+remember(keyEl, 'infogapKey');
+remember(urlA, 'infogapUrlA');
+remember(urlB, 'infogapUrlB');
+
+function say(el, text, cls) { el.textContent = text; el.className = 'msg ' + (cls || ''); }
+
+// サーバー（Apps Script）にある状態
+let deck = { ver: '', n: 0, counts: {}, names: {} };
+// 先生が指定した状態（送ったけれど、まだ届いたか確かめていないものも含む）
+let want = { step: 0, hidden: false, swap: false };
+
+function applyState(d) {
+  deck = { ver: d.ver, n: d.n, counts: d.counts || {}, names: d.names || {} };
+  if (deck.ver) {
+    const c = deck.counts;
+    let t = `準備ずみ：A「${deck.names.A || ''}」${c.A || 0}ページ／B「${deck.names.B || ''}」${c.B || 0}ページ`;
+    if (c.A !== c.B) t += '　※ページ数がちがいます。少ない方は、最後のページのあと「このページはありません」と出ます。';
+    $('deckInfo').textContent = t;
+  } else {
+    $('deckInfo').textContent = 'まだスライドが準備されていません。';
+  }
+}
+
+async function readState() {
+  const d = await callApi({ action: 'state' }, 20000);
+  applyState(d);
+  return d;
+}
+
+async function checkKey() {
+  const key = keyEl.value.trim();
+  if (!key) throw new Error('合言葉を入れてください');
+  await callApi({ action: 'check', key }, 20000);
+  try { localStorage.setItem('infogapKey', key); } catch (e) {}
+  return key;
+}
+
+// ── ① スライドを準備する ──
+$('prepare').onclick = async () => {
+  const btn = $('prepare'), msg = $('prepMsg');
+  btn.disabled = true;
+  let watching = true;
+  try {
+    const key = await checkKey();
+    if (!urlA.value.trim() || !urlB.value.trim()) throw new Error('A役とB役のスライドの URL を入れてください');
+    const before = await readState();
+    const startedAt = Date.now();
+    say(msg, 'スライドを画像にしています…（1ページ2秒くらいかかります）', 'warn');
+    // 準備中のようすを見る
+    (async function watch() {
+      while (watching) {
+        await new Promise(r => setTimeout(r, 2500));
+        if (!watching) break;
+        try {
+          const d = await callApi({ action: 'state' }, 20000);
+          const p = d.prep || {};
+          if (p.doing && p.at >= startedAt - 60000) say(msg, `スライドを画像にしています… ${p.done} / ${p.total} ページ`, 'warn');
+        } catch (e) {}
+      }
+    })();
+    await postApi({ action: 'prepare', key, a: urlA.value.trim(), b: urlB.value.trim() });
+    watching = false;
+    const d = await readState();
+    const p = d.prep || {};
+    if (d.ver && d.ver !== before.ver) {
+      say(msg, '✓ 準備ができました。「次へ ▶」で1ページ目を生徒に出します。', 'ok');
+      want = { step: 0, hidden: false, swap: false };
+      showWant();
+      preloadAll();
+    } else if (p.error) {
+      say(msg, '準備できませんでした：' + p.error, 'ng');
+    } else {
+      say(msg, '準備できたか確かめられませんでした。少し待ってから、このページを開き直してください。', 'ng');
+    }
+  } catch (e) {
+    say(msg, e.message, 'ng');
+  } finally {
+    watching = false;
+    btn.disabled = false;
+  }
+};
+
+// ── ② 授業で進める ──
+function pageLabel(step) {
+  if (!deck.ver) return '—';
+  return step === 0 ? 'はじまる前' : `${step} / ${deck.n}`;
+}
+
+function showWant() {
+  $('pageNo').textContent = pageLabel(want.step);
+  $('prev').disabled = !deck.ver || want.step <= 0;
+  $('next').disabled = !deck.ver || want.step >= deck.n;
+  $('first').disabled = !deck.ver || want.step === 0;
+  $('hide').classList.toggle('on', want.hidden);
+  $('hide').textContent = want.hidden ? '🙈 かくしています（押すと見せる）' : '🙈 生徒の画面をかくす';
+  $('swap').classList.toggle('on', want.swap);
+  $('swap').textContent = want.swap ? '⇄ 入れかえ中（押すと戻す）' : '⇄ AとBを入れかえる';
+  showPreview('A');
+  showPreview('B');
+}
+
+// 生徒がその役割で見ている画面を、先生用ページにも出す
+function showPreview(role) {
+  const box = $('pv' + role);
+  const shown = want.swap ? (role === 'A' ? 'B' : 'A') : role;
+  const i = want.step - 1;
+  let text = '';
+  if (!deck.ver) text = 'スライドが準備されていません';
+  else if (want.hidden) text = '🙈「先生の方を見てください」と出ています';
+  else if (want.step === 0) text = '「はじまるまで待ってください」と出ています';
+  else if (i >= (deck.counts[shown] || 0)) text = 'このページはありません';
+  if (text) { box.innerHTML = ''; box.textContent = text; return; }
+  const k = `${deck.ver}:${shown}:${i}`;
+  const src = images.get(k);
+  box.innerHTML = '';
+  if (src === '') {
+    box.textContent = 'このページはありません';
+  } else if (src) {
+    const im = new Image();
+    im.src = src;
+    im.alt = '';
+    box.appendChild(im);
+    if (want.swap) { const s = document.createElement('div'); s.style.cssText = 'position:absolute;left:6px;top:6px;background:rgba(0,0,0,.7);color:#fff;font-size:12px;padding:2px 6px;border-radius:4px'; s.textContent = `${shown}用のページ`; box.appendChild(s); }
+  } else {
+    box.textContent = '読み込み中…';
+    loadImage(shown, i).then(() => showWant()).catch(() => { box.textContent = '画像を読み込めませんでした'; });
+  }
+}
+
+const images = new Map();
+const loading = new Map();
+function loadImage(role, i) {
+  const k = `${deck.ver}:${role}:${i}`;
+  if (images.has(k)) return Promise.resolve();
+  if (!loading.has(k)) {
+    loading.set(k, callApi({ action: 'img', ver: deck.ver, role, i }, 40000).then(d => {
+      images.set(k, d.img ? `data:${d.mime};base64,${d.img}` : '');
+    }).finally(() => loading.delete(k)));
+  }
+  return loading.get(k);
+}
+
+// 先生用ページでもすぐ切りかえられるよう、全部のページを順に読んでおく
+async function preloadAll() {
+  const ver = deck.ver;
+  for (let i = 0; i < deck.n; i++) {
+    for (const r of ['A', 'B']) {
+      if (deck.ver !== ver) return;
+      if (i < (deck.counts[r] || 0)) { try { await loadImage(r, i); } catch (e) {} }
+    }
+  }
+}
+
+// 指定を送る。押すたびに送らず、送っている間に押されたら、終わってから最新の指定だけ送る
+let sending = false, dirty = false;
+async function send() {
+  if (sending) { dirty = true; return; }
+  sending = true;
+  const msg = $('goMsg');
+  try {
+    do {
+      dirty = false;
+      const body = Object.assign({ action: 'go', key: keyEl.value.trim() }, want);
+      say(msg, '送っています…', 'warn');
+      await postApi(body);
+    } while (dirty);
+    const d = await callApi({ action: 'state' }, 20000);
+    if (d.step === want.step && d.hidden === want.hidden && d.swap === want.swap) {
+      say(msg, `✓ 生徒に送りました（${new Date().toLocaleTimeString()}）`, 'ok');
+    } else if (!dirty) {
+      say(msg, '届いていないようです。合言葉が正しいか確かめてください。', 'ng');
+    }
+  } catch (e) {
+    say(msg, '送れませんでした：' + e.message, 'ng');
+  } finally {
+    sending = false;
+    if (dirty) send();
+  }
+}
+
+function change(patch) {
+  if (!deck.ver) return;
+  if (!keyEl.value.trim()) { say($('goMsg'), '合言葉を入れてください', 'ng'); return; }
+  want = Object.assign({}, want, patch);
+  want.step = Math.max(0, Math.min(deck.n, want.step));
+  showWant();
+  send();
+}
+
+$('next').onclick = () => change({ step: want.step + 1 });
+$('prev').onclick = () => change({ step: want.step - 1 });
+$('first').onclick = () => change({ step: 0 });
+$('hide').onclick = () => change({ hidden: !want.hidden });
+$('swap').onclick = () => change({ swap: !want.swap });
+
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea') || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); if (want.step < deck.n) change({ step: want.step + 1 }); }
+  else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); if (want.step > 0) change({ step: want.step - 1 }); }
+});
+
+// ページを開いたときは、いまの状態から続ける
+(async () => {
+  try {
+    const d = await readState();
+    want = { step: d.step, hidden: d.hidden, swap: d.swap };
+    showWant();
+    if (d.ver) preloadAll();
+  } catch (e) {
+    say($('prepMsg'), e.message, 'ng');
+    showWant();
+  }
+})();
+</script>
+</body>
+</html>

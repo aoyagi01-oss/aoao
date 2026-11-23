@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>インフォギャップ</title>
+<style>
+  :root { --a: #1f6feb; --b: #d4570b; }
+  html, body { margin: 0; height: 100%; background: #111; color: #eee; font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  /* ダブルタップで字が選ばれると、そのあとのドラッグが止まってしまうので、選べないようにする */
+  body { user-select: none; -webkit-user-select: none; }
+  #stage { position: fixed; inset: 0; overflow: hidden; touch-action: none; display: none; }
+  #stage.zoomed { cursor: grab; }
+  #stage.dragging { cursor: grabbing; }
+  #screen { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+  .cover { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 16px; }
+  .cover .big { font-size: 28px; font-weight: bold; }
+  .cover .small { font-size: 16px; color: #aaa; }
+  #wait { display: none; }
+  #choose { background: #111; z-index: 5; }
+  #choose .roles { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  #choose .roles button { width: 160px; height: 160px; font-size: 72px; font-weight: bold; color: #fff; border: none; border-radius: 24px; cursor: pointer; }
+  #choose .roles button small { display: block; font-size: 18px; font-weight: normal; }
+  #pickA { background: var(--a); } #pickB { background: var(--b); }
+  #badge { position: fixed; left: 12px; top: 12px; min-width: 56px; padding: 4px 12px; border-radius: 12px; font-size: 32px; font-weight: bold; text-align: center; color: #fff; display: none; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+  #badge small { font-size: 14px; font-weight: normal; margin-left: 4px; }
+  #badge.A { background: var(--a); } #badge.B { background: var(--b); }
+  #toast { position: fixed; left: 50%; top: 20px; transform: translateX(-50%); background: #fff4d6; color: #222; font-size: 20px; font-weight: bold; padding: 10px 20px; border-radius: 12px; display: none; z-index: 3; text-align: center; }
+  #bar { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; opacity: .85; transition: opacity .4s; z-index: 2; }
+  #bar.hide { opacity: 0; }
+  #bar button { min-width: 44px; font-size: 15px; padding: 8px 14px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; cursor: pointer; }
+  #state { font-size: 13px; padding: 6px 10px; border-radius: 8px; background: rgba(0,0,0,.6); }
+  #state.off { background: #8a2b2b; }
+</style>
+</head>
+<body>
+<div id="stage"><img id="screen" alt="スライド" draggable="false"></div>
+<div id="wait" class="cover">
+  <div class="big" id="waitBig">待っています…</div>
+  <div class="small" id="waitSmall"></div>
+</div>
+<div id="choose" class="cover">
+  <div class="big">あなたの役割をえらんでください</div>
+  <div class="small">先生に言われた方を押してください。</div>
+  <div class="roles">
+    <button id="pickA" type="button">A<small>A役</small></button>
+    <button id="pickB" type="button">B<small>B役</small></button>
+  </div>
+</div>
+<div id="badge"></div>
+<div id="toast"></div>
+<div id="bar">
+  <button id="fs" type="button">⛶ 全画面</button>
+  <button id="zin" type="button" title="拡大">＋</button>
+  <button id="zout" type="button" title="縮小">－</button>
+  <button id="zreset" type="button" style="display:none">元の大きさ</button>
+  <button id="change" type="button">役割を変える</button>
+  <span id="state">接続中…</span>
+</div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const img = $('screen'), stage = $('stage'), wait = $('wait'), bar = $('bar');
+
+// ── 役割（A・B）をえらぶ。このタブを開いている間は覚えておく ──
+let role = '';
+try { role = sessionStorage.getItem('infogapRole') || ''; } catch (e) {}
+function pick(r) {
+  role = r;
+  try { sessionStorage.setItem('infogapRole', r); } catch (e) {}
+  $('choose').style.display = 'none';
+  lastShown = '';
+  render();
+  queueLoads();
+}
+$('pickA').onclick = () => pick('A');
+$('pickB').onclick = () => pick('B');
+$('change').onclick = () => { $('choose').style.display = 'flex'; };
+if (role === 'A' || role === 'B') $('choose').style.display = 'none'; else role = '';
+
+// ── 先生の指定（Apps Script から2秒ごとに読む）──
+let st = null;           // { ver, n, counts, step, hidden, swap }
+let fails = 0;
+const images = new Map(); // "ver:役割:ページ" → 画像（ページがないときは ''）
+
+// 入れかえ中は、A役の生徒にB用のページを出す
+const shownRole = () => st && st.swap ? (role === 'A' ? 'B' : 'A') : role;
+
+function setState(text, cls) { $('state').textContent = text; $('state').className = cls || ''; }
+
+async function tick() {
+  let delay = 2000;
+  try {
+    const d = await callApi({ action: 'state' }, 20000);
+    fails = 0;
+    const swapped = st && st.ver === d.ver && st.swap !== d.swap;
+    st = d;
+    if (swapped && role) toast(`役割が入れかわりました。いまは ${shownRole()} 用のページです`);
+    setState('● つながっています');
+    render();
+    queueLoads();
+  } catch (e) {
+    fails++;
+    setState('つながりません。自動でやり直しています…', 'off');
+    delay = Math.min(15000, 3000 * fails);
+  }
+  if (document.hidden) delay = Math.max(delay, 10000);
+  setTimeout(tick, delay);
+}
+
+let lastShown = '';
+function showCover(big, small) {
+  stage.style.display = 'none';
+  wait.style.display = 'flex';
+  $('waitBig').textContent = big;
+  $('waitSmall').textContent = small || '';
+  lastShown = '';
+}
+
+function render() {
+  const badge = $('badge');
+  if (role) {
+    const r = shownRole();
+    badge.className = r;
+    badge.style.display = 'block';
+    badge.innerHTML = r + (r !== role ? '<small>（入れかえ中）</small>' : '<small>役</small>');
+  } else {
+    badge.style.display = 'none';
+  }
+  if (!role || !st) return;
+  if (!st.ver) return showCover('先生がスライドを準備しています…', 'このままにしておいてください。');
+  if (st.hidden) return showCover('👀 先生の方を見てください');
+  if (st.step === 0) return showCover(`あなたは ${role} 役です`, 'はじまるまで待ってください。先生が始めると、ここに自動で出ます。');
+  const r = shownRole(), i = st.step - 1;
+  if (i >= (st.counts[r] || 0)) return showCover('このページはありません', '先生の話を聞いてください。');
+  const k = `${st.ver}:${r}:${i}`;
+  const src = images.get(k);
+  if (src === '') return showCover('このページはありません', '先生の話を聞いてください。');
+  if (!src) return showCover('読み込み中…');
+  if (lastShown !== k) {
+    img.src = src;
+    if (lastShown) zoomAt(1, 0, 0);   // ページが変わったら元の大きさに戻す
+    lastShown = k;
+  }
+  wait.style.display = 'none';
+  stage.style.display = 'block';
+  apply();
+}
+
+// ── 画像を前もって読んでおく（いまのページ → 次のページ → 残り の順）──
+let loadingKey = '', loadFails = 0, started = false;
+function wantList() {
+  if (!st || !st.ver || !role) return [];
+  const r = shownRole(), n = st.counts[r] || 0, cur = Math.max(0, st.step - 1);
+  const order = [];
+  for (let i = cur; i < n; i++) order.push(i);
+  for (let i = 0; i < cur; i++) order.push(i);
+  return order.map(i => ({ r, i, k: `${st.ver}:${r}:${i}` })).filter(x => !images.has(x.k));
+}
+
+async function queueLoads() {
+  if (loadingKey) return;
+  // 全員が同時に読み込みを始めないよう、最初だけ少しずらす
+  if (!started) {
+    started = true;
+    loadingKey = 'wait';
+    await new Promise(r => setTimeout(r, Math.random() * 3000));
+    loadingKey = '';
+  }
+  const next = wantList()[0];
+  if (!next) return;
+  loadingKey = next.k;
+  const ver = st.ver;
+  try {
+    const d = await callApi({ action: 'img', ver, role: next.r, i: next.i }, 40000);
+    images.set(next.k, d.img ? `data:${d.mime};base64,${d.img}` : '');
+    loadFails = 0;
+    render();
+  } catch (e) {
+    loadFails++;
+    await new Promise(r => setTimeout(r, Math.min(15000, 1000 * loadFails + Math.random() * 2000)));
+  }
+  loadingKey = '';
+  queueLoads();
+}
+
+let toastTimer;
+function toast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+
+$('fs').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+};
+
+// ── 手元で拡大する（ダブルタップ・ピンチ・ホイール・＋－ボタン。拡大中はドラッグで動かす）──
+const MAX_Z = 6;
+let z = 1, tx = 0, ty = 0;
+
+function apply() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  z = Math.min(MAX_Z, Math.max(1, z));
+  tx = Math.min(0, Math.max(w - w * z, tx));
+  ty = Math.min(0, Math.max(h - h * z, ty));
+  if (z === 1) { tx = 0; ty = 0; }
+  img.style.transform = `translate(${tx}px, ${ty}px) scale(${z})`;
+  stage.classList.toggle('zoomed', z > 1);
+  $('zreset').style.display = z > 1 ? '' : 'none';
+}
+
+// (px, py) の点を動かさずに倍率を z2 にする
+function zoomAt(z2, px, py) {
+  z2 = Math.min(MAX_Z, Math.max(1, z2));
+  tx = px - (px - tx) * z2 / z;
+  ty = py - (py - ty) * z2 / z;
+  z = z2;
+  apply();
+}
+
+const center = () => [stage.clientWidth / 2, stage.clientHeight / 2];
+$('zin').onclick = () => zoomAt(z * 1.5, ...center());
+$('zout').onclick = () => zoomAt(z / 1.5, ...center());
+$('zreset').onclick = () => zoomAt(1, 0, 0);
+window.addEventListener('resize', apply);
+
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomAt(z * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY);
+}, { passive: false });
+
+const pts = new Map();
+let pinch = null, lastTap = null;
+
+stage.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+  if (pts.size === 2) {
+    const [a, b] = [...pts.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z };
+  }
+});
+
+stage.addEventListener('pointermove', e => {
+  const p = pts.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (pts.size === 2 && pinch) {
+    const [a, b] = [...pts.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    tx += dx / 2; ty += dy / 2;
+    zoomAt(pinch.z * d / pinch.d, (a.x + b.x) / 2, (a.y + b.y) / 2);
+  } else if (pts.size === 1 && z > 1) {
+    stage.classList.add('dragging');
+    tx += dx; ty += dy;
+    apply();
+  }
+});
+
+function up(e) {
+  const p = pts.get(e.pointerId);
+  if (!p) return;
+  pts.delete(e.pointerId);
+  if (pts.size < 2) pinch = null;
+  stage.classList.remove('dragging');
+  // ほとんど動かさずに2回続けてタップ（クリック）したら、拡大／元に戻す
+  if (e.type === 'pointerup' && pts.size === 0 && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 10) {
+    const now = Date.now();
+    if (lastTap && now - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40) {
+      if (z > 1) zoomAt(1, 0, 0); else zoomAt(2.5, e.clientX, e.clientY);
+      lastTap = null;
+    } else {
+      lastTap = { t: now, x: e.clientX, y: e.clientY };
+    }
+  }
+}
+stage.addEventListener('pointerup', up);
+stage.addEventListener('pointercancel', up);
+
+// ボタンはしばらく動かさないと薄くなる
+let hideTimer;
+function showBar() { bar.classList.remove('hide'); clearTimeout(hideTimer); hideTimer = setTimeout(() => { if (lastShown) bar.classList.add('hide'); }, 4000); }
+document.addEventListener('mousemove', showBar);
+document.addEventListener('pointerdown', showBar);
+showBar();
+
+tick();
+</script>
+</body>
+</html>
