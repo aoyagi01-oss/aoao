@@ -105,54 +105,74 @@ function go_(p) {
 }
 
 // ── Google スライドを1ページずつ画像にして、ドライブのフォルダに保存する ──
+// 時間がかかったり、Google に「少し待って」と言われたりしたときは途中で止め、もう一度押すと続きから画像にする
+const TIME_LIMIT = 4.5 * 60 * 1000;   // Apps Script は1回6分までしか動けないので、その前に止める
+const RESUME_MS = 30 * 60 * 1000;     // この時間内にもう一度押すと、続きから
+const GAP_MS = 1200;                  // 1ページごとにあける間（まとめて頼むと断られるため）
+
 function prepare_(urlA, urlB) {
+  const started = Date.now();
   const ids = { A: slidesId_(urlA, 'A'), B: slidesId_(urlB, 'B') };
-  const ver = Date.now().toString(36);
   const setPrep = function (o) { writeJson_('prep', Object.assign({ at: Date.now() }, o)); };
+  let work = readJson_('work');
+  if (!work || work.ids.A !== ids.A || work.ids.B !== ids.B || Date.now() - work.at > RESUME_MS) {
+    if (work && work.ver) { try { trashOld_(work.ver); } catch (e) {} }   // 前の途中の画像は消す
+    work = { ver: Date.now().toString(36), ids: ids, decks: openDecks_(ids), files: { A: [], B: [] } };
+  }
+  const total = work.decks.A.pages.length + work.decks.B.pages.length;
+  const doneCount = function () { return work.files.A.length + work.files.B.length; };
+  const save = function () { work.at = Date.now(); writeJson_('work', work); };
+  save();
+  setPrep({ doing: true, done: doneCount(), total: total });
+
+  const folder = folder_();
   try {
-    const decks = {};
-    let total = 0;
-    ROLES.forEach(function (r) {
-      let pres;
-      try { pres = SlidesApp.openById(ids[r]); }
-      catch (err) { throw new Error(r + '役のスライドを開けません。URL と、自分のアカウントで開けるかを確かめてください'); }
-      const pages = pres.getSlides().slice(0, MAX_PAGES).map(function (s) { return s.getObjectId(); });
-      if (!pages.length) throw new Error(r + '役のスライドにページがありません');
-      decks[r] = { name: pres.getName(), pages: pages };
-      total += pages.length;
-    });
-
-    const folder = folder_();
-    const files = { A: [], B: [] };
-    let done = 0;
-    setPrep({ doing: true, done: 0, total: total });
-    ROLES.forEach(function (r) {
-      decks[r].pages.forEach(function (pageId, i) {
-        const blob = pageImage_(ids[r], pageId).setName(ver + '-' + r + '-' + (i + 1));
-        files[r].push(folder.createFile(blob).getId());
-        done++;
-        setPrep({ doing: true, done: done, total: total });
-      });
-    });
-
-    // 前に準備した画像は、新しい画像ができてから消す
-    const old = readJson_('deck');
-    const counts = { A: files.A.length, B: files.B.length };
-    writeJson_('files', files);
-    writeJson_('deck', {
-      ver: ver,
-      n: Math.max(counts.A, counts.B),
-      counts: counts,
-      names: { A: decks.A.name, B: decks.B.name }
-    });
-    writeJson_('state', { step: 0, hidden: false, swap: false, at: Date.now() });
-    setPrep({ doing: false, done: total, total: total, ver: ver });
-    if (old && old.ver) trashOld_(old.ver);
+    for (let ri = 0; ri < ROLES.length; ri++) {
+      const r = ROLES[ri];
+      const pages = work.decks[r].pages;
+      for (let i = work.files[r].length; i < pages.length; i++) {
+        if (Date.now() - started > TIME_LIMIT) throw new Error('時間がかかっています');
+        if (doneCount() > 0) Utilities.sleep(GAP_MS);
+        const blob = pageImage_(work.ids[r], pages[i], started).setName(work.ver + '-' + r + '-' + (i + 1));
+        work.files[r].push(folder.createFile(blob).getId());
+        save();
+        setPrep({ doing: true, done: doneCount(), total: total });
+      }
+    }
   } catch (err) {
-    setPrep({ doing: false, error: String(err && err.message || err) });
-    try { trashOld_(ver); } catch (e2) {}   // 途中まで作った画像は消す
+    const msg = String(err && err.message || err);
+    setPrep({ doing: false, done: doneCount(), total: total, error: msg + '。' + doneCount() + ' / ' + total + ' ページまでできています。1分ほど待ってから、もう一度「スライドを準備する」を押すと続きから画像にします' });
     throw err;
   }
+
+  // 前に準備した画像は、新しい画像ができてから消す
+  const old = readJson_('deck');
+  const counts = { A: work.files.A.length, B: work.files.B.length };
+  writeJson_('files', work.files);
+  writeJson_('deck', {
+    ver: work.ver,
+    n: Math.max(counts.A, counts.B),
+    counts: counts,
+    names: { A: work.decks.A.name, B: work.decks.B.name }
+  });
+  writeJson_('state', { step: 0, hidden: false, swap: false, at: Date.now() });
+  props_().deleteProperty('work');
+  cache_().remove('work');
+  setPrep({ doing: false, done: total, total: total, ver: work.ver });
+  if (old && old.ver && old.ver !== work.ver) trashOld_(old.ver);
+}
+
+function openDecks_(ids) {
+  const decks = {};
+  ROLES.forEach(function (r) {
+    let pres;
+    try { pres = SlidesApp.openById(ids[r]); }
+    catch (err) { throw new Error(r + '役のスライドを開けません。URL と、自分のアカウントで開けるかを確かめてください'); }
+    const pages = pres.getSlides().slice(0, MAX_PAGES).map(function (s) { return s.getObjectId(); });
+    if (!pages.length) throw new Error(r + '役のスライドにページがありません');
+    decks[r] = { name: pres.getName(), pages: pages };
+  });
+  return decks;
 }
 
 function slidesId_(url, role) {
@@ -167,19 +187,44 @@ function folder_() {
 }
 
 // スライド1ページを画像にする。PNG と JPEG の小さいほうを使う
-function pageImage_(presId, pageId) {
+// 「少し待って」（429）と言われたら、間をあけてやり直す。だめならスライドの縮小画像を使う
+function pageImage_(presId, pageId, started) {
+  const auth = { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() };
   const url = 'https://docs.google.com/presentation/d/' + presId + '/export/png?pageid=' + encodeURIComponent(pageId);
-  let res;
-  for (let tries = 0; tries < 3; tries++) {
-    res = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
-    if (res.getResponseCode() === 200) break;
-    Utilities.sleep(1500 * (tries + 1));
+  const waits = [3000, 8000, 15000, 25000];
+  let code = 0, png = null;
+  for (let tries = 0; ; tries++) {
+    const res = UrlFetchApp.fetch(url, { headers: auth, muteHttpExceptions: true, followRedirects: true });
+    code = res.getResponseCode();
+    if (code === 200) { png = res.getBlob(); break; }
+    if (tries >= waits.length || (code !== 429 && code < 500)) break;
+    if (Date.now() - started + waits[tries] > TIME_LIMIT) break;
+    Utilities.sleep(waits[tries]);
   }
-  if (res.getResponseCode() !== 200) throw new Error('スライドを画像にできませんでした（' + res.getResponseCode() + '）');
-  const png = res.getBlob().setContentType('image/png');
+  if (!png) png = thumbnail_(presId, pageId, auth);
+  if (!png) {
+    throw new Error(code === 429
+      ? 'Google から「少し待ってください」と言われました（429）'
+      : 'スライドを画像にできませんでした（' + code + '）');
+  }
+  png.setContentType('image/png');
   let jpg = null;
   try { jpg = png.getAs('image/jpeg'); } catch (err) {}
   return jpg && jpg.getBytes().length < png.getBytes().length ? jpg : png;
+}
+
+// 予備：Google スライドの機能で、ページの縮小画像（横1600）を作ってもらう
+function thumbnail_(presId, pageId, auth) {
+  try {
+    const api = 'https://slides.googleapis.com/v1/presentations/' + presId + '/pages/' + encodeURIComponent(pageId) +
+      '/thumbnail?thumbnailProperties.thumbnailSize=LARGE&thumbnailProperties.mimeType=PNG';
+    const res = UrlFetchApp.fetch(api, { headers: auth, muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) return null;
+    const img = UrlFetchApp.fetch(JSON.parse(res.getContentText()).contentUrl, { muteHttpExceptions: true });
+    return img.getResponseCode() === 200 ? img.getBlob() : null;
+  } catch (err) {
+    return null;
+  }
 }
 
 function trashOld_(ver) {
